@@ -250,7 +250,11 @@ class ProductRepositoryMixin:
                 """,
                 (product_id,),
             )
-            images = [row["image_path"] for row in cursor.fetchall()]
+            images = []
+            for row in cursor.fetchall():
+                v = (row["image_path"] or "").strip()
+                if v:
+                    images.append(v)
             if images:
                 return images
             # fallback على الأعمدة القديمة في products
@@ -263,7 +267,7 @@ class ProductRepositoryMixin:
                 return []
             out = []
             for k in ("img1", "img2", "img3"):
-                v = row[k]
+                v = (row[k] or "").strip() if row[k] is not None else ""
                 if v:
                     out.append(v)
             return out
@@ -409,6 +413,9 @@ class ProductRepositoryMixin:
                     p.product_name,
                     p.description,
                     p.price,
+                    p.img1,
+                    p.img2,
+                    p.img3,
                     p.branch_id,
                     b.city_name AS branch_city_name,
                     mc.id AS category_id,
@@ -483,6 +490,9 @@ class ProductRepositoryMixin:
                     p.product_name,
                     p.description,
                     p.price,
+                    p.img1,
+                    p.img2,
+                    p.img3,
                     p.branch_id,
                     b.city_name AS branch_city_name,
                     mc.id AS category_id,
@@ -683,6 +693,9 @@ class ProductRepositoryMixin:
                     p.product_name,
                     p.description,
                     p.price,
+                    p.img1,
+                    p.img2,
+                    p.img3,
                     p.branch_id,
                     b.city_name AS branch_city_name,
                     mc.id AS category_id,

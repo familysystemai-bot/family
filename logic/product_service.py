@@ -5,8 +5,9 @@
 """
 from __future__ import annotations
 
+import copy
 import re
-from typing import Optional
+from typing import List, Optional
 
 from flask import jsonify, session
 
@@ -22,6 +23,95 @@ def _cs():
 
 
 _PRODUCT_UNAVAILABLE_MSG = "حالياً هذا المنتج غير متوفر، تحب أعرض لك بدائل؟"
+
+_LAST_PRODUCT_SHOWN_MSG = "هذا آخر الموجود حالياً 👍"
+
+# طلب عرض منتج تالي من الدفعة المخزّنة في الجلسة (بدون تغيير SQL أو منطق البحث)
+_NEXT_PRODUCT_TRIGGER_PHRASES = (
+    "في غيره",
+    "فيه غيره",
+    "غيره",
+    "كمان",
+    "زيد",
+    "ورني اكثر",
+    "ورني أكثر",
+    "وريني اكثر",
+    "وريني أكثر",
+)
+
+
+def _looks_like_next_product_request(message: str) -> bool:
+    t = (message or "").strip()
+    if not t:
+        return False
+    tn = t.replace("؟", "").replace("?", "").strip()
+    for p in _NEXT_PRODUCT_TRIGGER_PHRASES:
+        if p in tn or p in t:
+            return True
+    return False
+
+
+def _apply_step_by_step_slice(out_products: list, list_intent: str) -> List[dict]:
+    """
+    يعرض أول منتج فقط ويخزّن الباقي في الجلسة لعرض تفاعلي لاحقاً.
+    منطق البحث يبني out_products كاملاً كما سبق؛ التقطيع هنا فقط.
+    """
+    if not out_products:
+        session["remaining_products"] = []
+        session["remaining_products_intent"] = list_intent
+        return []
+    session["remaining_products"] = [copy.deepcopy(x) for x in out_products[1:]]
+    session["remaining_products_intent"] = list_intent
+    return out_products[:1]
+
+
+def _try_next_remaining_product_response(message: str):
+    """
+    إذا طلب المستخدم منتجاً تالياً من الدفعة السابقة نُرسل صفاً واحداً من remaining_products.
+    """
+    if not _looks_like_next_product_request(message):
+        return None
+    rem = session.get("remaining_products")
+    if rem is None:
+        return None
+    intent = (session.get("remaining_products_intent") or "product").strip() or "product"
+    if len(rem) == 0:
+        return jsonify(
+            {
+                "products": [],
+                "message": _LAST_PRODUCT_SHOWN_MSG,
+                "intent": intent,
+            }
+        )
+    next_p = copy.deepcopy(rem[0])
+    session["remaining_products"] = rem[1:]
+    cs = _cs()
+    get_db = cs.get_db
+    try:
+        pid = int(next_p["id"])
+    except (TypeError, ValueError):
+        return None
+    session["last_products"] = list(
+        dict.fromkeys((session.get("last_products") or []) + [pid])
+    )
+    _save_chat_last_product_snapshot(
+        next_p,
+        get_db().get_product_variants(pid) or [],
+    )
+    session["pending_product_intent"] = True
+    try:
+        from logic import chat_context as _chat_ctx
+
+        _chat_ctx.on_product_list_shown([next_p], intent)
+    except Exception:
+        pass
+    return jsonify(
+        {
+            "products": [next_p],
+            "message": "",
+            "intent": intent,
+        }
+    )
 
 _PRODUCT_COLOR_HINTS = (
     "بنفسجي",
@@ -726,9 +816,13 @@ def _product_dict_for_chat(
     if sd:
         chat_lines.append(sd)
     chat_text = "\n".join(chat_lines)
+    img1_col = (p.get("img1") or "").strip()
+    if not images and img1_col:
+        images = [img1_col]
+    img1_out = (images[0] if images else "") or img1_col
     primary_href = _chat_image_url(images[0] if images else "")
-    if not primary_href and p.get("img1"):
-        primary_href = _chat_image_url(p.get("img1"))
+    if not primary_href and img1_col:
+        primary_href = _chat_image_url(img1_col)
     return {
         "id": product_id,
         "name": p.get("product_name"),
@@ -738,6 +832,7 @@ def _product_dict_for_chat(
         "colors": colors,
         "quantity": total_qty,
         "images": images,
+        "img1": img1_out,
         "branches": branches,
         "detail_text": detail_text,
         "chat_text": chat_text,
@@ -793,7 +888,18 @@ def _build_products_response(message: str):
         if r:
             rows, has_more_tier = r, h
             break
+    # إذا لم يُرجع البحث المُرتّب صفوفاً، نجرب البحث الشامل (مثل التوصيات) قبل اعتبار «لا نتائج»
     if not rows:
+        for n in all_product_search_needles(needle, (message or "").strip()):
+            if len(n) < 2:
+                continue
+            alt = get_db().search_products(n, limit=30)
+            if alt:
+                rows, has_more_tier = alt, False
+                break
+    if not rows:
+        session.pop("remaining_products", None)
+        session.pop("remaining_products_intent", None)
         return None
 
     out_products = []
@@ -822,6 +928,8 @@ def _build_products_response(message: str):
             break
 
     if not out_products:
+        session.pop("remaining_products", None)
+        session.pop("remaining_products_intent", None)
         return None
 
     has_more = has_more_tier or len(rows) > len(out_products)
@@ -832,14 +940,15 @@ def _build_products_response(message: str):
         get_db().get_product_variants(int(out_products[0]["id"])) or [],
     )
     intro = _product_list_intro_message(_display_name, out_products, has_more)
+    shown = _apply_step_by_step_slice(out_products, "product")
     try:
         from logic import chat_context as _chat_ctx
 
-        _chat_ctx.on_product_list_shown(out_products, "product")
+        _chat_ctx.on_product_list_shown(shown, "product")
     except Exception:
         pass
     return {
-        "products": out_products,
+        "products": shown,
         "intent": "product",
         "message": intro,
     }
@@ -932,6 +1041,8 @@ def _recommendation_response():
 
     filtered = [r for r in rows if int(r["product_id"]) not in exclude][:12]
     if not filtered:
+        session.pop("remaining_products", None)
+        session.pop("remaining_products_intent", None)
         return jsonify(
             {
                 "products": [],
@@ -958,17 +1069,18 @@ def _recommendation_response():
         out_products[0],
         get_db().get_product_variants(int(out_products[0]["id"])) or [],
     )
+    shown = _apply_step_by_step_slice(out_products, "recommendation")
     try:
         from logic import chat_context as _chat_ctx
 
-        _chat_ctx.on_product_list_shown(out_products, "recommendation")
+        _chat_ctx.on_product_list_shown(shown, "recommendation")
     except Exception:
         pass
     d = session.get("chat_dialect") or "default"
     rec_msg = dialect_message(d, "product_found_soft", name=_display_name())
     return jsonify(
         {
-            "products": out_products,
+            "products": shown,
             "intent": "recommendation",
             "message": rec_msg,
         }
@@ -1029,6 +1141,8 @@ def _try_last_section_product_followup(message: str):
         if rows:
             used_global_fallback = True
     if not rows:
+        session.pop("remaining_products", None)
+        session.pop("remaining_products_intent", None)
         return jsonify(
             {
                 "products": [],
@@ -1062,6 +1176,8 @@ def _try_last_section_product_followup(message: str):
             break
 
     if not out_products:
+        session.pop("remaining_products", None)
+        session.pop("remaining_products_intent", None)
         return None
     session["last_products"] = [int(p["id"]) for p in out_products]
     session["pending_product_intent"] = True
@@ -1070,11 +1186,18 @@ def _try_last_section_product_followup(message: str):
         get_db().get_product_variants(int(out_products[0]["id"])) or [],
     )
     session["chat_current_intent"] = "product"
+    shown = _apply_step_by_step_slice(out_products, "product")
+    try:
+        from logic import chat_context as _chat_ctx
+
+        _chat_ctx.on_product_list_shown(shown, "product")
+    except Exception:
+        pass
     d = session.get("chat_dialect") or "default"
     msg = dialect_message(d, "product_found_soft", name=_display_name())
     return jsonify(
         {
-            "products": out_products,
+            "products": shown,
             "intent": "product",
             "message": msg,
         }

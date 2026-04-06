@@ -327,16 +327,31 @@
                 .replace(/'/g, '&#39;');
         }
 
+        function chatProductImageUrl(rawPath) {
+            const s = String(rawPath || '').trim();
+            if (!s) return '';
+            if (s.startsWith('http://') || s.startsWith('https://')) return s;
+            if (s.startsWith('/static/')) return s;
+            if (s.startsWith('static/')) return '/' + s;
+            return '/static/' + s.replace(/^\/+/, '');
+        }
+
         function renderProducts(products) {
             if (!products || products.length === 0) return '';
             const cards = products.map(p => {
-                const rawPath = (p.images && p.images.length) ? p.images[0] : '';
-                const img = rawPath
-                    ? (String(rawPath).startsWith('/static/') ? rawPath : ('/static/' + String(rawPath).replace(/^\/+/, '')))
-                    : '';
-                const imgHref = (p.primary_image_href && String(p.primary_image_href).trim())
+                let rawPath = '';
+                if (p.images && p.images.length) {
+                    const first = String(p.images[0] || '').trim();
+                    if (first) rawPath = p.images[0];
+                }
+                if (!rawPath && p.img1 && String(p.img1).trim()) {
+                    rawPath = String(p.img1).trim();
+                }
+                const img = chatProductImageUrl(rawPath);
+                const hrefRaw = (p.primary_image_href && String(p.primary_image_href).trim())
                     ? String(p.primary_image_href).trim()
-                    : img;
+                    : rawPath;
+                const imgHref = chatProductImageUrl(hrefRaw);
                 const bodySrc = (p.chat_text && String(p.chat_text).trim())
                     ? p.chat_text
                     : (p.detail_text ? p.detail_text : [

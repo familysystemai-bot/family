@@ -35,6 +35,7 @@ from logic.product_service import (
     _build_search_text_from_llm,
     _recommendation_response,
     _try_last_section_product_followup,
+    _try_next_remaining_product_response,
     _try_pending_product_intent_confirmation,
     _try_product_detail_reply,
 )
@@ -58,6 +59,14 @@ def _try_openai_fallback(message: str, intent: str) -> Optional[Any]:
         return None
     db = cs.get_db()
     db_data = ai_fb.build_fallback_db_data(db, message)
+    # أولوية لعرض منتجات حقيقية من DB إذا وُجدت مطابقة (حتى لو كانت قليلة)
+    if db_data.get("products"):
+        prod = _build_products_response(message)
+        if prod:
+            session["chat_current_intent"] = "product"
+            session["chat_pending_action"] = None
+            chat_ctx.set_last_intent("product")
+            return jsonify(prod)
     text = ai_fb.generate_ai_response(message, db_data)
     if not text:
         return None
@@ -158,6 +167,8 @@ def _maybe_reset_product_section_context(message: str) -> None:
     session.pop("last_section", None)
     session.pop("pending_section_choices", None)
     session.pop("pending_product_intent", None)
+    session.pop("remaining_products", None)
+    session.pop("remaining_products_intent", None)
 
 
 def _apply_llm_classification(parsed: dict, original_message: str, branch_list: list):
@@ -202,6 +213,11 @@ def _apply_llm_classification(parsed: dict, original_message: str, branch_list: 
     if ai == "product":
         needle = _build_search_text_from_llm(cleaned, keywords, original_message)
         prod = _build_products_response(needle)
+        if prod:
+            session["chat_current_intent"] = "product"
+            session["chat_pending_action"] = None
+            return jsonify(prod)
+        prod = _build_products_response(original_message)
         if prod:
             session["chat_current_intent"] = "product"
             session["chat_pending_action"] = None
@@ -351,6 +367,10 @@ def _router_pending_and_services(message: str, branch_list: list) -> Optional[An
     pending_prod = _try_pending_product_intent_confirmation(message)
     if pending_prod is not None:
         return pending_prod
+
+    next_rem = _try_next_remaining_product_response(message)
+    if next_rem is not None:
+        return next_rem
 
     detail_r = _try_product_detail_reply(message)
     if detail_r is not None:
@@ -503,11 +523,25 @@ def _router_intent_branch(message: str, branch_list: list) -> Any:
 
     if intent == "unknown":
         session["chat_current_intent"] = "unknown"
+        # DB أولاً: استعلام المنتجات قبل LLM/AI (كلمات مثل تشيرت قد لا تُصنَّف كـ product)
+        prod_db = _build_products_response(message)
+        if prod_db:
+            session["chat_current_intent"] = "product"
+            session["chat_pending_action"] = None
+            chat_ctx.set_last_intent("product")
+            return jsonify(prod_db)
         r = _try_llm_fallback_route(message, branch_list)
         if r is not None:
             return r
         if ai_fb.is_ai_fallback_allowed(message, "unknown"):
             db_data = ai_fb.build_fallback_db_data(cs.get_db(), message)
+            if db_data.get("products"):
+                prod = _build_products_response(message)
+                if prod:
+                    session["chat_current_intent"] = "product"
+                    session["chat_pending_action"] = None
+                    chat_ctx.set_last_intent("product")
+                    return jsonify(prod)
             ai_reply = generate_ai_response(message, db_data)
             if ai_reply:
                 return jsonify(
