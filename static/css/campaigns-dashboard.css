@@ -1,0 +1,399 @@
+/**
+ * لوحة الحملات الإعلانية — طبقة عرض فقط (لا منطق).
+ * خط Cairo يُحمَّل من القالب.
+ */
+
+.mkt-dash {
+  --mkt-bg: #0f172a;
+  --mkt-card: #111827;
+  --mkt-card-deep: #0c1222;
+  --mkt-text: #e5e7eb;
+  --mkt-text-muted: #9ca3af;
+  --mkt-green: #22c55e;
+  --mkt-green-dim: #16a34a;
+  --mkt-border: rgba(148, 163, 184, 0.12);
+  --mkt-radius: 12px;
+  font-family: 'Cairo', sans-serif;
+  background: var(--mkt-bg);
+  color: var(--mkt-text);
+  border-radius: var(--mkt-radius);
+  padding: 2rem 1.75rem 2.25rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45);
+}
+
+.mkt-dash * {
+  font-family: 'Cairo', sans-serif;
+}
+
+.mkt-dash__hero {
+  margin-bottom: 2rem;
+}
+
+.mkt-dash__hero-title {
+  font-size: clamp(1.65rem, 3vw, 2.15rem);
+  font-weight: 800;
+  color: var(--mkt-text);
+  letter-spacing: -0.02em;
+  margin: 0 0 0.5rem;
+  line-height: 1.25;
+}
+
+.mkt-dash__hero-sub {
+  font-size: 1rem;
+  color: var(--mkt-text-muted);
+  margin: 0;
+  max-width: 42rem;
+  line-height: 1.65;
+}
+
+.mkt-dash__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.75rem;
+}
+
+@media (min-width: 1100px) {
+  .mkt-dash__grid {
+    grid-template-columns: 1fr 380px;
+    align-items: start;
+    gap: 2rem;
+  }
+}
+
+/* الكرت الرئيسي (النموذج) */
+.mkt-dash__card-main {
+  background: linear-gradient(165deg, #132337 0%, var(--mkt-card) 48%, var(--mkt-card-deep) 100%);
+  border: 1px solid var(--mkt-border);
+  border-radius: var(--mkt-radius);
+  padding: 1.75rem 1.5rem 2rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.mkt-dash__card-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--mkt-text);
+  margin: 0 0 1.25rem;
+}
+
+.mkt-dash__label {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--mkt-text);
+  margin-bottom: 0.5rem;
+}
+
+.mkt-dash__input {
+  width: 100%;
+  padding: 0.95rem 1.1rem;
+  font-size: 1.02rem;
+  color: var(--mkt-text);
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid var(--mkt-border);
+  border-radius: 10px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.mkt-dash__input::placeholder {
+  color: #64748b;
+}
+
+.mkt-dash__input:hover {
+  border-color: rgba(34, 197, 94, 0.25);
+}
+
+.mkt-dash__input:focus {
+  outline: none;
+  border-color: var(--mkt-green);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.22);
+  background: rgba(15, 23, 42, 0.9);
+}
+
+.mkt-dash__textarea {
+  min-height: 180px;
+  resize: vertical;
+  line-height: 1.75;
+  font-size: 1.05rem;
+}
+
+.mkt-dash__field {
+  margin-bottom: 1.35rem;
+}
+
+.mkt-dash__hint {
+  font-size: 0.85rem;
+  color: var(--mkt-text-muted);
+  margin-top: 0.45rem;
+  line-height: 1.5;
+}
+
+/* رفع ملف */
+.mkt-dash__file-input {
+  position: absolute;
+  width: 0.1px;
+  height: 0.1px;
+  opacity: 0;
+  overflow: hidden;
+  z-index: -1;
+}
+
+.mkt-dash__file-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.35rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--mkt-text);
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px dashed rgba(34, 197, 94, 0.45);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, transform 0.15s;
+}
+
+.mkt-dash__file-btn:hover {
+  background: rgba(34, 197, 94, 0.2);
+  border-color: var(--mkt-green);
+  transform: translateY(-1px);
+}
+
+.mkt-dash__file-name {
+  display: block;
+  margin-top: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--mkt-green);
+  min-height: 1.25rem;
+}
+
+/* وقت الإرسال */
+.mkt-dash__timing {
+  padding: 1rem 1.1rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+  border: 1px solid var(--mkt-border);
+}
+
+.mkt-dash__timing .form-check {
+  margin-bottom: 0.5rem;
+}
+
+.mkt-dash__timing .form-check:last-child {
+  margin-bottom: 0;
+}
+
+.mkt-dash__timing .form-check-input {
+  width: 1.15em;
+  height: 1.15em;
+  margin-top: 0.25em;
+  border-color: #475569;
+  background-color: rgba(15, 23, 42, 0.8);
+}
+
+.mkt-dash__timing .form-check-input:checked {
+  background-color: var(--mkt-green);
+  border-color: var(--mkt-green);
+}
+
+.mkt-dash__timing .form-check-label {
+  color: var(--mkt-text);
+  font-size: 0.95rem;
+}
+
+/* زر الإرسال */
+.mkt-dash__submit {
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 1rem 1.5rem;
+  font-size: 1.08rem;
+  font-weight: 700;
+  font-family: 'Cairo', sans-serif;
+  color: #052e16;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  background: linear-gradient(135deg, #4ade80 0%, var(--mkt-green) 45%, var(--mkt-green-dim) 100%);
+  box-shadow: 0 8px 28px rgba(34, 197, 94, 0.35);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+.mkt-dash__submit:hover {
+  transform: scale(1.02);
+  box-shadow: 0 12px 36px rgba(34, 197, 94, 0.45);
+  filter: brightness(1.05);
+}
+
+.mkt-dash__submit:active {
+  transform: scale(0.99);
+}
+
+/* معاينة */
+.mkt-dash__card-preview {
+  background: var(--mkt-card);
+  border: 1px solid var(--mkt-border);
+  border-radius: var(--mkt-radius);
+  padding: 1.5rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  position: sticky;
+  top: 1rem;
+}
+
+.mkt-dash__preview-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--mkt-green);
+  background: rgba(34, 197, 94, 0.15);
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
+
+.mkt-dash__preview-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--mkt-text-muted);
+  margin: 0 0 1rem;
+}
+
+.mkt-dash__preview-body {
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 10px;
+  padding: 1.25rem;
+  border: 1px solid var(--mkt-border);
+}
+
+.mkt-dash__preview-img-wrap {
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+  background: rgba(0, 0, 0, 0.3);
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mkt-dash__preview-img-wrap:empty {
+  display: none;
+}
+
+.mkt-dash__preview-img {
+  width: 100%;
+  max-height: 200px;
+  object-fit: cover;
+  display: block;
+}
+
+.mkt-dash__preview-img--placeholder {
+  color: var(--mkt-text-muted);
+  font-size: 0.9rem;
+  padding: 2rem 1rem;
+  text-align: center;
+}
+
+.mkt-dash__preview-text {
+  font-size: 1.05rem;
+  line-height: 1.85;
+  color: var(--mkt-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mkt-dash__preview-foot {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  color: var(--mkt-text-muted);
+}
+
+/* جدول الحملات السابقة */
+.mkt-dash__history {
+  background: var(--mkt-card);
+  border: 1px solid var(--mkt-border);
+  border-radius: var(--mkt-radius);
+  padding: 1.5rem;
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.28);
+  margin-top: 0.5rem;
+}
+
+.mkt-dash__history--nested {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 1.25rem 0 0;
+  margin-top: 0;
+}
+
+.mkt-dash__history-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0 0 1.15rem;
+  color: var(--mkt-text);
+}
+
+.mkt-dash__table-wrap {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid var(--mkt-border);
+}
+
+.mkt-dash__table {
+  width: 100%;
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--mkt-text);
+  border-collapse: collapse;
+}
+
+.mkt-dash__table thead th {
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--mkt-text-muted);
+  font-weight: 600;
+  padding: 0.75rem 0.65rem;
+  border-bottom: 1px solid var(--mkt-border);
+  white-space: nowrap;
+}
+
+.mkt-dash__table tbody td {
+  padding: 0.7rem 0.65rem;
+  border-bottom: 1px solid var(--mkt-border);
+  vertical-align: middle;
+}
+
+.mkt-dash__table tbody tr:hover {
+  background: rgba(34, 197, 94, 0.06);
+}
+
+.mkt-dash__table .mkt-dash__btn-send {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: 'Cairo', sans-serif;
+  color: var(--mkt-green);
+  background: transparent;
+  border: 1px solid rgba(34, 197, 94, 0.45);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.mkt-dash__table .mkt-dash__btn-send:hover {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+}
+
+/* كتلة تاريخ الحملات تحت اللوحة الرئيسية */
+.mkt-dash-follow {
+  font-family: 'Cairo', sans-serif;
+  background: #0f172a;
+  color: #e5e7eb;
+  border-radius: 12px;
+  padding: 0 1.75rem 2rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45);
+}

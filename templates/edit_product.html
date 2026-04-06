@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تعديل المنتج</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --bg-light: #fcfaf5;
+            --sidebar-bg: #f5f5dc;
+            --accent-gold: #b8860b;
+            --text-dark: #3d3d3d;
+            --card-white: #ffffff;
+        }
+        body { background-color: var(--bg-light); color: var(--text-dark); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .stat-card { background: var(--card-white); border: 1px solid #eaddca; border-radius: 15px; padding: 25px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
+        .btn-gold { background: var(--accent-gold); color: white; border: none; font-weight: bold; padding: 10px 20px; }
+        .btn-gold:hover { background: #966d09; color: white; }
+        .preview-img { width: 90px; height: 70px; object-fit: cover; border-radius: 10px; border: 1px solid rgba(0,0,0,0.08); background:#fff; }
+        .variants-table input { width: 100%; }
+    </style>
+</head>
+<body>
+<div class="container-fluid p-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="mb-3">
+        {% for category, message in messages %}
+        <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="إغلاق"></button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-3">
+        <h2 class="fw-bold">تعديل المنتج: <span style="color: var(--accent-gold);">{{ product['product_name'] }}</span></h2>
+        <div class="d-flex gap-2">
+            {% if session.get('role') == 'founder' %}
+            <a href="{{ url_for('founder_products') }}" class="btn btn-outline-secondary btn-sm">رجوع للمنتجات</a>
+            {% else %}
+            <a href="/products" class="btn btn-outline-secondary btn-sm">رجوع للمنتجات</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <form action="/edit_product/{{ product['id'] }}" method="POST" enctype="multipart/form-data">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="small fw-bold">اسم المنتج</label>
+                    <input type="text" name="product_name" class="form-control" value="{{ product['product_name'] }}" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="small fw-bold">سعر المنتج الأساسي</label>
+                    <input type="number" step="0.01" name="product_price" class="form-control" value="{{ product['price'] }}" placeholder="مثال: 150">
+                </div>
+                <div class="col-12">
+                    <label class="small fw-bold">وصف المنتج</label>
+                    <input type="text" name="product_description" class="form-control" value="{{ product['description'] or '' }}">
+                </div>
+
+                <div class="col-12">
+                    <hr>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="m-0 fw-bold" style="color: var(--accent-gold);">Variants</h5>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="addVariantBtn">إضافة متغير</button>
+                    </div>
+                    <table class="table variants-table align-middle">
+                        <thead>
+                            <tr>
+                                <th>المقاس</th>
+                                <th>اللون</th>
+                                <th>الكمية</th>
+                                <th style="width:90px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="variantsBody">
+                            {% if product['variants'] and product['variants']|length > 0 %}
+                                {% for v in product['variants'] %}
+                                <tr>
+                                    <td><input type="text" name="variant_size" class="form-control" value="{{ v['size'] }}" placeholder="S / M / L"></td>
+                                    <td><input type="text" name="variant_color" class="form-control" value="{{ v['color'] }}" placeholder="أبيض / أسود"></td>
+                                    <td><input type="number" name="variant_quantity" class="form-control" value="{{ v['quantity'] }}" placeholder="مثال: 10"></td>
+                                    <td><button type="button" class="btn btn-sm btn-outline-danger removeVariantBtn">حذف</button></td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td><input type="text" name="variant_size" class="form-control" placeholder="S / M / L"></td>
+                                    <td><input type="text" name="variant_color" class="form-control" placeholder="أبيض / أسود"></td>
+                                    <td><input type="number" name="variant_quantity" class="form-control" placeholder="مثال: 10"></td>
+                                    <td><button type="button" class="btn btn-sm btn-outline-danger removeVariantBtn">حذف</button></td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="col-12">
+                    <hr>
+                    <h5 class="fw-bold" style="color: var(--accent-gold);">الصور الحالية</h5>
+                    <div class="d-flex gap-2 flex-wrap mb-2">
+                        {% for img in product['images'] %}
+                            <img class="preview-img" src="{{ url_for('static', filename=img) }}" alt="img">
+                        {% endfor %}
+                        {% if not product['images'] or product['images']|length == 0 %}
+                            <div class="text-muted">لا توجد صور.</div>
+                        {% endif %}
+                    </div>
+                    <label class="small fw-bold">رفع صور جديدة (حتى 3) لاستبدال الحالية</label>
+                    <input type="file" id="imagesInput" name="product_images" class="form-control" accept="image/*" multiple>
+                    <div class="mt-2 d-flex gap-2 flex-wrap" id="imagesPreview"></div>
+                </div>
+
+                <div class="col-12 mt-3">
+                    <button type="submit" class="btn btn-gold w-100">حفظ التعديلات</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    const variantsBody = document.getElementById('variantsBody');
+    const addVariantBtn = document.getElementById('addVariantBtn');
+
+    function wireRemoveButtons() {
+        variantsBody.querySelectorAll('.removeVariantBtn').forEach(btn => {
+            btn.onclick = () => {
+                const row = btn.closest('tr');
+                if (row) row.remove();
+            };
+        });
+    }
+    wireRemoveButtons();
+
+    addVariantBtn.addEventListener('click', () => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><input type="text" name="variant_size" class="form-control" placeholder="S / M / L"></td>
+            <td><input type="text" name="variant_color" class="form-control" placeholder="أبيض / أسود"></td>
+            <td><input type="number" name="variant_quantity" class="form-control" placeholder="مثال: 10"></td>
+            <td><button type="button" class="btn btn-sm btn-outline-danger removeVariantBtn">حذف</button></td>
+        `;
+        variantsBody.appendChild(tr);
+        wireRemoveButtons();
+    });
+
+    const imagesInput = document.getElementById('imagesInput');
+    const imagesPreview = document.getElementById('imagesPreview');
+    function renderPreview(files) {
+        imagesPreview.innerHTML = '';
+        Array.from(files || []).slice(0,3).forEach(file => {
+            const img = document.createElement('img');
+            img.className = 'preview-img';
+            img.src = URL.createObjectURL(file);
+            imagesPreview.appendChild(img);
+        });
+    }
+    imagesInput.addEventListener('change', () => {
+        const files = imagesInput.files;
+        if (files && files.length > 3) {
+            alert('مسموح حتى 3 صور فقط');
+            imagesInput.value = '';
+            imagesPreview.innerHTML = '';
+            return;
+        }
+        renderPreview(files);
+    });
+</script>
+</body>
+</html>
+

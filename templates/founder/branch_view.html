@@ -1,0 +1,58 @@
+{% extends "founder/base.html" %}
+{% block title %}معاينة {{ city_name }}{% endblock %}
+{% block content %}
+<div class="fd-page-head">
+    <div>
+        <h1 class="fd-page-title">فرع: {{ city_name }}</h1>
+        <p class="text-muted small mb-0">معاينة الفئات والمنتجات — التعديل الفعلي للأقسام يتم من حساب الفرع.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a class="btn btn-success btn-sm" href="{{ url_for('founder_branch_edit', branch_id=branch_id) }}">تعديل بيانات الفرع</a>
+        <a class="btn btn-outline-secondary btn-sm text-light" href="{{ url_for('founder_branches') }}">رجوع</a>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-md-6">
+        <div class="fd-card">
+            <h2 class="h5 fw-bold mb-3">📂 الفئات الرئيسية</h2>
+            {% if main_categories and main_categories|length > 0 %}
+            <ul class="list-unstyled mb-0">
+                {% for cat in main_categories %}
+                <li class="py-2 border-bottom">
+                    <span class="fw-bold">{{ cat['name'] }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="text-muted mb-0">لا توجد فئات بعد لهذا الفرع.</p>
+            {% endif %}
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="fd-card">
+            <h2 class="h5 fw-bold mb-3">📦 المنتجات ({{ products|length if products else 0 }})</h2>
+            {% if products and products|length > 0 %}
+            <div class="table-responsive fd-scroll-table">
+                <table class="table fd-table table-sm mb-0">
+                    <thead><tr><th>الاسم</th><th>السعر</th></tr></thead>
+                    <tbody>
+                        {% for p in products[:50] %}
+                        <tr>
+                            <td>{{ p.get('product_name', '-') }}</td>
+                            <td>{{ p.get('price', '-') }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if products|length > 50 %}
+            <p class="small text-muted mt-2 mb-0">عرض أول 50 منتجاً — القائمة الكاملة من «جميع المنتجات».</p>
+            {% endif %}
+            {% else %}
+            <p class="text-muted mb-0">لا توجد منتجات.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

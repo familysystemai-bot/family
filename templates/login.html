@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>تسجيل دخول | لوحة التحكم</title>
+    <link href="{{ url_for('static', filename='css/site-brand.css') }}" rel="stylesheet">
+    {% from "macros/site_logo.html" import site_logo_pair %}
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+        html { -webkit-text-size-adjust: 100%; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            min-height: 100dvh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+            font-family: 'Segoe UI', system-ui, -apple-system, Tahoma, sans-serif;
+            color: #e2e8f0;
+            background: linear-gradient(135deg, #0f172a, #020617);
+            position: relative;
+            overflow-x: hidden;
+        }
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(34, 197, 94, 0.06) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(34, 197, 94, 0.06) 1px, transparent 1px);
+            background-size: 48px 48px;
+            mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, black 20%, transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        body::after {
+            content: "";
+            position: fixed;
+            width: min(90vw, 520px);
+            height: min(90vw, 520px);
+            left: 50%;
+            top: 35%;
+            transform: translate(-50%, -50%);
+            background: radial-gradient(circle, rgba(34, 197, 94, 0.12) 0%, transparent 65%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        .login-wrap {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 420px;
+        }
+        .login-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            box-shadow: 0 0 40px rgba(0, 255, 150, 0.1);
+            padding: clamp(20px, 5vw, 32px);
+            text-align: center;
+        }
+        .login-brand-logo {
+            width: 80px;
+            height: auto;
+            max-width: 80px;
+            margin-bottom: 15px;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+            object-fit: contain;
+        }
+        .login-card h1 {
+            margin: 0 0 8px;
+            font-size: clamp(1.25rem, 4.5vw, 1.5rem);
+            font-weight: 700;
+            color: #f8fafc;
+            letter-spacing: -0.02em;
+        }
+        .login-card .sub {
+            margin: 0 0 20px;
+            font-size: 0.875rem;
+            color: rgba(226, 232, 240, 0.65);
+            line-height: 1.5;
+        }
+        .flash-stack {
+            margin-bottom: 16px;
+            text-align: right;
+        }
+        .flash-msg {
+            font-size: 0.875rem;
+            line-height: 1.45;
+            padding: 10px 12px;
+            border-radius: 10px;
+            margin-bottom: 8px;
+            animation: fadeIn 0.45s ease-out both;
+            border: 1px solid transparent;
+        }
+        .flash-msg.danger {
+            color: #fecaca;
+            background: rgba(239, 68, 68, 0.12);
+            border-color: rgba(239, 68, 68, 0.25);
+        }
+        .flash-msg.success {
+            color: #bbf7d0;
+            background: rgba(34, 197, 94, 0.12);
+            border-color: rgba(34, 197, 94, 0.25);
+        }
+        .flash-msg.warning {
+            color: #fde68a;
+            background: rgba(245, 158, 11, 0.12);
+            border-color: rgba(245, 158, 11, 0.25);
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .field {
+            margin-bottom: 14px;
+            text-align: right;
+        }
+        .field-label {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: rgba(248, 250, 252, 0.75);
+            margin-bottom: 6px;
+        }
+        .input-wrap {
+            position: relative;
+            display: flex;
+            align-items: stretch;
+        }
+        .input-wrap input {
+            width: 100%;
+            flex: 1;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid   rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: #fff;
+            padding: 14px 16px;
+            padding-inline-end: 48px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .input-wrap input::placeholder {
+            color: rgba(248, 250, 252, 0.35);
+        }
+        .input-wrap input:focus {
+            border-color: #22c55e;
+            box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
+        }
+        .toggle-pw {
+            position: absolute;
+            left: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 40px;
+            height: 40px;
+            border: none;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.06);
+            color: rgba(248, 250, 252, 0.85);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            line-height: 1;
+            transition: background 0.2s, color 0.2s;
+        }
+        .toggle-pw:hover {
+            background: rgba(255, 255, 255, 0.12);
+            color: #fff;
+        }
+        .toggle-pw:focus-visible {
+            outline: 2px solid #22c55e;
+            outline-offset: 2px;
+        }
+        .btn-login {
+            width: 100%;
+            margin-top: 8px;
+            padding: 14px 20px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 700;
+            color: #042f15;
+            cursor: pointer;
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            box-shadow: 0 8px 24px rgba(34, 197, 94, 0.25), 0 2px 8px rgba(0, 0, 0, 0.2);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .btn-login:hover {
+            transform: scale(1.02);
+            box-shadow: 0 12px 28px rgba(34, 197, 94, 0.32), 0 4px 12px rgba(0, 0, 0, 0.25);
+        }
+        .btn-login:active {
+            transform: scale(0.99);
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .btn-login, .flash-msg, .input-wrap input { transition: none; animation: none; }
+            .btn-login:hover { transform: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-wrap">
+        <div class="login-card" role="main">
+            {{ site_logo_pair('login-brand-logo', 'site-logo-k--login') }}
+            <h1>لوحة التحكم</h1>
+            <p class="sub">تسجيل الدخول لإدارة المجمع والفروع</p>
+
+            <div class="flash-stack">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                {% for category, message in messages %}
+                <div class="flash-msg {{ category }}">{{ message }}</div>
+                {% endfor %}
+                {% endif %}
+                {% endwith %}
+                {% if error %}
+                <div class="flash-msg danger">{{ error }}</div>
+                {% endif %}
+            </div>
+
+            <form method="POST" action="{{ url_for('login') }}" novalidate>
+                <div class="field">
+                    <label class="field-label" for="username">اسم المستخدم</label>
+                    <div class="input-wrap">
+                        <input type="text" id="username" name="username" placeholder="اسم المستخدم" required autocomplete="username" enterkeyhint="next">
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="field-label" for="password">كلمة المرور</label>
+                    <div class="input-wrap">
+                        <input type="password" id="password" name="password" placeholder="كلمة المرور" required autocomplete="current-password" enterkeyhint="go">
+                        <button type="button" class="toggle-pw" id="togglePw" aria-label="إظهار كلمة المرور" title="إظهار كلمة المرور">👁</button>
+                    </div>
+                </div>
+                <button type="submit" class="btn-login">دخول إلى لوحة التحكم</button>
+            </form>
+        </div>
+    </div>
+    <script>
+        function togglePassword() {
+            var input = document.getElementById('password');
+            var btn = document.getElementById('togglePw');
+            if (!input || !btn) return;
+            var show = input.type === 'password';
+            input.type = show ? 'text' : 'password';
+            btn.setAttribute('aria-label', show ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور');
+            btn.setAttribute('title', show ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور');
+        }
+        document.getElementById('togglePw').addEventListener('click', togglePassword);
+    </script>
+</body>
+</html>

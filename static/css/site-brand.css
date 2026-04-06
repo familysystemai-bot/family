@@ -1,0 +1,71 @@
+/**
+ * شعار الموقع المركزي (صورة فقط — بدون حرف K كبديل)
+ * يُستورد من dashboard-layout.css؛ ويُحمّل مباشرة في login و index.
+ */
+
+.site-logo-hidden {
+  display: none !important;
+}
+
+.site-logo-img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+/* لا عرض لحرف K أو أي avatar نصي — احتياطي لأي DOM قديم */
+.site-logo-k,
+.avatar,
+.user-avatar,
+.profile-circle,
+.fd-identity-preview__k,
+.chat-body-brand-k,
+.fd-founder-avatar {
+  display: none !important;
+}
+
+.logo-box .site-logo-img.logo-img {
+  width: 50px !important;
+  max-width: 50px !important;
+  max-height: 50px !important;
+  height: auto !important;
+  margin-left: auto;
+  margin-right: auto;
+  display: block;
+}
+
+.site-logo-img.header-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 3px;
+  object-fit: contain;
+  box-sizing: border-box;
+}
+
+.site-logo-img.login-logo {
+  width: 80px;
+  margin: 0 auto 15px;
+  background: #fff;
+  border-radius: 14px;
+  padding: 5px;
+  object-fit: contain;
+  display: block;
+}
+
+.site-logo-img.login-brand-logo {
+  width: 80px;
+  max-width: 80px;
+  margin: 0 auto 15px;
+}
+
+.site-logo-img.login-logo--sm {
+  width: 65px;
+  height: 65px;
+}
+
+.logo-img.site-logo-img {
+  object-fit: contain;
+}

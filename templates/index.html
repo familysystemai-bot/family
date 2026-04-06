@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+{% from "macros/site_logo.html" import site_logo_pair %}
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مجمع العائلة | خدمة العملاء الذكية</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/site-brand.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/chat-ai-shell.css') }}" rel="stylesheet">
+    <style>
+        .modal.fade .modal-dialog { transition: transform 0.3s ease-out, opacity 0.3s ease-out; }
+    </style>
+</head>
+<body class="ai-chat-shell">
+
+    <div class="ai-chat-glass-frame">
+    <header class="chat-header">
+        <div class="chat-header-brand">
+            {{ site_logo_pair('header-logo', 'site-logo-k--chat-header') }}
+            <div class="header-info">
+                <h5>العائلة FAMILY</h5>
+                <small class="subtitle"><span class="online-dot">متصل الآن</span></small>
+            </div>
+        </div>
+        <button class="header-login-btn" id="headerLoginBtn" onclick="openSmartLogin()">
+            <i class="fa-solid fa-right-to-bracket"></i>
+            <span class="login-text">دخول</span>
+        </button>
+        <div id="userBadge" class="chat-user-badge" style="display:none;">
+            <i class="fa-solid fa-user-check"></i> <span id="displayUserName"></span>
+        </div>
+    </header>
+
+    <main class="chat-body" id="chatBox">
+        <div class="chat-body-brand-mark" aria-hidden="true">
+            {% if logo_url %}
+            <img src="{{ logo_url }}?v={{ site_logo_cache_bust }}" alt="" decoding="async" class="chat-body-brand-mark__img" onerror="this.classList.add('site-logo-hidden');">
+            {% endif %}
+        </div>
+    </main>
+
+    <footer class="chat-footer">
+        <div class="input-row">
+            <button class="action-btn" onclick="document.getElementById('fileInput').click()" title="إرفاق صورة أو فيديو">
+                <i class="fa-solid fa-camera"></i>
+            </button>
+            <input type="file" id="fileInput" accept="image/*,video/*" style="display:none" onchange="handleFileSelect(event)">
+            <input type="text" id="userInput" placeholder="اكتب رسالتك..." onkeypress="if(event.key==='Enter') sendMessage()">
+            <button class="action-btn voice-btn" id="voiceBtn" onclick="toggleVoiceRecording()" title="تسجيل صوتي">
+                <i class="fa-solid fa-microphone"></i>
+            </button>
+            <button class="send-btn" onclick="sendMessage()"><i class="fa-solid fa-paper-plane"></i></button>
+        </div>
+    </footer>
+    </div>
+
+    <button class="complaint-btn-float" onclick="handleComplaintClick()">
+        <span class="complaint-label">تقديم شكوى</span>
+        <i class="fa-solid fa-circle-exclamation fa-2xl"></i>
+    </button>
+
+    <div class="ai-chat-float-orb" aria-hidden="true">
+        <span class="ai-chat-float-orb-inner">
+            <i class="fa-solid fa-comments"></i>
+        </span>
+    </div>
+
+    <!-- Modal Login -->
+    <div class="modal fade" id="loginModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content p-4">
+                <button class="modal-close-x" data-bs-dismiss="modal" aria-label="إغلاق"><i class="fa-solid fa-xmark"></i></button>
+                {{ site_logo_pair('login-logo', 'site-logo-k--index-modal') }}
+                <h5 class="text-center mb-3" style="font-weight:900;">تسجيل دخول سريع للشكاوى</h5>
+                <div id="step1">
+                    <div class="form-field">
+                        <input type="text" id="fullName" placeholder="الاسم الكامل">
+                    </div>
+                    <div class="form-field">
+                        <input type="text" id="contactInfo" placeholder="رقم الجوال أو البريد">
+                    </div>
+                    <button class="btn-verify" onclick="showStep2()">إرسال رمز التحقق</button>
+                    <button class="btn-cancel" data-bs-dismiss="modal">إلغاء</button>
+                </div>
+                <div id="step2" style="display:none;">
+                    <p class="text-center small" style="color:#999;">أدخل الرمز (1234) للتأكيد</p>
+                    <div class="form-field">
+                        <input type="text" id="otpCode" placeholder="- - - -" style="text-align:center; letter-spacing:10px; font-size:1.3rem;">
+                    </div>
+                    <button class="btn-verify" onclick="finishLogin()">تأكيد الدخول</button>
+                    <button class="btn-cancel" data-bs-dismiss="modal">إلغاء</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Smart Login Modal: بريد + رمز OTP (الجوال لاحقاً عند الحاجة) -->
+    <div class="modal fade" id="smartLoginModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered" style="max-width:380px;">
+            <div class="modal-content p-4">
+                <button class="modal-close-x" data-bs-dismiss="modal" aria-label="إغلاق"><i class="fa-solid fa-xmark"></i></button>
+                {{ site_logo_pair('login-logo login-logo--sm', 'site-logo-k--index-modal-sm') }}
+                <p class="text-center mb-3" style="font-size:0.9rem; color:#bbb; line-height:1.9;">
+                    للشكاوى وتتبع الطلب: أدخل اسمك والبريد، ثم رمز التحقق المرسل لبريدك
+                </p>
+                <div id="smartStep1">
+                    <div class="form-field">
+                        <input type="text" id="smartName" placeholder="الاسم الكامل" autocomplete="name">
+                    </div>
+                    <div class="form-field">
+                        <input type="email" id="smartEmail" placeholder="البريد الإلكتروني" autocomplete="email">
+                    </div>
+                    <button type="button" class="btn-verify" id="smartSendOtpBtn" onclick="smartLoginSendOtp()">إرسال رمز التحقق</button>
+                    <button class="btn-cancel" data-bs-dismiss="modal">إلغاء</button>
+                </div>
+                <div id="smartStep2" style="display:none;">
+                    <p class="text-center small" style="color:#9ca3af;" id="smartOtpHint">أدخل الرمز المكوّن من 4 أرقام</p>
+                    <div class="form-field">
+                        <input type="text" id="smartOtpCode" inputmode="numeric" maxlength="6" placeholder="— — — —" style="text-align:center; letter-spacing:8px; font-size:1.25rem;" autocomplete="one-time-code">
+                    </div>
+                    <button type="button" class="btn-verify" onclick="smartLoginVerifyOtp()">تأكيد الدخول</button>
+                    <button type="button" class="btn-cancel" onclick="smartLoginBackToStep1()">رجوع</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let isLoggedIn = false;
+        let userName = "";
+        let selectedFile = null;
+        
+        const loginModalElement = document.getElementById('loginModal');
+        const smartLoginModalElement = document.getElementById('smartLoginModal');
+        
+        let loginModal = loginModalElement ? new bootstrap.Modal(loginModalElement) : null;
+        let smartLoginModal = smartLoginModalElement ? new bootstrap.Modal(smartLoginModalElement) : null;
+        if (smartLoginModalElement) {
+            smartLoginModalElement.addEventListener('hidden.bs.modal', function () {
+                smartLoginBackToStep1();
+                var sn = document.getElementById('smartName');
+                var se = document.getElementById('smartEmail');
+                var so = document.getElementById('smartOtpCode');
+                if (sn) sn.value = '';
+                if (se) se.value = '';
+                if (so) so.value = '';
+                pendingOtpEmail = '';
+            });
+        }
+
+        function scrollChat() {
+            const box = document.getElementById('chatBox');
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function appendMessage(text, type) {
+            if (type !== 'user') {
+                appendBotMessageText(text);
+                return;
+            }
+            const div = document.createElement('div');
+            div.className = 'message msg-user';
+            div.textContent = text;
+            document.getElementById('chatBox').appendChild(div);
+            scrollChat();
+        }
+
+        /** بعد انتهاء الكتابة: روابط http(s) قابلة للنقر */
+        function applyBotMessageLinks(div, s) {
+            const str = String(s || '');
+            div.textContent = '';
+            const urlRe = /(https?:\/\/[^\s<]+[^\s<.,;:!?)\]}»])/gi;
+            let last = 0;
+            let m;
+            let found = false;
+            while ((m = urlRe.exec(str)) !== null) {
+                found = true;
+                if (m.index > last) {
+                    div.appendChild(document.createTextNode(str.slice(last, m.index)));
+                }
+                const a = document.createElement('a');
+                a.href = m[1];
+                a.target = '_blank';
+                a.rel = 'noopener noreferrer';
+                a.textContent = m[1];
+                div.appendChild(a);
+                last = m.index + m[1].length;
+            }
+            if (found && last < str.length) {
+                div.appendChild(document.createTextNode(str.slice(last)));
+            }
+            if (!found) {
+                div.textContent = str;
+            }
+        }
+
+        var _botTextQueue = [];
+        var _botTextBusy = false;
+        var _botIdleCallbacks = [];
+
+        function runWhenBotTextIdle(fn) {
+            if (typeof fn !== 'function') return;
+            if (!_botTextBusy && _botTextQueue.length === 0) {
+                fn();
+            } else {
+                _botIdleCallbacks.push(fn);
+            }
+        }
+
+        function flushBotIdleCallbacks() {
+            if (_botTextBusy || _botTextQueue.length > 0) return;
+            var cbs = _botIdleCallbacks.slice();
+            _botIdleCallbacks.length = 0;
+            for (var j = 0; j < cbs.length; j++) {
+                try { cbs[j](); } catch (e) {}
+            }
+        }
+
+        function drainBotTextQueue() {
+            if (_botTextBusy) return;
+            if (_botTextQueue.length === 0) {
+                flushBotIdleCallbacks();
+                return;
+            }
+            var s = _botTextQueue.shift();
+            if (!s || !String(s).trim()) {
+                drainBotTextQueue();
+                return;
+            }
+            s = String(s);
+            _botTextBusy = true;
+
+            var box = document.getElementById('chatBox');
+            box.querySelectorAll('.typing-indicator').forEach(function (el) { el.remove(); });
+
+            var indicator = document.createElement('div');
+            indicator.className = 'typing-indicator';
+            indicator.id = 'typingIndicator';
+            indicator.innerHTML = '<span></span><span></span><span></span>';
+            box.appendChild(indicator);
+            scrollChat();
+
+            var delayMs = 520;
+            var msPerChar = Math.max(4, Math.min(14, Math.floor(4800 / Math.max(s.length, 40))));
+
+            setTimeout(function () {
+                var el = document.getElementById('typingIndicator');
+                if (el) el.remove();
+
+                var div = document.createElement('div');
+                div.className = 'message msg-bot';
+                box.appendChild(div);
+                var i = 0;
+                function typeChunk() {
+                    if (i < s.length) {
+                        div.textContent = s.slice(0, i + 1);
+                        i++;
+                        scrollChat();
+                        setTimeout(typeChunk, msPerChar);
+                    } else {
+                        applyBotMessageLinks(div, s);
+                        scrollChat();
+                        _botTextBusy = false;
+                        drainBotTextQueue();
+                    }
+                }
+                typeChunk();
+            }, delayMs);
+        }
+
+        /** رسالة بوت: مؤشر كتابة ثم ظهور تدريجي مثل ChatGPT (متسلسل عند عدة أجزاء) */
+        function appendBotMessageText(text) {
+            var s = String(text || '');
+            if (!s.trim()) return;
+            _botTextQueue.push(s);
+            drainBotTextQueue();
+        }
+
+        function appendBotChatPayload(data) {
+            const msgs = data && Array.isArray(data.messages) ? data.messages : [];
+            if (msgs.length > 0) {
+                msgs.forEach(function (part) {
+                    const t = String(part || '').trim();
+                    if (t) appendBotMessageText(t);
+                });
+                return;
+            }
+            let m = data && data.message ? String(data.message).trim() : '';
+            const isEmptyProduct =
+                data &&
+                data.intent === 'product' &&
+                (!data.products || data.products.length === 0);
+            if (!m && isEmptyProduct) {
+                m = 'لا يوجد منتجات حالياً';
+            }
+            if (m) appendBotMessageText(m);
+            const fol = data && data.followup_message ? String(data.followup_message).trim() : '';
+            if (fol) appendBotMessageText(fol);
+        }
+
+        function appendBotTyping(text) {
+            const s = String(text || '');
+            appendBotMessageText(s);
+        }
+
+        function appendBotHTML(html) {
+            const div = document.createElement('div');
+            div.className = 'message msg-bot';
+            div.innerHTML = html;
+            function attach() {
+                document.getElementById('chatBox').appendChild(div);
+                scrollChat();
+            }
+            runWhenBotTextIdle(attach);
+        }
+
+        function escHtml(s) {
+            if (s === null || s === undefined) return '';
+            return String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function renderProducts(products) {
+            if (!products || products.length === 0) return '';
+            const cards = products.map(p => {
+                const rawPath = (p.images && p.images.length) ? p.images[0] : '';
+                const img = rawPath
+                    ? (String(rawPath).startsWith('/static/') ? rawPath : ('/static/' + String(rawPath).replace(/^\/+/, '')))
+                    : '';
+                const imgHref = (p.primary_image_href && String(p.primary_image_href).trim())
+                    ? String(p.primary_image_href).trim()
+                    : img;
+                const bodySrc = (p.chat_text && String(p.chat_text).trim())
+                    ? p.chat_text
+                    : (p.detail_text ? p.detail_text : [
+                        p.name || 'المنتج',
+                        'السعر: ' + (p.price != null ? p.price : '—') + ' ريال',
+                        'المقاسات: ' + ((p.sizes && p.sizes.length) ? p.sizes.join('، ') : '—'),
+                        'الألوان: ' + ((p.colors && p.colors.length) ? p.colors.join('، ') : '—'),
+                        'المتوفر: ' + (p.quantity != null ? p.quantity : '0') + ' قطع',
+                    ].join('\n'));
+                const body = escHtml(bodySrc).replace(/\n/g, '<br>');
+                const imgBlock = img
+                    ? (imgHref
+                        ? `<a href="${escHtml(imgHref)}" target="_blank" rel="noopener noreferrer" style="display:block;line-height:0;">
+                            <img src="${escHtml(img)}" alt="" class="chat-product-hero" style="width:100%;height:auto;max-height:min(360px, 52vh);object-fit:cover;display:block;">
+                           </a>`
+                        : `<img src="${escHtml(img)}" alt="" class="chat-product-hero" style="width:100%;height:auto;max-height:min(360px, 52vh);object-fit:cover;display:block;">`)
+                    : `<div style="min-height:140px;display:flex;align-items:center;justify-content:center;color:#666;font-size:0.9rem;padding:16px;">بدون صورة</div>`;
+                return `
+                    <div class="chat-product-card" style="border:1px solid var(--border); border-radius:18px; padding:0; background:rgba(255,255,255,0.04); margin-top:14px; overflow:hidden; max-width:100%;">
+                        <div style="width:100%; max-height:min(360px, 52vh); background:#0a0a0a; border-bottom:1px solid rgba(255,255,255,0.07);">
+                            ${imgBlock}
+                        </div>
+                        <div style="padding:14px 16px 16px; font-size:0.92rem; line-height:1.75; color:#e8e8e8;">
+                            ${body}
+                        </div>
+                    </div>`;
+            }).join('');
+            return `<div class="chat-products-wrap">${cards}</div>`;
+        }
+
+        function openSmartLogin() {
+            if (isLoggedIn) return;
+            if(smartLoginModal) smartLoginModal.show();
+        }
+
+        let userContact = '';
+        let pendingOtpEmail = '';
+
+        function syncAccountSession() {
+            if (!isLoggedIn || !userName) return;
+            fetch('/chat_query', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    account_session_sync: true,
+                    user_name: userName,
+                    user_contact: userContact || ''
+                })
+            }).catch(function() {});
+        }
+
+        function smartLoginBackToStep1() {
+            document.getElementById('smartStep2').style.display = 'none';
+            document.getElementById('smartStep1').style.display = 'block';
+            document.getElementById('smartOtpCode').value = '';
+            pendingOtpEmail = '';
+        }
+
+        async function smartLoginSendOtp() {
+            const name = document.getElementById('smartName').value.trim();
+            const email = document.getElementById('smartEmail').value.trim();
+            if (name.length < 2) { alert('فضلاً اكتب اسمك'); return; }
+            if (!email.includes('@') || !email.includes('.')) {
+                alert('فضلاً أدخل بريداً إلكترونياً صالحاً للتحقق');
+                return;
+            }
+            const btn = document.getElementById('smartSendOtpBtn');
+            if (btn) { btn.disabled = true; }
+            try {
+                const r = await fetch('/api/email-otp/request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ name: name, email: email }),
+                });
+                const j = await r.json().catch(function () { return {}; });
+                if (!r.ok || !j.ok) {
+                    alert(j.error || 'تعذر إرسال الرمز. حاول لاحقاً.');
+                    return;
+                }
+                pendingOtpEmail = email;
+                document.getElementById('smartStep1').style.display = 'none';
+                document.getElementById('smartStep2').style.display = 'block';
+                document.getElementById('smartOtpHint').textContent =
+                    'أرسلنا رمزاً إلى ' + email + ' — أدخل الأرقام الأربعة';
+                document.getElementById('smartOtpCode').focus();
+            } catch (e) {
+                alert('خطأ في الاتصال');
+            } finally {
+                if (btn) { btn.disabled = false; }
+            }
+        }
+
+        async function smartLoginVerifyOtp() {
+            const code = document.getElementById('smartOtpCode').value.trim().replace(/\s+/g, '');
+            const email = pendingOtpEmail || document.getElementById('smartEmail').value.trim();
+            if (code.length !== 4 || !/^\d{4}$/.test(code)) {
+                alert('أدخل الرمز المكوّن من 4 أرقام');
+                return;
+            }
+            try {
+                const r = await fetch('/api/email-otp/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ email: email, code: code }),
+                });
+                const j = await r.json().catch(function () { return {}; });
+                if (!r.ok || !j.ok) {
+                    alert(j.error || 'الكود غير صحيح');
+                    return;
+                }
+                userName = j.name || '';
+                userContact = j.email || email;
+                isLoggedIn = true;
+                if (smartLoginModal) smartLoginModal.hide();
+                document.getElementById('headerLoginBtn').style.display = 'none';
+                document.getElementById('userBadge').style.display = 'block';
+                document.getElementById('displayUserName').textContent = userName;
+                document.getElementById('smartName').value = '';
+                document.getElementById('smartEmail').value = '';
+                document.getElementById('smartOtpCode').value = '';
+                smartLoginBackToStep1();
+                syncAccountSession();
+            } catch (e) {
+                alert('خطأ في الاتصال');
+            }
+        }
+
+        function detectLoginIntent(msg) {
+            const words = ['شكوى', 'أشتكي', 'شكاوى', 'مشكلة في', 'تتبع', 'أين طلبي', 'متى يوصل', 'حالة الطلب', 'شحنتي', 'طلبي', 'شحن', 'استلام'];
+            return words.some(w => msg.includes(w));
+        }
+
+        function handleComplaintClick() {
+            if (!isLoggedIn) {
+                if(smartLoginModal) smartLoginModal.show();
+            } else {
+                // لا نرسل رد ثابت — المستخدم يكتب الشكوى وسيتم التعامل معها عبر /chat_query
+            }
+        }
+
+        function showStep2() {
+            userName = document.getElementById('fullName').value;
+            if (userName.length < 3) return alert("فضلاً اكتب اسمك الكامل");
+            document.getElementById('step1').style.display = 'none';
+            document.getElementById('step2').style.display = 'block';
+        }
+
+        function finishLogin() {
+            const otp = document.getElementById('otpCode').value;
+            if (otp === "1234") {
+                isLoggedIn = true;
+                if(loginModal) loginModal.hide();
+                document.getElementById('headerLoginBtn').style.display = 'none';
+                document.getElementById('userBadge').style.display = 'block';
+                document.getElementById('displayUserName').textContent = userName;
+                document.getElementById('step1').style.display = 'block';
+                document.getElementById('step2').style.display = 'none';
+                document.getElementById('otpCode').value = '';
+                syncAccountSession();
+            } else {
+                alert("رمز التحقق خطأ");
+            }
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const div = document.createElement('div');
+            div.className = 'message msg-user';
+            const isImage = file.type.startsWith('image');
+            let iconClass = isImage ? 'fa-image' : 'fa-video';
+            let label = isImage ? 'صورة' : 'فيديو';
+            let previewHTML = '';
+            if (isImage) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = div.querySelector('.attached-image-preview');
+                    if (img) img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+                previewHTML = '<img class="attached-image-preview" src="" alt="صورة مرفقة">';
+            }
+            div.innerHTML = '<div>تم إرفاق ' + label + '</div>' + previewHTML + '<div class="msg-attachment"><i class="fa-solid ' + iconClass + '"></i><span>' + file.name + '</span></div>';
+            document.getElementById('chatBox').appendChild(div);
+            scrollChat();
+            
+            // رفع الملف مباشرة للسيرفر (إضافة بسيطة لتسهيل المعالجة)
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('message', '');
+            if(isLoggedIn) {
+                formData.append('user_name', userName);
+                formData.append('account_logged_in', '1');
+            }
+            
+            fetch('/chat_query', {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin',
+            }).then(response => response.json())
+              .then(data => appendBotTyping((data && (data.message || data.reply)) || ''))
+              .catch(error => console.error("Error uploading file: ", error));
+
+            event.target.value = '';
+        }
+
+        let mediaRecorder = null;
+        let isRecording = false;
+        let audioChunks = [];
+        let recordingTimer = null;
+        let recordingSeconds = 0;
+
+        async function toggleVoiceRecording() {
+            const btn = document.getElementById('voiceBtn');
+            if (!isRecording) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    audioChunks = [];
+                    recordingSeconds = 0;
+                    mediaRecorder.ondataavailable = function(e) { audioChunks.push(e.data); };
+                    mediaRecorder.onstop = function() {
+                        stream.getTracks().forEach(function(t) { t.stop(); });
+                        clearInterval(recordingTimer);
+                        const duration = formatTime(recordingSeconds);
+                        const div = document.createElement('div');
+                        div.className = 'message msg-user';
+                        div.innerHTML = '<div>رسالة صوتية</div><div class="msg-attachment" style="flex-direction:row-reverse;"><i class="fa-solid fa-microphone"></i><span><i class="fa-solid fa-play" style="margin-left:6px;font-size:0.75rem;"></i> ' + duration + '</span></div>';
+                        document.getElementById('chatBox').appendChild(div);
+                        scrollChat();
+                        
+                        // إرسال الصوت للسيرفر
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        const formData = new FormData();
+                        formData.append('file', audioBlob, 'voice_message.webm');
+                        formData.append('message', '');
+                        if(isLoggedIn) {
+                            formData.append('user_name', userName);
+                            formData.append('account_logged_in', '1');
+                        }
+                        
+                        fetch('/chat_query', { method: 'POST', body: formData, credentials: 'same-origin' })
+                            .then(response => response.json())
+                            .then(data => appendBotTyping((data && (data.message || data.reply)) || ''));
+                    };
+                    mediaRecorder.start();
+                    isRecording = true;
+                    btn.classList.add('recording');
+                    btn.innerHTML = '<i class="fa-solid fa-stop"></i>';
+                    recordingTimer = setInterval(function() { recordingSeconds++; }, 1000);
+                } catch (e) {
+                    alert("لا يمكن الوصول إلى الميكروفون");
+                }
+            } else {
+                if (mediaRecorder && mediaRecorder.state !== 'inactive') { mediaRecorder.stop(); }
+                isRecording = false;
+                btn.classList.remove('recording');
+                btn.innerHTML = '<i class="fa-solid fa-microphone"></i>';
+            }
+        }
+
+        function formatTime(sec) {
+            const m = Math.floor(sec / 60).toString().padStart(2, '0');
+            const s = (sec % 60).toString().padStart(2, '0');
+            return m + ':' + s;
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('userInput');
+            const msg = input.value.trim();
+            if (!msg) return;
+
+            // إذا كتب شكوى وهو مو مسجل دخول
+            if (!isLoggedIn && detectLoginIntent(msg)) {
+                if(smartLoginModal) smartLoginModal.show();
+                return;
+            }
+
+            appendMessage(msg, 'user');
+            input.value = '';
+
+            try {
+                const payload = { message: msg };
+                if (isLoggedIn && userName) {
+                    payload.user_name = userName;
+                    payload.account_logged_in = true;
+                }
+                if (isLoggedIn && userContact) {
+                    payload.user_contact = userContact;
+                }
+                const response = await fetch('/chat_query', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    credentials: 'same-origin',
+                    body: JSON.stringify(payload),
+                });
+                const data = await response.json();
+                const hasProducts = data && Array.isArray(data.products) && data.products.length > 0;
+                if (hasProducts) {
+                    const intro = data.message ? String(data.message).trim() : '';
+                    if (intro) appendBotMessageText(intro);
+                    const fol = data && data.followup_message ? String(data.followup_message).trim() : '';
+                    if (fol) appendBotMessageText(fol);
+                    appendBotHTML(renderProducts(data.products));
+                } else {
+                    appendBotChatPayload(data);
+                }
+            } catch (error) {
+                appendMessage("عذراً، حدث خطأ في الاتصال بالسيرفر.", 'bot');
+            }
+        }
+    </script>
+</body>
+</html>

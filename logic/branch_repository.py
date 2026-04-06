@@ -1,0 +1,614 @@
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+
+import sqlite3
+from typing import Any, Dict, List, Optional, Tuple
+
+from logic.branch_helpers import (
+    _branch_dedupe_key,
+    _canonical_branch_city_from_input,
+    _normalize_branch_city_label,
+)
+
+
+class BranchRepositoryMixin:
+    """Mixin: يُدمج في DatabaseManager — يستخدم self._get_connection() فقط."""
+    def get_branch_info(self, branch_id: int) -> Optional[Dict[str, Any]]:
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute("SELECT id, city_name FROM branches WHERE id = ?", (branch_id,))
+            b = cursor.fetchone()
+            if not b:
+                return None
+            branch = dict(b)
+            loc = self.get_branch_location(branch_id)
+            if loc:
+                branch.update(
+                    {
+                        "address": loc.get("address"),
+                        "google_maps_url": loc.get("google_maps_url"),
+                        "gps_lat": loc.get("gps_lat"),
+                        "gps_lng": loc.get("gps_lng"),
+                    }
+                )
+            return branch
+        finally:
+            conn.close()
+
+    def check_branch_login(self, username, password):
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute(
+                "SELECT id, city_name FROM branches WHERE username = ? AND password = ?",
+                (username, password),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def get_all_branches(self):
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute("SELECT * FROM branches ORDER BY id")
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def list_branches_complaint_emails(self) -> List[Dict[str, Any]]:
+        """للتشخيص: city_name + complaint_email لكل فرع."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute(
+                "SELECT city_name, complaint_email FROM branches ORDER BY id"
+            )
+            out: List[Dict[str, Any]] = []
+            for row in cursor.fetchall():
+                r = dict(row)
+                em = (r.get("complaint_email") or "").strip()
+                out.append(
+                    {
+                        "branch": r.get("city_name") or "",
+                        "email": em if em else None,
+                    }
+                )
+            return out
+        finally:
+            conn.close()
+
+    def get_branch_by_id(self, b_id):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, city_name, username FROM branches WHERE id = ?", (b_id,))
+        row = cursor.fetchone()
+        conn.close()
+        # تحويل لقاموس عشان يشتغل مع app.py
+        if row:
+            return dict(row)
+        return None
+
+    def create_new_branch(self, username, password, city_name):
+        city_clean = _normalize_branch_city_label(city_name or "")
+        un = (username or "").strip()
+        if not un or not city_clean:
+            return False
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            if self._find_conflicting_branch_id_cursor(cursor, un, city_clean) is not None:
+                return False
+            cursor.execute(
+                "INSERT INTO branches (username, password, city_name) VALUES (?, ?, ?)",
+                (un, password, city_clean),
+            )
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+        except Exception:
+            return False
+        finally:
+            conn.close()
+
+    def update_branch_password(self, b_id, new_password):
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE branches SET password = ? WHERE id = ?", (new_password, b_id))
+            conn.commit()
+            return True
+        except Exception: 
+            return False
+        finally: 
+            conn.close()
+
+    def get_branch_row(self, branch_id: int) -> Optional[Dict[str, Any]]:
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute("SELECT * FROM branches WHERE id = ?", (int(branch_id),))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def get_branch_full_detail(self, branch_id: int) -> Optional[Dict[str, Any]]:
+        """فرع + موقع + أوقات الدوام للوحة المؤسس."""
+        br = self.get_branch_row(branch_id)
+        if not br:
+            return None
+        loc = self.get_branch_location(branch_id) or {}
+        wh_rows = self.get_working_hours(branch_id)
+        hours: Dict[str, Any] = {}
+        for r in wh_rows:
+            hours[r["day_type"]] = dict(r)
+        return {"branch": br, "location": loc, "hours": hours}
+
+    def update_branch_fields(
+        self,
+        branch_id: int,
+        *,
+        city_name: Optional[str] = None,
+        complaint_email: Optional[str] = None,
+        phone: Optional[str] = None,
+        username: Optional[str] = None,
+    ) -> bool:
+        allowed = {"city_name", "complaint_email", "phone", "username"}
+        vals: Dict[str, Any] = {}
+        if city_name is not None:
+            vals["city_name"] = (city_name or "").strip()
+        if complaint_email is not None:
+            vals["complaint_email"] = (complaint_email or "").strip()
+        if phone is not None:
+            vals["phone"] = (phone or "").strip()
+        if username is not None:
+            vals["username"] = (username or "").strip()
+        if not vals:
+            return True
+        conn = self._get_connection()
+        try:
+            sets = ", ".join(f"{k} = ?" for k in vals)
+            params = list(vals.values()) + [int(branch_id)]
+            conn.execute(f"UPDATE branches SET {sets} WHERE id = ?", tuple(params))
+            conn.commit()
+            return True
+        except Exception:
+            return False
+        finally:
+            conn.close()
+
+    def upsert_branch_location(
+        self,
+        branch_id: int,
+        address: Optional[str] = None,
+        google_maps_url: Optional[str] = None,
+        gps_lat: Optional[float] = None,
+        gps_lng: Optional[float] = None,
+    ) -> bool:
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT branch_id FROM branch_locations WHERE branch_id = ?", (int(branch_id),)
+            )
+            row = cursor.fetchone()
+            addr = (address or "").strip() if address is not None else ""
+            gurl = (google_maps_url or "").strip() if google_maps_url is not None else ""
+            try:
+                lat = float(gps_lat) if gps_lat is not None and str(gps_lat).strip() != "" else None
+            except (TypeError, ValueError):
+                lat = None
+            try:
+                lng = float(gps_lng) if gps_lng is not None and str(gps_lng).strip() != "" else None
+            except (TypeError, ValueError):
+                lng = None
+            if row:
+                cursor.execute(
+                    """
+                    UPDATE branch_locations
+                    SET address = ?, google_maps_url = ?, gps_lat = ?, gps_lng = ?
+                    WHERE branch_id = ?
+                    """,
+                    (addr, gurl, lat, lng, int(branch_id)),
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO branch_locations (branch_id, address, google_maps_url, gps_lat, gps_lng)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (int(branch_id), addr, gurl, lat, lng),
+                )
+            conn.commit()
+            return True
+        except Exception:
+            return False
+        finally:
+            conn.close()
+
+    def replace_working_hours(
+        self,
+        branch_id: int,
+        weekday_open: str,
+        weekday_close: str,
+        friday_open: str,
+        friday_close: str,
+        *,
+        weekday_start_2: Optional[str] = None,
+        weekday_end_2: Optional[str] = None,
+        friday_start_2: Optional[str] = None,
+        friday_end_2: Optional[str] = None,
+    ) -> bool:
+        w1s = (weekday_open or "09:00").strip()
+        w1e = (weekday_close or "22:00").strip()
+        f1s = (friday_open or "16:00").strip()
+        f1e = (friday_close or "23:00").strip()
+        w2s = (weekday_start_2 or "").strip() or None
+        w2e = (weekday_end_2 or "").strip() or None
+        if not w2s or not w2e:
+            w2s, w2e = None, None
+        f2s = (friday_start_2 or "").strip() or None
+        f2e = (friday_end_2 or "").strip() or None
+        if not f2s or not f2e:
+            f2s, f2e = None, None
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM working_hours WHERE branch_id = ?", (int(branch_id),))
+            cursor.execute(
+                """
+                INSERT INTO working_hours (
+                    branch_id, day_type,
+                    start_time_1, end_time_1, start_time_2, end_time_2,
+                    open_time, close_time
+                )
+                VALUES (?, 'weekday', ?, ?, ?, ?, ?, ?)
+                """,
+                (int(branch_id), w1s, w1e, w2s, w2e, w1s, w1e),
+            )
+            cursor.execute(
+                """
+                INSERT INTO working_hours (
+                    branch_id, day_type,
+                    start_time_1, end_time_1, start_time_2, end_time_2,
+                    open_time, close_time
+                )
+                VALUES (?, 'friday', ?, ?, ?, ?, ?, ?)
+                """,
+                (int(branch_id), f1s, f1e, f2s, f2e, f1s, f1e),
+            )
+            conn.commit()
+            return True
+        except Exception:
+            return False
+        finally:
+            conn.close()
+
+    def delete_branch(self, b_id):
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM inventory WHERE product_id IN (SELECT id FROM products WHERE branch_id = ?)",
+                (b_id,),
+            )
+            cursor.execute(
+                "DELETE FROM product_variants WHERE product_id IN (SELECT id FROM products WHERE branch_id = ?)",
+                (b_id,),
+            )
+            cursor.execute(
+                "DELETE FROM product_images WHERE product_id IN (SELECT id FROM products WHERE branch_id = ?)",
+                (b_id,),
+            )
+            cursor.execute("DELETE FROM products WHERE branch_id = ?", (b_id,))
+            cursor.execute("DELETE FROM sub_categories WHERE branch_id = ?", (b_id,))
+            cursor.execute("DELETE FROM main_categories WHERE branch_id = ?", (b_id,))
+            cursor.execute(
+                "DELETE FROM sections WHERE category_id IN (SELECT id FROM categories WHERE branch_id = ?)",
+                (b_id,),
+            )
+            cursor.execute("DELETE FROM categories WHERE branch_id = ?", (b_id,))
+            cursor.execute("DELETE FROM working_hours WHERE branch_id = ?", (b_id,))
+            cursor.execute("DELETE FROM branch_locations WHERE branch_id = ?", (b_id,))
+            cursor.execute("DELETE FROM complaints WHERE branch_id = ?", (b_id,))
+            cursor.execute("DELETE FROM branches WHERE id = ?", (b_id,))
+            conn.commit()
+            return True
+        except Exception: 
+            return False
+        finally: 
+            conn.close()
+
+    def _seed_branch_complaint_emails(self, cursor):
+        """ملء complaint_email للفروع من site_config عندما يكون العمود فارغاً."""
+        try:
+            from site_config.branches import BRANCHES
+        except ImportError:
+            BRANCHES = {}
+        for city_name, info in BRANCHES.items():
+            em = (info.get("manager_email") or "").strip()
+            if not em:
+                continue
+            cursor.execute(
+                """
+                UPDATE branches SET complaint_email = ?
+                WHERE city_name = ?
+                  AND (complaint_email IS NULL OR TRIM(complaint_email) = '')
+                """,
+                (em, city_name),
+            )
+
+    def _seed_branch_locations_and_hours(self, conn):
+        """ملء مواقع وأوقات الفروع من config (مرة واحدة لكل فرع بفضل INSERT OR IGNORE)."""
+        try:
+            from site_config.branches import BRANCHES
+        except ImportError:
+            BRANCHES = {}
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, city_name FROM branches")
+        for row in cursor.fetchall():
+            r = dict(row)
+            bid_id = r["id"]
+            city = r["city_name"]
+            info = BRANCHES.get(city)
+            if not info:
+                continue
+            wh = info.get("working_hours") or {}
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO branch_locations (branch_id, address, google_maps_url, gps_lat, gps_lng)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    bid_id,
+                    info.get("address"),
+                    info.get("google_maps_url"),
+                    info.get("gps_lat"),
+                    info.get("gps_lng"),
+                ),
+            )
+            wo, wc = wh.get("weekday_open", "08:30"), wh.get("weekday_close", "00:00")
+            fo, fc = wh.get("friday_open", "16:00"), wh.get("friday_close", "00:00")
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO working_hours (
+                    branch_id, day_type,
+                    start_time_1, end_time_1, start_time_2, end_time_2,
+                    open_time, close_time
+                )
+                VALUES (?, 'weekday', ?, ?, NULL, NULL, ?, ?)
+                """,
+                (bid_id, wo, wc, wo, wc),
+            )
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO working_hours (
+                    branch_id, day_type,
+                    start_time_1, end_time_1, start_time_2, end_time_2,
+                    open_time, close_time
+                )
+                VALUES (?, 'friday', ?, ?, NULL, NULL, ?, ?)
+                """,
+                (bid_id, fo, fc, fo, fc),
+            )
+
+    def _find_conflicting_branch_id_cursor(
+        self, cursor, username: Optional[str], city_name: Optional[str]
+    ) -> Optional[int]:
+        """فرع موجود بنفس اسم المستخدم أو نفس المدينة (منطقياً)."""
+        un = (username or "").strip()
+        if un:
+            cursor.execute("SELECT id FROM branches WHERE username = ?", (un,))
+            row = cursor.fetchone()
+            if row:
+                return int(row["id"])
+        cn = _normalize_branch_city_label(city_name or "")
+        if not cn:
+            return None
+        canon_new = _canonical_branch_city_from_input(city_name or "")
+        cursor.execute("SELECT id, city_name FROM branches")
+        for row in cursor.fetchall():
+            eid = int(row["id"])
+            ec = row["city_name"] or ""
+            if _normalize_branch_city_label(ec) == cn:
+                return eid
+            if canon_new:
+                ec_canon = _canonical_branch_city_from_input(ec)
+                if ec_canon and ec_canon == canon_new:
+                    return eid
+        return None
+
+    def _reattach_branch_fk(self, cursor, from_id: int, to_id: int) -> None:
+        """نقل بيانات الفرع من from_id إلى to_id ثم حذف صف الفرع المكرر."""
+        cursor.execute("UPDATE products SET branch_id = ? WHERE branch_id = ?", (to_id, from_id))
+        cursor.execute("UPDATE categories SET branch_id = ? WHERE branch_id = ?", (to_id, from_id))
+        cursor.execute(
+            "UPDATE main_categories SET branch_id = ? WHERE branch_id IS NOT NULL AND branch_id = ?",
+            (to_id, from_id),
+        )
+        cursor.execute(
+            "UPDATE sub_categories SET branch_id = ? WHERE branch_id IS NOT NULL AND branch_id = ?",
+            (to_id, from_id),
+        )
+        cursor.execute("UPDATE complaints SET branch_id = ? WHERE branch_id = ?", (to_id, from_id))
+
+        cursor.execute("SELECT 1 FROM branch_locations WHERE branch_id = ?", (to_id,))
+        has_to = cursor.fetchone() is not None
+        cursor.execute("SELECT 1 FROM branch_locations WHERE branch_id = ?", (from_id,))
+        has_from = cursor.fetchone() is not None
+        if has_from and not has_to:
+            cursor.execute(
+                "UPDATE branch_locations SET branch_id = ? WHERE branch_id = ?",
+                (to_id, from_id),
+            )
+        elif has_from and has_to:
+            cursor.execute("DELETE FROM branch_locations WHERE branch_id = ?", (from_id,))
+
+        cursor.execute("SELECT day_type FROM working_hours WHERE branch_id = ?", (from_id,))
+        for r in cursor.fetchall():
+            dt = r[0]
+            cursor.execute(
+                "SELECT 1 FROM working_hours WHERE branch_id = ? AND day_type = ?",
+                (to_id, dt),
+            )
+            if cursor.fetchone():
+                cursor.execute(
+                    "DELETE FROM working_hours WHERE branch_id = ? AND day_type = ?",
+                    (from_id, dt),
+                )
+            else:
+                cursor.execute(
+                    """
+                    UPDATE working_hours SET branch_id = ?
+                    WHERE branch_id = ? AND day_type = ?
+                    """,
+                    (to_id, from_id, dt),
+                )
+
+        cursor.execute(
+            "SELECT complaint_email, phone FROM branches WHERE id = ?",
+            (to_id,),
+        )
+        k = cursor.fetchone()
+        cursor.execute(
+            "SELECT complaint_email, phone FROM branches WHERE id = ?",
+            (from_id,),
+        )
+        d = cursor.fetchone()
+        if k and d:
+            kem = (k["complaint_email"] or "").strip()
+            dem = (d["complaint_email"] or "").strip()
+            kph = (k["phone"] or "").strip()
+            dph = (d["phone"] or "").strip()
+            new_em = kem or dem
+            new_ph = kph or dph
+            if (new_em != kem) or (new_ph != kph):
+                cursor.execute(
+                    "UPDATE branches SET complaint_email = ?, phone = ? WHERE id = ?",
+                    (new_em or "", new_ph or "", to_id),
+                )
+
+        cursor.execute("DELETE FROM branches WHERE id = ?", (from_id,))
+
+    def _merge_duplicate_branches(self, cursor) -> None:
+        """
+        دمج صفوف branches المكررة (نفس المفتاح القياسي أو نفس الاسم بعد التطبيع).
+        يُبقى أقل id ويُعاد ربط المنتجات والأقسام دون حذفها.
+        """
+        cursor.execute("SELECT id, city_name FROM branches ORDER BY id")
+        rows = cursor.fetchall()
+        buckets: Dict[str, List[int]] = {}
+        for row in rows:
+            bid = int(row["id"])
+            city = row["city_name"] or ""
+            cn = _normalize_branch_city_label(city)
+            if not cn:
+                key = f"id:{bid}"
+            else:
+                key = _branch_dedupe_key(city)
+            buckets.setdefault(key, []).append(bid)
+
+        for _key, ids in buckets.items():
+            if len(ids) <= 1:
+                continue
+            keeper = min(ids)
+            for dup in sorted(ids):
+                if dup == keeper:
+                    continue
+                self._reattach_branch_fk(cursor, dup, keeper)
+
+    # ═══════════════════════════════════════════════════════════════
+    # شكاوى | طلبات منتجات | إعدادات النظام | مواقع وأوقات
+    # ═══════════════════════════════════════════════════════════════
+
+    def get_working_hours(self, branch_id):
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute(
+                "SELECT * FROM working_hours WHERE branch_id = ? ORDER BY day_type",
+                (branch_id,),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def get_branch_location(self, branch_id):
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute("SELECT * FROM branch_locations WHERE branch_id = ?", (branch_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def get_branch_location_by_city_name(self, city_name):
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute(
+                """
+                SELECT bl.* FROM branch_locations bl
+                JOIN branches b ON b.id = bl.branch_id
+                WHERE b.city_name = ?
+                """,
+                (city_name,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def get_branch_id_by_city_name(self, city_name):
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute("SELECT id FROM branches WHERE city_name = ?", (city_name,))
+            row = cursor.fetchone()
+            return int(row["id"]) if row else None
+        finally:
+            conn.close()
+
+    def get_branch_complaint_email(self, branch_id: Optional[int]) -> Optional[str]:
+        """إيميل الشكاوى المسجل للفرع في قاعدة البيانات."""
+        if branch_id is None:
+            return None
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute(
+                "SELECT complaint_email FROM branches WHERE id = ?",
+                (int(branch_id),),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            em = (row["complaint_email"] or "").strip()
+            return em if em else None
+        finally:
+            conn.close()
+
+    def get_branch_users(self) -> List[Dict[str, Any]]:
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute("SELECT id, city_name, username, password FROM branches ORDER BY id")
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def update_branch_user(self, branch_id: int, username: str, password: str) -> bool:
+        username = (username or "").strip()
+        password = (password or "").strip()
+        if not username or not password:
+            return False
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE branches SET username = ?, password = ? WHERE id = ?",
+                (username, password, branch_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception:
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+

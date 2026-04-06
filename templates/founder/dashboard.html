@@ -1,0 +1,116 @@
+{% extends "founder/base.html" %}
+{% block title %}الرئيسية{% endblock %}
+{% block fd_top_header %}
+<header class="fd-dash-hero" aria-label="هوية لوحة المؤسس">
+    {% if founder_logo_url %}
+    <img src="{{ founder_logo_url }}" class="fd-dash-hero__site-img" alt="" decoding="async" onerror="this.classList.add('site-logo-hidden');">
+    {% endif %}
+    <h1 class="fd-dash-hero__name">كاظم المطحني</h1>
+</header>
+{% endblock %}
+{% block content %}
+<div class="fd-page-head">
+    <h2 class="fd-page-title">لوحة المؤسس</h2>
+    <span class="fd-page-sub">تحكم كامل بجميع الفروع والمنتجات</span>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="fd-card fd-stat">
+            <div class="fd-stat-label">الفروع</div>
+            <div class="fd-stat-value">{{ n_branches }}</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="fd-card fd-stat">
+            <div class="fd-stat-label">المنتجات</div>
+            <div class="fd-stat-value">{{ n_products }}</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="fd-card fd-stat">
+            <div class="fd-stat-label">الشكاوى</div>
+            <div class="fd-stat-value">{{ n_complaints }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="fd-card h-100">
+            <h2 class="fd-card-title">اختصارات</h2>
+            <div class="d-grid gap-2">
+                <a class="btn fd-btn" href="{{ url_for('founder_branches') }}">إدارة الفروع</a>
+                <a class="btn btn-outline-success" href="{{ url_for('founder_products') }}">جميع المنتجات</a>
+                <a class="btn btn-outline-success" href="{{ url_for('founder_add_product') }}">إضافة منتج لأي فرع</a>
+                <a class="btn btn-outline-light" href="{{ url_for('founder_accounts') }}">كلمات المرور</a>
+                <a class="btn btn-outline-warning" href="{{ url_for('campaigns.founder_campaigns') }}">📢 الحملات الإعلانية</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="fd-card h-100">
+            <h2 class="fd-card-title">إدارة عامة</h2>
+            <p class="text-muted small mb-3">المستخدمون والشكاوى متاحة من القائمة الجانبية.</p>
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-sm btn-outline-light" href="{{ url_for('admin_users') }}">مستخدمو الفروع</a>
+                <a class="btn btn-sm btn-outline-light" href="{{ url_for('admin_complaints') }}">الشكاوى</a>
+                <a class="btn btn-sm btn-outline-warning" href="{{ url_for('campaigns.founder_campaigns') }}">حملات</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mt-2">
+    <div class="col-12">
+        <h2 class="fd-card-title mb-3">الهوية البصرية</h2>
+        <p class="small text-muted mb-3">شعاران منفصلان: <strong>عام</strong> للواجهة العامة ولوحات الفرع والإدارة، و<strong>خاص</strong> بلوحة المؤسس فقط.</p>
+    </div>
+    <div class="col-12 col-lg-6">
+        <div class="fd-identity-glass">
+            <h3 class="fd-identity-glass__title">الشعار العام</h3>
+            <p class="fd-identity-glass__hint">واجهة العملاء، لوحة الفرع، لوحة الإدارة، والحملات — ملف واحد: <code class="text-success">uploads/logo.png</code></p>
+            <div class="fd-identity-preview" data-label="معاينة الشعار العام">
+                {% if logo_url %}
+                <img src="{{ logo_url }}?v={{ site_logo_cache_bust }}" alt="" class="fd-identity-preview__img">
+                {% else %}
+                <div class="fd-identity-preview__empty">
+                    <span>لا يوجد شعار مرفوع — ارفع شعاراً من النموذج أدناه.</span>
+                </div>
+                {% endif %}
+            </div>
+            <form action="{{ url_for('founder_upload_site_logo') }}" method="post" enctype="multipart/form-data" class="fd-identity-form">
+                <label class="form-label small fw-bold mb-1">تغيير الشعار</label>
+                <input type="file" name="logo" class="form-control fd-identity-file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" required>
+                <button type="submit" class="btn fd-btn w-100 mt-2">رفع وحفظ</button>
+            </form>
+            <form action="{{ url_for('founder_delete_site_logo') }}" method="post" class="mt-2" onsubmit="return confirm('حذف الشعار العام من كل الواجهات (عدا لوحة المؤسس)؟');">
+                <button type="submit" class="btn btn-outline-danger w-100">حذف الشعار العام</button>
+            </form>
+        </div>
+    </div>
+    <div class="col-12 col-lg-6">
+        <div class="fd-identity-glass fd-identity-glass--accent">
+            <h3 class="fd-identity-glass__title">شعار لوحة المؤسس</h3>
+            <p class="fd-identity-glass__hint">يظهر في الشريط الجانبي، ترويسة الصفحات، وبطل الرئيسية فقط — ملف: <code class="text-success">uploads/founder_logo.png</code></p>
+            <div class="fd-identity-preview" data-label="معاينة شعار المؤسس">
+                {% if founder_logo_url %}
+                <img src="{{ founder_logo_url }}" alt="" class="fd-identity-preview__img">
+                {% else %}
+                <div class="fd-identity-preview__empty">
+                    <span>لا يوجد شعار خاص — ارفع شعاراً من النموذج أدناه.</span>
+                </div>
+                {% endif %}
+            </div>
+            <form action="{{ url_for('founder_upload_founder_logo') }}" method="post" enctype="multipart/form-data" class="fd-identity-form">
+                <label class="form-label small fw-bold mb-1">تغيير الشعار</label>
+                <input type="file" name="logo" class="form-control fd-identity-file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" required>
+                <button type="submit" class="btn fd-btn w-100 mt-2">رفع وحفظ</button>
+            </form>
+            <form action="{{ url_for('founder_delete_founder_logo') }}" method="post" class="mt-2" onsubmit="return confirm('حذف شعار لوحة المؤسس؟');">
+                <button type="submit" class="btn btn-outline-danger w-100">حذف شعار المؤسس</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

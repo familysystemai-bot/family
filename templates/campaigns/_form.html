@@ -1,0 +1,153 @@
+{# نموذج حملة — واجهة لوحة تسويق (نفس الحقول وأسماء الحقول للخادم) #}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/campaigns-dashboard.css') }}">
+
+<div class="mkt-dash">
+    <header class="mkt-dash__hero">
+        <h1 class="mkt-dash__hero-title">إدارة الحملات الإعلانية</h1>
+        <p class="mkt-dash__hero-sub">
+            يُرسل البريد للعملاء الموافقين على التسويق مع احترام فترة 24 ساعة بين الحملات، وأولوية لمن اهتم بمنتج في الشات.
+            {% if branch_scope is none %}
+            النطاق: <strong style="color:#e5e7eb;">كل الفروع</strong>.
+            {% else %}
+            النطاق: <strong style="color:#e5e7eb;">عملاء هذا الفرع فقط</strong>.
+            {% endif %}
+        </p>
+    </header>
+
+    <div class="mkt-dash__grid">
+        <div class="mkt-dash__card-main">
+            <h2 class="mkt-dash__card-title">إنشاء حملة جديدة</h2>
+            <form method="post" enctype="multipart/form-data" action="{{ request.path }}" id="campaignCreateForm">
+                <input type="hidden" name="action" value="create_send">
+
+                <div class="mkt-dash__field">
+                    <label class="mkt-dash__label" for="campaign_field_title">عنوان الحملة</label>
+                    <input type="text" name="title" id="campaign_field_title" class="mkt-dash__input" maxlength="500" required placeholder="مثال: عروض نهاية الأسبوع">
+                </div>
+
+                <div class="mkt-dash__field">
+                    <label class="mkt-dash__label" for="campaign_field_message">نص الرسالة</label>
+                    <textarea name="email_message" id="campaign_field_message" class="mkt-dash__input mkt-dash__textarea" rows="6" placeholder="اكتب رسالتك… (يُكمّل النظام التحية بالاسم واللهجة تلقائياً في البريد الفعلي)"></textarea>
+                    <p class="mkt-dash__hint">يُنصح بإرفاق نص أو صورة. المعاينة على اليمين تستخدم اسماً تجريبياً للعرض فقط.</p>
+                </div>
+
+                <div class="mkt-dash__field">
+                    <label class="mkt-dash__label" for="campaign_field_whatsapp">نص واتساب (مُخزَّن فقط)</label>
+                    <textarea name="whatsapp_message" id="campaign_field_whatsapp" class="mkt-dash__input mkt-dash__textarea" style="min-height:110px;" rows="4" placeholder="للربط لاحقاً — لا يُرسل حالياً"></textarea>
+                </div>
+
+                <div class="mkt-dash__field">
+                    <span class="mkt-dash__label">صورة الحملة</span>
+                    <input type="file" name="image" id="campaign_image_input" class="mkt-dash__file-input" accept="image/png,image/jpeg,image/gif,image/webp">
+                    <label for="campaign_image_input" class="mkt-dash__file-btn">📷 رفع صورة الحملة</label>
+                    <span class="mkt-dash__file-name" id="mkt_file_name" aria-live="polite"></span>
+                </div>
+
+                <div class="mkt-dash__field">
+                    <span class="mkt-dash__label">وقت الإرسال</span>
+                    <div class="mkt-dash__timing">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="send_timing" id="send_timing_now" value="now" checked>
+                            <label class="form-check-label" for="send_timing_now">إرسال الآن</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="send_timing" id="send_timing_later" value="later">
+                            <label class="form-check-label" for="send_timing_later">لاحقاً (جدولة)</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mkt-dash__field" id="campaign_schedule_row" style="display: none;">
+                    <label class="mkt-dash__label" for="campaign_scheduled_at">التاريخ والوقت</label>
+                    <input type="datetime-local" name="scheduled_at" id="campaign_scheduled_at" class="mkt-dash__input">
+                    <p class="mkt-dash__hint">يُرسل تلقائياً عند الوصول لهذا الوقت (وقت الخادم).</p>
+                </div>
+
+                <button type="submit" class="mkt-dash__submit" id="campaign_submit_btn">🚀 إرسال الحملة</button>
+            </form>
+        </div>
+
+        <aside class="mkt-dash__card-preview" aria-label="معاينة الحملة">
+            <span class="mkt-dash__preview-badge">معاينة مباشرة</span>
+            <p class="mkt-dash__preview-title">يشاهد العميل تقريباً (اسم تجريبي)</p>
+            <div class="mkt-dash__preview-body">
+                <div id="mkt_preview_img_wrap" class="mkt-dash__preview-img-wrap"></div>
+                <p id="mkt_preview_campaign_title" style="font-size:0.9rem;font-weight:700;color:#22c55e;margin:0 0 0.75rem;">عنوان الحملة</p>
+                <div id="mkt_preview_message" class="mkt-dash__preview-text"></div>
+            </div>
+            <p class="mkt-dash__preview-foot">المعاينة تتحدث أثناء الكتابة • الصيغة الفعلية في البريد تتبع قوالب النظام</p>
+        </aside>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/campaigns-dashboard.js') }}" defer></script>
+<script>
+(function () {
+    var now = document.getElementById('send_timing_now');
+    var later = document.getElementById('send_timing_later');
+    var row = document.getElementById('campaign_schedule_row');
+    var btn = document.getElementById('campaign_submit_btn');
+    function sync() {
+        if (!row || !btn) return;
+        var on = later && later.checked;
+        row.style.display = on ? 'block' : 'none';
+        btn.textContent = on ? '🚀 حفظ وجدولة الحملة' : '🚀 إرسال الحملة';
+    }
+    if (now) now.addEventListener('change', sync);
+    if (later) later.addEventListener('change', sync);
+    sync();
+})();
+</script>
+
+{% if campaigns and campaigns|length > 0 %}
+<div class="mkt-dash-follow">
+    <div class="mkt-dash__history mkt-dash__history--nested">
+        <h3 class="mkt-dash__history-title">آخر الحملات</h3>
+        <div class="mkt-dash__table-wrap">
+            <table class="mkt-dash__table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>العنوان</th>
+                        <th>من</th>
+                        <th>أنشئت</th>
+                        <th>جدولة</th>
+                        <th>الحالة</th>
+                        <th>إرسال</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in campaigns[:15] %}
+                    <tr>
+                        <td>{{ c.id }}</td>
+                        <td>{{ c.title }}</td>
+                        <td>{{ c.created_by }}</td>
+                        <td class="small" style="color:#9ca3af;">{{ c.created_at }}</td>
+                        <td class="small" style="color:#9ca3af;">{% if c.scheduled_at %}{{ c.scheduled_at }}{% else %}—{% endif %}</td>
+                        <td class="small" style="color:#9ca3af;">
+                            {% if c.sent_at %}
+                            مُرسل
+                            {% elif c.scheduled_at %}
+                            مجدول
+                            {% else %}
+                            فوري
+                            {% endif %}
+                        </td>
+                        <td class="text-nowrap">
+                            <form method="post" action="{{ request.path }}" class="d-inline">
+                                <input type="hidden" name="action" value="send">
+                                <input type="hidden" name="campaign_id" value="{{ c.id }}">
+                                <button type="submit" class="mkt-dash__btn-send">إرسال</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}

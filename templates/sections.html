@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+{% from "macros/site_logo.html" import site_logo_pair %}
+<html lang="ar" dir="rtl" class="dash-html">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>الأقسام</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/dashboard-layout.css') }}" rel="stylesheet">
+    <style>
+        :root {
+            --bg-light: #fcfaf5;
+            --sidebar-bg: #f5f5dc;
+            --accent-gold: #b8860b;
+            --text-dark: #3d3d3d;
+            --card-white: #ffffff;
+        }
+        body { background-color: var(--bg-light); color: var(--text-dark); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .sidebar { background: var(--sidebar-bg); min-height: 100vh; border-left: 2px solid var(--accent-gold); position: sticky; top: 0; box-shadow: 2px 0 10px rgba(0,0,0,0.05); }
+        .logo-box { text-align: center; padding: 25px 10px; border-bottom: 1px solid rgba(184, 134, 11, 0.2); }
+        .logo-img { width: 50px; height: auto; max-height: 50px; object-fit: contain; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1)); }
+        .nav-link { color: var(--text-dark); font-weight: 600; margin: 8px 15px; border-radius: 10px; padding: 12px; transition: 0.3s; }
+        .nav-link:hover, .nav-link.active { background: var(--accent-gold); color: white !important; }
+        .stat-card { background: var(--card-white); border: 1px solid #eaddca; border-radius: 15px; padding: 25px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); height: 100%; }
+        .btn-gold { background: var(--accent-gold); color: white; border: none; font-weight: bold; padding: 10px 20px; }
+        .btn-gold:hover { background: #966d09; color: white; }
+        .table { background: white; border-radius: 10px; overflow: hidden; }
+        .form-control, .form-select { border: 1px solid #eaddca; padding: 12px; }
+        .section-actions a { text-decoration: none; }
+        .btn-delete-section {
+            background-color: #dc3545;
+            border-color: #dc3545;
+            color: #fff;
+            font-weight: 700;
+        }
+        .btn-delete-section:hover {
+            background-color: #b02a37;
+            border-color: #a52834;
+            color: #fff;
+        }
+    </style>
+</head>
+<body class="dash-body">
+    <div class="container-fluid dash-layout">
+        <button type="button" class="dash-menu-btn" aria-label="فتح القائمة" aria-controls="sections-dash-sidebar" aria-expanded="false">☰</button>
+        <div class="dash-backdrop" data-dash-close="true" aria-hidden="true"></div>
+        <div class="row g-0 flex-nowrap dash-row">
+            <aside id="sections-dash-sidebar" class="col-md-2 sidebar p-0 dash-sidebar-col">
+                <div class="dash-sidebar-panel">
+                <div class="logo-box">
+                    {{ site_logo_pair('logo-img', 'site-logo-k--sidebar-dash') }}
+                    <h5 class="mt-3 fw-bold" style="color: var(--accent-gold);">العائلة FAMILY</h5>
+                    {% if session['role'] == 'founder' %}
+                    <span class="badge bg-primary">المؤسس</span>
+                    {% elif session['role'] == 'admin' %}
+                    <span class="badge bg-dark">الإدارة</span>
+                    {% endif %}
+                </div>
+                <nav class="nav flex-column mt-3">
+                    {% if session.get('role') == 'founder' %}
+                    <a class="nav-link" href="{{ url_for('founder_dashboard') }}">🏠 الرئيسية</a>
+                    {% elif session.get('role') == 'admin' %}
+                    <a class="nav-link" href="{{ url_for('admin_dashboard') }}">🏠 الرئيسية</a>
+                    {% else %}
+                    <a class="nav-link" href="{{ url_for('dashboard') }}">🏠 الرئيسية</a>
+                    {% endif %}
+                    <a class="nav-link active" href="#">📂 الأقسام</a>
+                    <hr class="mx-3">
+                    <a class="nav-link text-danger" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+                </nav>
+                </div>
+            </aside>
+
+            <div class="col-md-10 p-4 dash-main">
+                <div id="sectionsAjaxAlerts"></div>
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                <div class="mb-3">
+                    {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="إغلاق"></button>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% endwith %}
+
+                <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-3">
+                    <h2 class="fw-bold">
+                        أقسام الفئة
+                        <span style="color: var(--accent-gold);">#{{ category_id }}</span>
+                    </h2>
+                    {% if session.get('role') == 'founder' %}
+                    <a href="{{ url_for('founder_dashboard') }}" class="btn btn-outline-secondary btn-sm">رجوع</a>
+                    {% elif session.get('role') == 'admin' %}
+                    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary btn-sm">رجوع</a>
+                    {% else %}
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary btn-sm">رجوع</a>
+                    {% endif %}
+                </div>
+
+                <p class="fs-5 mb-4 fw-semibold border-bottom pb-3" style="color: var(--text-dark);">
+                    📂 الفئة: <span style="color: var(--accent-gold);">{{ category.name }}</span>
+                </p>
+
+                <div class="row g-4">
+                    {% if session.get('role') == 'branch' %}
+                    <div class="col-md-6">
+                        <div class="stat-card">
+                            <h5 class="mb-4 fw-bold" style="color: var(--accent-gold);">➕ إضافة قسم</h5>
+                            <form action="{{ url_for('add_section', category_id=category_id) }}" method="POST">
+                                <div class="mb-3">
+                                    <label class="small fw-bold">اسم القسم</label>
+                                    <input type="text" name="section_name" class="form-control" placeholder="مثلاً: قسم القمصان" required>
+                                </div>
+                                <button type="submit" class="btn btn-gold w-100">حفظ القسم</button>
+                            </form>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="col-md-6{% if session.get('role') != 'branch' %} col-lg-10{% endif %}">
+                        <div class="stat-card">
+                            <h5 class="mb-4 fw-bold">📋 الأقسام الحالية</h5>
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle" id="sectionsTable">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>القسم</th>
+                                            <th style="width: 200px;">الإجراء</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="sectionsTableBody">
+                                        {% if sections and sections|length > 0 %}
+                                            {% for sec in sections %}
+                                            <tr data-section-row-id="{{ sec['id'] }}">
+                                                <td>{{ sec['name'] }}</td>
+                                                <td class="section-actions">
+                                                    <a href="#" class="btn btn-sm btn-outline-secondary disabled" aria-disabled="true">منتجات (قريباً)</a>
+                                                    <button type="button"
+                                                        class="btn btn-sm btn-delete-section ms-1 js-delete-section"
+                                                        data-section-id="{{ sec['id'] }}"
+                                                        data-section-name="{{ sec['name']|e }}">حذف</button>
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        {% else %}
+                                            <tr id="sectionsEmptyRow">
+                                                <td colspan="2" class="text-muted text-center">لا توجد أقسام لهذه الفئة بعد.</td>
+                                            </tr>
+                                        {% endif %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="deleteSectionModal" tabindex="-1" aria-labelledby="deleteSectionModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title fw-bold" id="deleteSectionModalLabel">تأكيد الحذف</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="إغلاق"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-0 fw-semibold text-dark">سيتم حذف هذا القسم وجميع المنتجات المرتبطة به نهائياً، هل أنت متأكد؟</p>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                    <button type="button" class="btn btn-delete-section" id="confirmDeleteSectionBtn">حذف نهائي</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/dashboard-layout.js') }}" defer></script>
+    <script>
+(function () {
+    const categoryId = {{ category_id|int }};
+    function deleteSectionUrl(sid) {
+        return '/categories/' + categoryId + '/sections/' + sid + '/delete';
+    }
+    const modalEl = document.getElementById('deleteSectionModal');
+    const confirmBtn = document.getElementById('confirmDeleteSectionBtn');
+    const alertsBox = document.getElementById('sectionsAjaxAlerts');
+    const tbody = document.getElementById('sectionsTableBody');
+    let pendingSectionId = null;
+    let pendingRow = null;
+    const modal = modalEl ? new bootstrap.Modal(modalEl) : null;
+
+    function showAlert(type, text) {
+        const wrap = document.createElement('div');
+        wrap.className = 'alert alert-' + type + ' alert-dismissible fade show';
+        wrap.setAttribute('role', 'alert');
+        wrap.innerHTML = text + '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="إغلاق"></button>';
+        alertsBox.prepend(wrap);
+    }
+
+    document.querySelectorAll('.js-delete-section').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            pendingSectionId = parseInt(btn.getAttribute('data-section-id'), 10);
+            pendingRow = btn.closest('tr');
+            if (modal) modal.show();
+        });
+    });
+
+    if (modalEl) {
+        modalEl.addEventListener('hidden.bs.modal', function () {
+            pendingSectionId = null;
+            pendingRow = null;
+        });
+    }
+
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', function () {
+            if (!pendingSectionId) return;
+            const url = deleteSectionUrl(pendingSectionId);
+            confirmBtn.disabled = true;
+            fetch(url, {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin'
+            })
+                .then(function (r) {
+                    return r.text().then(function (t) {
+                        var j = {};
+                        try { j = t ? JSON.parse(t) : {}; } catch (e) {}
+                        return { ok: r.ok, j: j };
+                    });
+                })
+                .then(function (res) {
+                    if (res.ok && res.j && res.j.ok) {
+                        if (modal) modal.hide();
+                        if (pendingRow && pendingRow.parentNode) pendingRow.remove();
+                        showAlert('success', res.j.message || 'تم حذف القسم وجميع المنتجات المرتبطة به بنجاح');
+                        if (tbody && !tbody.querySelector('tr[data-section-row-id]')) {
+                            var empty = document.getElementById('sectionsEmptyRow');
+                            if (!empty) {
+                                empty = document.createElement('tr');
+                                empty.id = 'sectionsEmptyRow';
+                                empty.innerHTML = '<td colspan="2" class="text-muted text-center">لا توجد أقسام لهذه الفئة بعد.</td>';
+                                tbody.appendChild(empty);
+                            }
+                        }
+                    } else {
+                        var err = (res.j && (res.j.error || res.j.message)) || 'تعذر حذف القسم.';
+                        showAlert('danger', err);
+                    }
+                })
+                .catch(function () {
+                    showAlert('danger', 'تعذر الاتصال بالخادم.');
+                })
+                .finally(function () {
+                    confirmBtn.disabled = false;
+                });
+        });
+    }
+})();
+    </script>
+</body>
+</html>

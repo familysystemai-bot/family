@@ -1,0 +1,323 @@
+/**
+ * تخطيط متجاوب مشترك: لوحة الإدارة + الفروع + (مع founder-dashboard.css) لوحة المؤسس
+ * Desktop ≥1025px: بدون تغيير السلوك الأساسي
+ */
+@import url("site-brand.css");
+
+/* منع أي تمرير أفقي على مستوى الصفحة */
+body.dash-body,
+html.dash-html {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+.dash-layout {
+  overflow-x: clip;
+  max-width: 100%;
+}
+
+.dash-row {
+  min-width: 0;
+}
+
+.dash-main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* زر القائمة — يظهر على الجوال فقط (≤768px)، مخفي على التابلت وسطح المكتب */
+.dash-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  position: fixed;
+  z-index: 1060;
+  inset-inline-end: 0.75rem;
+  top: 0.75rem;
+  width: 3rem;
+  height: 3rem;
+  padding: 0;
+  border: none;
+  border-radius: 12px;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+  background: var(--dash-accent, #b8860b);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+  transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+.dash-menu-btn:hover {
+  filter: brightness(1.05);
+}
+
+.dash-menu-btn:active {
+  transform: scale(0.97);
+}
+
+.dash-menu-btn:focus-visible {
+  outline: 3px solid rgba(184, 134, 11, 0.45);
+  outline-offset: 2px;
+}
+
+/* خلفية شفافة */
+.dash-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1035;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+
+.dash-layout.dash-nav-open .dash-backdrop {
+  display: block;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* لوحة المؤسس: ألوان الزر تتماشى مع الثيم الأخضر */
+html.fd-dashboard .dash-menu-btn,
+body.fd-dashboard .dash-menu-btn {
+  --dash-accent: #157a52;
+  background: linear-gradient(180deg, #1a6b4a 0%, #0f5132 100%);
+  box-shadow: 0 4px 16px rgba(15, 81, 50, 0.25);
+}
+
+html.fd-dashboard .dash-menu-btn:focus-visible,
+body.fd-dashboard .dash-menu-btn:focus-visible {
+  outline-color: rgba(201, 162, 39, 0.55);
+}
+
+/* ——— Tablet: 769–1024 — شريط جانبي ضمن التدفق (مرن)، بدون زر القائمة ——— */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .dash-menu-btn {
+    display: none !important;
+  }
+
+  .dash-backdrop {
+    display: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
+  .dash-row {
+    flex-wrap: nowrap;
+    align-items: stretch;
+  }
+
+  .dash-sidebar-col {
+    flex: 0 0 clamp(200px, 28vw, 260px) !important;
+    max-width: clamp(200px, 28vw, 260px) !important;
+    width: clamp(200px, 28vw, 260px) !important;
+    min-width: 0 !important;
+    overflow: visible !important;
+  }
+
+  .dash-sidebar-panel {
+    position: relative !important;
+    inset: auto !important;
+    height: auto !important;
+    min-height: 100vh !important;
+    min-height: 100dvh !important;
+    width: 100% !important;
+    transform: none !important;
+    visibility: visible !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  .sidebar.dash-sidebar-col .dash-sidebar-panel {
+    background: var(--sidebar-bg, #f5f5dc);
+    border-left: 2px solid var(--accent-gold, #b8860b);
+  }
+
+  .dash-main {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    width: auto !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  .dash-main .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+  }
+}
+
+/* ——— Mobile: ≤768 — درج + زر ☰ ——— */
+@media (max-width: 768px) {
+  .dash-menu-btn {
+    display: flex;
+  }
+
+  .dash-row {
+    flex-wrap: nowrap;
+  }
+
+  .dash-sidebar-col {
+    flex: 0 0 0 !important;
+    max-width: 0 !important;
+    width: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    border: none !important;
+  }
+
+  .dash-sidebar-panel {
+    position: fixed;
+    top: 0;
+    inset-inline-end: 0;
+    height: 100vh;
+    height: 100dvh;
+    width: min(300px, 88vw);
+    /* فوق الخلفية المعتمة وتحت زر القائمة — قابل للنقر بالكامل */
+    z-index: 1050;
+    isolation: isolate;
+    touch-action: manipulation;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    box-shadow: -6px 0 24px rgba(0, 0, 0, 0.12);
+    transform: translateX(100%);
+    visibility: hidden;
+    transition: transform 0.28s ease, visibility 0.28s ease, box-shadow 0.28s ease;
+  }
+
+  .dash-layout.dash-nav-open .dash-sidebar-panel {
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  /*
+   * الخلفية لا تغطي لوحة القائمة المنزلقة:
+   * في dir=rtl يكون inset-inline-end = يسار الشاشة — القائمة على اليسار.
+   * نغطي فقط منطقة المحتوى (يمين الشاشة) حتى لا تعترض النقرات عن الروابط.
+   */
+  .dash-layout.dash-nav-open .dash-backdrop {
+    z-index: 1040;
+    top: 0;
+    bottom: 0;
+    left: min(300px, 88vw);
+    right: 0;
+    width: auto;
+    inset: unset;
+  }
+
+  .sidebar.dash-sidebar-col .dash-sidebar-panel {
+    background: var(--sidebar-bg, #f5f5dc);
+    border-left: 2px solid var(--accent-gold, #b8860b);
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.08);
+  }
+
+  .dash-main {
+    flex: 1 1 100% !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  body.dash-body.dash-nav-open {
+    overflow: hidden;
+  }
+
+  body.dash-body {
+    font-size: 1.05rem;
+  }
+
+  .dash-main {
+    padding-left: 0.85rem !important;
+    padding-right: 0.85rem !important;
+    padding-top: 3.5rem !important;
+  }
+
+  .dash-menu-btn {
+    width: 3.25rem;
+    height: 3.25rem;
+    font-size: 1.45rem;
+  }
+
+  /* أزرار أسهل للمس */
+  .dash-main .btn:not(.btn-close),
+  .dash-main .btn-gold {
+    min-height: 2.75rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .dash-main .btn-sm {
+    min-height: 2.5rem;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  /* جداول: تمرير أفقي سلس دون كسر الصفحة */
+  .dash-main .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+    margin-inline: -0.25rem;
+    padding-inline: 0.25rem;
+  }
+
+  .dash-main table {
+    font-size: 0.98rem;
+  }
+
+  .dash-main .variants-table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* كروت بديلة للجداول الواسعة (عند وجود data-label على الخلايا لاحقاً) */
+  .dash-table-cards {
+    border: 0;
+  }
+
+  @supports (overflow: clip) {
+    .dash-layout {
+      overflow-x: clip;
+    }
+  }
+}
+
+/* Desktop: إخفاء آلية الدرج */
+@media (min-width: 1025px) {
+  .dash-backdrop {
+    display: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
+  .dash-sidebar-col {
+    position: relative;
+  }
+
+  .dash-sidebar-panel {
+    position: relative;
+    height: auto;
+    min-height: 100vh;
+    width: 100%;
+    transform: none !important;
+    visibility: visible !important;
+    box-shadow: none;
+    overflow: visible;
+  }
+}
+
+/* ترويسات الإدارة مع زر الجوال */
+@media (max-width: 768px) {
+  .admin-dash-header,
+  .fd-main-header {
+    padding-top: 0.25rem;
+  }
+}

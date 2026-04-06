@@ -1,0 +1,65 @@
+{% extends "founder/base.html" %}
+{% block title %}الفروع{% endblock %}
+{% block content %}
+<div class="fd-page-head">
+    <h1 class="fd-page-title">إدارة الفروع</h1>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-lg-5">
+        <div class="fd-card">
+            <h2 class="fd-card-title">➕ إضافة فرع جديد</h2>
+            <form action="{{ url_for('create_branch') }}" method="POST">
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">اسم المدينة / الفرع</label>
+                    <input type="text" name="u_city" class="form-control" placeholder="مثلاً: جيزان" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">اسم المستخدم</label>
+                    <input type="text" name="u_name" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">كلمة المرور</label>
+                    <input type="password" name="u_pass" class="form-control" required>
+                </div>
+                <button type="submit" class="btn fd-btn w-100">حفظ الفرع</button>
+            </form>
+        </div>
+    </div>
+    <div class="col-lg-7">
+        <div class="fd-card">
+            <h2 class="h5 fw-bold mb-3">🏢 الفروع المسجلة</h2>
+            <div class="table-responsive">
+                <table class="table fd-table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>الفرع</th>
+                            <th>المستخدم</th>
+                            <th>الموقع</th>
+                            <th style="min-width: 220px;">الإجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for branch in branches %}
+                        <tr>
+                            <td class="fw-bold">{{ branch['city_name'] }}</td>
+                            <td>{{ branch['username'] }}</td>
+                            <td>{% if branch.get('has_location') %}<span class="text-success">✓</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                            <td>
+                                <div class="btn-group flex-wrap gap-1">
+                                    <a class="btn btn-sm btn-outline-success" href="{{ url_for('founder_branch_view', branch_id=branch['id']) }}" title="معاينة">عرض</a>
+                                    <a class="btn btn-sm btn-success" href="{{ url_for('founder_branch_edit', branch_id=branch['id']) }}">تعديل</a>
+                                    <a class="btn btn-sm btn-outline-danger" href="{{ url_for('delete_branch', b_id=branch['id']) }}" onclick="return confirm('حذف الفرع وجميع بياناته نهائياً؟');">حذف</a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted">لا توجد فروع بعد.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
