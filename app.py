@@ -145,6 +145,21 @@ def login():
 
     return render_template('login.html')
 
+
+app.add_url_rule(
+    "/admin/login",
+    endpoint="admin_login",
+    view_func=login,
+    methods=["GET", "POST"],
+)
+app.add_url_rule(
+    "/branch/login",
+    endpoint="branch_login",
+    view_func=login,
+    methods=["GET", "POST"],
+)
+
+
 @app.route('/admin/dashboard')
 def admin_dashboard():
     """لوحة المدير العام (ليست لوحة المؤسس)."""
@@ -183,9 +198,14 @@ def dashboard():
 
 @app.route('/logout')
 def logout():
+    role = session.get("role")
     session.clear()
     flash("تم تسجيل الخروج بنجاح", "info")
-    return redirect(url_for('index'))
+    if role == "branch":
+        return redirect(url_for("branch_login"))
+    if role == "admin":
+        return redirect(url_for("admin_login"))
+    return redirect(url_for("login"))
 
 @app.route('/admin/create_branch', methods=['POST'])
 def create_branch():

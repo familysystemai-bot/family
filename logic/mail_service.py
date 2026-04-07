@@ -3,13 +3,11 @@ import smtplib
 import traceback
 from email.message import EmailMessage
 
-from config import SENDER_EMAIL, SENDER_PASSWORD
-
 
 def send_email(recipients, subject, body):
     """
     إرسال بريد عبر Gmail SMTP.
-    المرسل الوحيد: SENDER_EMAIL من config (لا يُستخدم MAIN_RECEIVER_EMAIL أو ADMIN_EMAIL كمرسل).
+    المرسل: SENDER_EMAIL / SENDER_PASSWORD من متغيرات البيئة (لا يُستخدم MAIN_RECEIVER_EMAIL كمرسل).
     """
     return MailService().send_email(recipients, subject, body)
 
@@ -19,14 +17,12 @@ class MailService:
         """
         إرسال إيميل لجهة واحدة أو عدة جهات (مستلمين فقط).
         """
-        print("EMAIL ENV CHECK")
-        print("SENDER_EMAIL:", os.getenv("SENDER_EMAIL"))
-        print("SENDER_PASSWORD EXISTS:", bool(os.getenv("SENDER_PASSWORD")))
-        print("CONFIG EMAIL:", SENDER_EMAIL)
-        print("CONFIG PASSWORD EXISTS:", bool(SENDER_PASSWORD))
+        from_email = (os.environ.get("SENDER_EMAIL") or "").strip()
+        password = os.environ.get("SENDER_PASSWORD") or ""
 
-        from_email = SENDER_EMAIL
-        password = SENDER_PASSWORD
+        print("EMAIL ENV CHECK")
+        print("SENDER_EMAIL:", os.environ.get("SENDER_EMAIL"))
+        print("SENDER_PASSWORD EXISTS:", bool(os.environ.get("SENDER_PASSWORD")))
 
         if not from_email or not password:
             print("⚠️ خطأ: بيانات البريد SENDER_EMAIL/SENDER_PASSWORD غير مضبوطة (متغيرات البيئة).")
@@ -46,7 +42,7 @@ class MailService:
             to_addrs = [recipients]
 
         try:
-            print("CONNECTING SMTP...")
+            print("CONNECTING SMTP (587 STARTTLS)...")
             with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as smtp:
                 print("CONNECTED")
                 smtp.ehlo()

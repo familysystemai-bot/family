@@ -19,11 +19,22 @@
       if (!isMobileDrawer()) {
         root.classList.remove("dash-nav-open");
         document.body.classList.remove("dash-nav-open");
+        document.documentElement.classList.remove("dash-nav-open");
+        document.body.style.overflow = "";
+        document.documentElement.style.overflow = "";
         btn.setAttribute("aria-expanded", "false");
         return;
       }
       root.classList.toggle("dash-nav-open", open);
       document.body.classList.toggle("dash-nav-open", open);
+      document.documentElement.classList.toggle("dash-nav-open", open);
+      if (open) {
+        document.body.style.overflow = "hidden";
+        document.documentElement.style.overflow = "hidden";
+      } else {
+        document.body.style.overflow = "";
+        document.documentElement.style.overflow = "";
+      }
       btn.setAttribute("aria-expanded", open ? "true" : "false");
     }
 
