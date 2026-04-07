@@ -67,62 +67,20 @@
     </footer>
     </div>
 
-    <!-- Modal Login -->
-    <div class="modal fade" id="loginModal" tabindex="-1" data-bs-backdrop="static">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content ai-modal-panel">
-                <button class="modal-close-x" data-bs-dismiss="modal" aria-label="إغلاق"><i class="fa-solid fa-xmark"></i></button>
-                {{ site_logo_pair('login-logo', 'site-logo-k--index-modal') }}
-                <h5 class="text-center mb-3" style="font-weight:900;">تسجيل دخول سريع للشكاوى</h5>
-                <div id="step1">
-                    <div class="form-field">
-                        <input type="text" id="fullName" placeholder="الاسم الكامل">
-                    </div>
-                    <div class="form-field">
-                        <input type="text" id="contactInfo" placeholder="رقم الجوال أو البريد">
-                    </div>
-                    <button class="btn-verify" onclick="showStep2()">إرسال رمز التحقق</button>
-                    <button class="btn-cancel" data-bs-dismiss="modal">إلغاء</button>
-                </div>
-                <div id="step2" style="display:none;">
-                    <p class="text-center small" style="color:#999;">أدخل الرمز (1234) للتأكيد</p>
-                    <div class="form-field">
-                        <input type="text" id="otpCode" placeholder="- - - -" style="text-align:center; letter-spacing:10px; font-size:1.3rem;">
-                    </div>
-                    <button class="btn-verify" onclick="finishLogin()">تأكيد الدخول</button>
-                    <button class="btn-cancel" data-bs-dismiss="modal">إلغاء</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Smart Login Modal: بريد + رمز OTP (الجوال لاحقاً عند الحاجة) -->
+    <!-- تسجيل دخول زائر الشات: بريد أو جوال (9 أرقام) — بدون OTP -->
     <div class="modal fade" id="smartLoginModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered" style="max-width:380px;">
             <div class="modal-content ai-modal-panel">
                 <button class="modal-close-x" data-bs-dismiss="modal" aria-label="إغلاق"><i class="fa-solid fa-xmark"></i></button>
                 {{ site_logo_pair('login-logo login-logo--sm', 'site-logo-k--index-modal-sm') }}
                 <p class="text-center mb-3" style="font-size:0.9rem; color:#bbb; line-height:1.9;">
-                    للشكاوى وتتبع الطلب: أدخل اسمك والبريد، ثم رمز التحقق المرسل لبريدك
+                    للشكاوى وتتبع الطلب: أدخل بريدك الإلكتروني أو رقم جوالك (9 أرقام)
                 </p>
-                <div id="smartStep1">
-                    <div class="form-field">
-                        <input type="text" id="smartName" placeholder="الاسم الكامل" autocomplete="name">
-                    </div>
-                    <div class="form-field">
-                        <input type="email" id="smartEmail" placeholder="البريد الإلكتروني" autocomplete="email">
-                    </div>
-                    <button type="button" class="btn-verify" id="smartSendOtpBtn" onclick="smartLoginSendOtp()">إرسال رمز التحقق</button>
-                    <button class="btn-cancel" data-bs-dismiss="modal">إلغاء</button>
+                <div class="form-field">
+                    <input type="text" id="smartIdentifier" placeholder="البريد الإلكتروني أو رقم الجوال (9 أرقام)" autocomplete="username" inputmode="email">
                 </div>
-                <div id="smartStep2" style="display:none;">
-                    <p class="text-center small" style="color:#9ca3af;" id="smartOtpHint">أدخل الرمز المكوّن من 4 أرقام</p>
-                    <div class="form-field">
-                        <input type="text" id="smartOtpCode" inputmode="numeric" maxlength="6" placeholder="— — — —" style="text-align:center; letter-spacing:8px; font-size:1.25rem;" autocomplete="one-time-code">
-                    </div>
-                    <button type="button" class="btn-verify" onclick="smartLoginVerifyOtp()">تأكيد الدخول</button>
-                    <button type="button" class="btn-cancel" onclick="smartLoginBackToStep1()">رجوع</button>
-                </div>
+                <button type="button" class="btn-verify" id="smartLoginBtn" onclick="smartLoginSubmit()">تسجيل الدخول</button>
+                <button class="btn-cancel" data-bs-dismiss="modal">إلغاء</button>
             </div>
         </div>
     </div>
@@ -133,21 +91,12 @@
         let userName = "";
         let selectedFile = null;
         
-        const loginModalElement = document.getElementById('loginModal');
         const smartLoginModalElement = document.getElementById('smartLoginModal');
-        
-        let loginModal = loginModalElement ? new bootstrap.Modal(loginModalElement) : null;
         let smartLoginModal = smartLoginModalElement ? new bootstrap.Modal(smartLoginModalElement) : null;
         if (smartLoginModalElement) {
             smartLoginModalElement.addEventListener('hidden.bs.modal', function () {
-                smartLoginBackToStep1();
-                var sn = document.getElementById('smartName');
-                var se = document.getElementById('smartEmail');
-                var so = document.getElementById('smartOtpCode');
-                if (sn) sn.value = '';
-                if (se) se.value = '';
-                if (so) so.value = '';
-                pendingOtpEmail = '';
+                var si = document.getElementById('smartIdentifier');
+                if (si) si.value = '';
             });
         }
 
@@ -387,7 +336,6 @@
         }
 
         let userContact = '';
-        let pendingOtpEmail = '';
 
         function syncAccountSession() {
             if (!isLoggedIn) return;
@@ -407,11 +355,11 @@
         (function applyServerChatSession() {
             const srvChat = {{ chat_logged_in | tojson }};
             const srvName = {{ chat_user_name | tojson }};
-            const srvEmail = {{ chat_user_email | tojson }};
-            if (!srvChat || !srvEmail) return;
+            const srvContact = {{ chat_user_contact | tojson }};
+            if (!srvChat || !srvContact) return;
             isLoggedIn = true;
             userName = (srvName || '').trim();
-            userContact = srvEmail;
+            userContact = srvContact;
             const hb = document.getElementById('headerLoginBtn');
             const badge = document.getElementById('userBadge');
             const lo = document.getElementById('chatLogoutLink');
@@ -419,87 +367,46 @@
             if (hb) hb.style.display = 'none';
             if (badge) badge.style.display = 'flex';
             if (lo) lo.style.display = 'inline-flex';
-            if (du) du.textContent = userName || srvEmail;
+            if (du) du.textContent = userName || srvContact;
             syncAccountSession();
         })();
 
-        function smartLoginBackToStep1() {
-            document.getElementById('smartStep2').style.display = 'none';
-            document.getElementById('smartStep1').style.display = 'block';
-            document.getElementById('smartOtpCode').value = '';
-            pendingOtpEmail = '';
-        }
-
-        async function smartLoginSendOtp() {
-            const name = document.getElementById('smartName').value.trim();
-            const email = document.getElementById('smartEmail').value.trim();
-            if (name.length < 2) { alert('فضلاً اكتب اسمك'); return; }
-            if (!email.includes('@') || !email.includes('.')) {
-                alert('فضلاً أدخل بريداً إلكترونياً صالحاً للتحقق');
+        async function smartLoginSubmit() {
+            const identifier = (document.getElementById('smartIdentifier') && document.getElementById('smartIdentifier').value || '').trim();
+            if (!identifier) {
+                alert('يرجى إدخال البريد أو رقم الجوال');
                 return;
             }
-            const btn = document.getElementById('smartSendOtpBtn');
-            if (btn) { btn.disabled = true; }
+            const btn = document.getElementById('smartLoginBtn');
+            if (btn) btn.disabled = true;
             try {
-                const r = await fetch('/api/email-otp/request', {
+                const r = await fetch('/api/chat-login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'same-origin',
-                    body: JSON.stringify({ name: name, email: email }),
+                    body: JSON.stringify({ identifier: identifier }),
                 });
                 const j = await r.json().catch(function () { return {}; });
                 if (!r.ok || !j.ok) {
-                    alert(j.error || 'تعذر إرسال الرمز. حاول لاحقاً.');
+                    alert(j.error || 'تعذر تسجيل الدخول');
                     return;
                 }
-                pendingOtpEmail = email;
-                document.getElementById('smartStep1').style.display = 'none';
-                document.getElementById('smartStep2').style.display = 'block';
-                document.getElementById('smartOtpHint').textContent =
-                    'أرسلنا رمزاً إلى ' + email + ' — أدخل الأرقام الأربعة';
-                document.getElementById('smartOtpCode').focus();
-            } catch (e) {
-                alert('خطأ في الاتصال');
-            } finally {
-                if (btn) { btn.disabled = false; }
-            }
-        }
-
-        async function smartLoginVerifyOtp() {
-            const code = document.getElementById('smartOtpCode').value.trim().replace(/\s+/g, '');
-            const email = pendingOtpEmail || document.getElementById('smartEmail').value.trim();
-            if (code.length !== 4 || !/^\d{4}$/.test(code)) {
-                alert('أدخل الرمز المكوّن من 4 أرقام');
-                return;
-            }
-            try {
-                const r = await fetch('/api/email-otp/verify', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({ email: email, code: code }),
-                });
-                const j = await r.json().catch(function () { return {}; });
-                if (!r.ok || !j.ok) {
-                    alert(j.error || 'الكود غير صحيح');
-                    return;
-                }
-                userName = j.name || '';
-                userContact = j.email || email;
+                userName = '';
+                userContact = j.identifier || identifier;
                 isLoggedIn = true;
                 if (smartLoginModal) smartLoginModal.hide();
                 document.getElementById('headerLoginBtn').style.display = 'none';
                 document.getElementById('userBadge').style.display = 'flex';
                 var lo = document.getElementById('chatLogoutLink');
                 if (lo) lo.style.display = 'inline-flex';
-                document.getElementById('displayUserName').textContent = userName;
-                document.getElementById('smartName').value = '';
-                document.getElementById('smartEmail').value = '';
-                document.getElementById('smartOtpCode').value = '';
-                smartLoginBackToStep1();
+                document.getElementById('displayUserName').textContent = userContact;
+                var si = document.getElementById('smartIdentifier');
+                if (si) si.value = '';
                 syncAccountSession();
             } catch (e) {
                 alert('خطأ في الاتصال');
+            } finally {
+                if (btn) btn.disabled = false;
             }
         }
 
@@ -513,32 +420,6 @@
                 if(smartLoginModal) smartLoginModal.show();
             } else {
                 // لا نرسل رد ثابت — المستخدم يكتب الشكوى وسيتم التعامل معها عبر /chat_query
-            }
-        }
-
-        function showStep2() {
-            userName = document.getElementById('fullName').value;
-            if (userName.length < 3) return alert("فضلاً اكتب اسمك الكامل");
-            document.getElementById('step1').style.display = 'none';
-            document.getElementById('step2').style.display = 'block';
-        }
-
-        function finishLogin() {
-            const otp = document.getElementById('otpCode').value;
-            if (otp === "1234") {
-                isLoggedIn = true;
-                if(loginModal) loginModal.hide();
-                document.getElementById('headerLoginBtn').style.display = 'none';
-                document.getElementById('userBadge').style.display = 'flex';
-                var lo = document.getElementById('chatLogoutLink');
-                if (lo) lo.style.display = 'inline-flex';
-                document.getElementById('displayUserName').textContent = userName;
-                document.getElementById('step1').style.display = 'block';
-                document.getElementById('step2').style.display = 'none';
-                document.getElementById('otpCode').value = '';
-                syncAccountSession();
-            } else {
-                alert("رمز التحقق خطأ");
             }
         }
 

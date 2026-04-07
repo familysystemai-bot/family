@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import uuid
 from datetime import timedelta
@@ -1215,59 +1216,67 @@ def admin_full_diagnostics():
 # ==========================================
 # البوت والمحادثة الذكية
 # ==========================================
+def _customer_email_valid(email: str) -> bool:
+    e = (email or "").strip().lower()
+    if "@" not in e:
+        return False
+    left, right = e.rsplit("@", 1)
+    return bool(left and right and "." in right)
+
+
+def _parse_customer_login_identifier(raw) -> tuple:
+    """
+    يعيد (نجاح، النوع 'email'|'phone'، القيمة المعيارية، رسالة خطأ عربية أو None).
+    """
+    s = (raw or "").strip()
+    if not s:
+        return False, None, None, "يرجى إدخال البريد أو رقم الجوال"
+    if "@" in s:
+        e = s.lower().strip()
+        if not _customer_email_valid(e):
+            return False, None, None, "البريد غير صحيح"
+        return True, "email", e, None
+    digits = re.sub(r"\D", "", s)
+    if len(digits) != 9 or not digits.isdigit():
+        return False, None, None, "رقم الجوال يجب أن يكون 9 أرقام"
+    return True, "phone", digits, None
+
+
 @app.route('/')
 def index():
-    chat_ok = session.get("login_scope") == "chat_customer" and bool(
-        (session.get("user_email") or "").strip()
-    )
+    uid = (session.get("user") or "").strip()
+    chat_ok = session.get("login_scope") == "chat_customer" and bool(uid)
     return render_template(
         'index.html',
         chat_logged_in=chat_ok,
         chat_user_name=(session.get("user_name") or ""),
         chat_user_email=(session.get("user_email") or ""),
+        chat_user_contact=uid,
     )
 
 
 # ==========================================
 # واجهة الشات الموحّدة (نص + مرفقات)
 # ==========================================
-@app.route("/api/email-otp/request", methods=["POST"])
-def email_otp_request():
-    """طلب رمز تحقق بريد لدخول الشات (الخطوة 1)."""
-    from logic import otp_service
-
+@app.route("/api/chat-login", methods=["POST"])
+def chat_login():
+    """تسجيل دخول زائر الشات مباشرة بالبريد أو جوال (9 أرقام) — بدون OTP."""
     data = request.get_json(silent=True) or {}
-    ok, err = otp_service.request_email_otp(db, data.get("email"), data.get("name"))
-    if not ok:
-        return jsonify({"ok": False, "error": err}), 400
-    return jsonify({"ok": True})
-
-
-@app.route("/api/email-otp/verify", methods=["POST"])
-def email_otp_verify():
-    """تأكيد الرمز (الخطوة 2)."""
-    from logic import otp_service
-
-    data = request.get_json(silent=True) or {}
-    ok, err, payload = otp_service.verify_email_otp(
-        db, data.get("email"), data.get("code")
-    )
-    if not ok or not payload:
-        return jsonify({"ok": False, "error": err or "الكود غير صحيح"}), 400
+    ok, kind, value, err = _parse_customer_login_identifier(data.get("identifier"))
+    if not ok or not kind or value is None:
+        return jsonify({"ok": False, "error": err or "بيانات غير صالحة"}), 400
     session.permanent = True
     session["logged_in"] = True
     session["login_scope"] = "chat_customer"
-    session["user_email"] = (payload.get("email") or "").strip()
-    nm = (payload.get("name") or "").strip()[:120]
-    if nm:
-        session["user_name"] = nm
-    return jsonify(
-        {
-            "ok": True,
-            "name": payload.get("name"),
-            "email": payload.get("email"),
-        }
-    )
+    session["user"] = value
+    session.pop("user_name", None)
+    if kind == "email":
+        session["user_email"] = value
+        session.pop("user_phone", None)
+    else:
+        session["user_phone"] = value
+        session["user_email"] = ""
+    return jsonify({"ok": True, "kind": kind, "identifier": value})
 
 
 @app.route('/chat_query', methods=['POST'])

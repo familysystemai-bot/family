@@ -33,7 +33,7 @@ html.dash-html {
   align-items: center;
   justify-content: center;
   position: fixed;
-  z-index: 1001;
+  z-index: 1002;
   inset-inline-end: 0.75rem;
   top: 0.75rem;
   width: 3rem;
@@ -63,29 +63,6 @@ html.dash-html {
   outline-offset: 2px;
 }
 
-/* طبقة تظليل كاملة فوق المحتوى وتحت الشريط الجانبي (موبايل) */
-.dash-backdrop,
-.sidebar-overlay {
-  display: none;
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 999;
-  background: rgba(0, 0, 0, 0.4);
-  opacity: 0;
-  transition: opacity 0.25s ease;
-  pointer-events: none;
-}
-
-.dash-layout.dash-nav-open .dash-backdrop,
-.dash-layout.dash-nav-open .sidebar-overlay {
-  display: block;
-  opacity: 1;
-  pointer-events: auto;
-}
-
 /* لوحة المؤسس: ألوان الزر تتماشى مع الثيم الأخضر */
 html.fd-dashboard .dash-menu-btn,
 body.fd-dashboard .dash-menu-btn {
@@ -108,13 +85,30 @@ body.fd-dashboard .dash-menu-btn:focus-visible {
   .dash-backdrop,
   .sidebar-overlay {
     display: none !important;
-    opacity: 0 !important;
     pointer-events: none !important;
   }
 
   .dash-row {
     flex-wrap: nowrap;
     align-items: stretch;
+  }
+
+  .dash-layout aside.dash-sidebar-col {
+    position: relative !important;
+    right: auto !important;
+    inset-inline-end: auto !important;
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    transition: none !important;
+    box-shadow: none !important;
+    visibility: visible !important;
+  }
+
+  .dash-layout aside.dash-sidebar-col.open {
+    right: auto !important;
+    inset-inline-end: auto !important;
   }
 
   .dash-sidebar-col {
@@ -180,35 +174,83 @@ body.fd-dashboard .dash-menu-btn:focus-visible {
     border: none !important;
   }
 
-  .dash-sidebar-panel {
+  /* طبقة التعتيم: تحت الشريط مباشرة، تُفتح بـ .active فقط */
+  .dash-layout .dash-backdrop.sidebar-overlay,
+  .dash-layout .sidebar-overlay {
+    display: none;
     position: fixed;
     top: 0;
-    inset-inline-end: 0;
+    left: 0;
+    width: 100%;
     height: 100%;
-    min-height: 100vh;
-    min-height: 100dvh;
-    width: min(300px, 88vw);
+    height: 100dvh;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: rgba(0, 0, 0, 0.5);
     z-index: 1000;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+  }
+
+  .dash-layout .sidebar-overlay.active,
+  .dash-layout .dash-backdrop.sidebar-overlay.active {
+    display: block;
+  }
+
+  /* الشريط الجانبي على مستوى aside — أعلى من الطبقة */
+  .dash-layout aside.dash-sidebar-col {
+    position: fixed;
+    top: 0;
+    right: -100%;
+    width: 80%;
+    max-width: min(320px, 92vw);
+    height: 100%;
+    height: 100dvh;
+    z-index: 1001;
+    transition: right 0.3s ease;
+    overflow: hidden;
+    visibility: visible;
+    background: var(--sidebar-bg, #fff);
+  }
+
+  .dash-layout aside.dash-sidebar-col.open {
+    right: 0;
+    box-shadow: -8px 0 28px rgba(0, 0, 0, 0.2);
+  }
+
+  .dash-sidebar-panel {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    max-width: none;
+    top: auto;
+    inset-inline-end: auto;
+    z-index: auto;
+    transform: none !important;
+    visibility: visible !important;
     isolation: isolate;
     touch-action: manipulation;
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
-    box-shadow: -6px 0 24px rgba(0, 0, 0, 0.12);
-    transform: translateX(100%);
-    visibility: hidden;
-    transition: transform 0.28s ease, visibility 0.28s ease, box-shadow 0.28s ease;
-  }
-
-  .dash-layout.dash-nav-open .dash-sidebar-panel {
-    transform: translateX(0);
-    visibility: visible;
+    box-shadow: none;
   }
 
   .sidebar.dash-sidebar-col .dash-sidebar-panel {
     background: var(--sidebar-bg, #f5f5dc);
     border-left: 2px solid var(--accent-gold, #b8860b);
-    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.08);
+  }
+
+  .fd-dashboard .dash-layout aside.fd-sidebar.dash-sidebar-col {
+    background: transparent;
+  }
+
+  .dash-layout.dash-nav-open .dash-main {
+    pointer-events: none;
+    user-select: none;
   }
 
   .dash-main {
@@ -290,8 +332,23 @@ body.fd-dashboard .dash-menu-btn:focus-visible {
   .dash-backdrop,
   .sidebar-overlay {
     display: none !important;
-    opacity: 0 !important;
     pointer-events: none !important;
+  }
+
+  .dash-layout aside.dash-sidebar-col {
+    position: relative !important;
+    right: auto !important;
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    transition: none !important;
+    background: transparent !important;
+  }
+
+  .dash-layout aside.dash-sidebar-col.open {
+    right: auto !important;
   }
 
   .dash-sidebar-col {
@@ -307,6 +364,11 @@ body.fd-dashboard .dash-menu-btn:focus-visible {
     visibility: visible !important;
     box-shadow: none;
     overflow: visible;
+  }
+
+  .dash-main {
+    pointer-events: auto !important;
+    user-select: auto !important;
   }
 }
 
