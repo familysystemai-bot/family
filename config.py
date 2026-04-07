@@ -75,6 +75,7 @@ DIAGNOSTICS_ALERT_COOLDOWN_SECONDS = int(
 )
 
 # ——— نماذج ذكاء اصطناعي (اختياري، يُقرأ من البيئة) ———
+# Render: عيّن المفاتيح في Environment فقط — لا يُحمّل .env تلقائياً (انظر شرط RENDER أعلاه).
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if OPENAI_API_KEY is not None:
@@ -83,6 +84,7 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 # تحليل استعلام البحث قبل SQLite (استخراج فقط) — يُعطّل بـ OPENAI_PRESEARCH=false
 # تصنيف مسار unknown عبر OpenAI — يُعطّل بـ OPENAI_INTENT_CLASSIFIER=false
 # منسّق الشات (قرار JSON: action + filters) — يُعطّل بـ OPENAI_CHAT_ORCHESTRATOR=false
+# تشخيص stdout على Render: OPENAI_ORCH_DEBUG=true (يطبع OPENAI_API_KEY / OPENAI_CHAT_ORCHESTRATOR / MODEL / …)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 

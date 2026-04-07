@@ -1252,7 +1252,18 @@ def email_otp_verify():
 
 @app.route('/chat_query', methods=['POST'])
 def chat_query():
-    return chat_query_handler()
+    # Temporary: full console trace for one request (Render / local) — لا يغيّر منطق المعالج
+    os.environ["OPENAI_ORCH_DEBUG"] = "true"
+    print("=== REQUEST START ===")
+    print("MESSAGE:", request.get_json(silent=True))
+    out = chat_query_handler()
+    print("=== RESPONSE ===")
+    resp_obj = out[0] if isinstance(out, tuple) and len(out) >= 1 else out
+    if hasattr(resp_obj, "get_json"):
+        print(resp_obj.get_json(silent=True))
+    else:
+        print(resp_obj)
+    return out
 
 
 if __name__ == '__main__':

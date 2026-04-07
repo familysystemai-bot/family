@@ -82,7 +82,11 @@ _UNKNOWN_ROUTE_SYSTEM = """أنت مصنّف رسائل فقط لمتجر تجز
 لا تخترع معلومات؛ اعتمد على صياغة المستخدم فقط."""
 
 ORCHESTRATOR_ENV = "OPENAI_CHAT_ORCHESTRATOR"
+# عيّن OPENAI_ORCH_DEBUG=true على Render لطباعة تشخيصات stdout (الأسطر المطلوبة أدناه).
+_ORCH_DEBUG_ENV = "OPENAI_ORCH_DEBUG"
 _MAX_ORCHESTRATOR_TOKENS = 900
+_ORCH_ENV_LOGGED_ONCE = False
+_ORCH_DISABLED_WARNED = False
 
 _ORCHESTRATOR_SYSTEM = """أنت منسّق محادثة متجر أزياء في السعودية. تتكلم بلهجة سعودية بسيطة وطبيعية (مثل موظف مبيعات)، بعيد عن الصياغة الروبوتية.
 استخدم أحياناً: «أنصحك بـ…»، «ممكن يناسبك…»، «جرّب تطّلع على…» — بدون مبالغة.
@@ -816,10 +820,56 @@ def extract_search_analysis_openai(message: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def is_chat_orchestrator_enabled() -> bool:
+def _orchestrator_env_allowed() -> bool:
+    """نفس شرط التشغيل الفعلي — يُستخدم للتشخيص دون تعارض."""
     if not (OPENAI_API_KEY or "").strip():
         return False
-    return os.getenv(ORCHESTRATOR_ENV, "true").lower() in ("1", "true", "yes")
+    v = os.getenv(ORCHESTRATOR_ENV, "true")
+    return str(v).strip().lower() in ("1", "true", "yes")
+
+
+def _orch_debug_prints() -> None:
+    """طباعات stdout عند OPENAI_ORCH_DEBUG — تطابق نقاط التحقق المطلوبة (Render console)."""
+    if os.getenv(_ORCH_DEBUG_ENV, "").strip().lower() not in ("1", "true", "yes"):
+        return
+    print("OPENAI_API_KEY:", bool(os.getenv("OPENAI_API_KEY")))
+    print("OPENAI_CHAT_ORCHESTRATOR:", os.getenv("OPENAI_CHAT_ORCHESTRATOR"))
+    print("ORCHESTRATOR ENABLED:", is_chat_orchestrator_enabled())
+    print("MODEL:", OPENAI_MODEL)
+
+
+def _log_orchestrator_env_once() -> None:
+    """سطر واحد في السجل لكل عملية (Render logs) — أول استدعاء للمنسّق فقط."""
+    global _ORCH_ENV_LOGGED_ONCE
+    if _ORCH_ENV_LOGGED_ONCE:
+        return
+    _ORCH_ENV_LOGGED_ONCE = True
+    logger.info(
+        "openai_orchestrator env: OPENAI_API_KEY set=%s %s=%r MODEL=%r enabled=%s",
+        bool(os.getenv("OPENAI_API_KEY")),
+        ORCHESTRATOR_ENV,
+        os.getenv(ORCHESTRATOR_ENV, "true"),
+        OPENAI_MODEL,
+        _orchestrator_env_allowed(),
+    )
+
+
+def is_chat_orchestrator_enabled() -> bool:
+    global _ORCH_DISABLED_WARNED
+    ok = _orchestrator_env_allowed()
+    if not ok and not _ORCH_DISABLED_WARNED:
+        _ORCH_DISABLED_WARNED = True
+        if not (OPENAI_API_KEY or "").strip():
+            logger.warning(
+                "ORCHESTRATOR DISABLED: OPENAI_API_KEY missing or empty (check Render Environment)"
+            )
+        else:
+            logger.warning(
+                "ORCHESTRATOR DISABLED: %s=%r — use string true/1/yes (not empty)",
+                ORCHESTRATOR_ENV,
+                os.getenv(ORCHESTRATOR_ENV, "true"),
+            )
+    return ok
 
 
 def build_orchestrator_context(
@@ -951,18 +1001,38 @@ def normalize_orchestrator_plan(
     return plan
 
 
+def _print_openai_orchestrator_runtime_env() -> None:
+    """تشخيص إنتاجي: قيم البيئة وconfig كما طُلب — بدون تغيير المنطق."""
+    print("ENV CHECK START")
+    print("OPENAI_API_KEY:", bool(os.getenv("OPENAI_API_KEY")))
+    print("OPENAI_CHAT_ORCHESTRATOR:", os.getenv("OPENAI_CHAT_ORCHESTRATOR"))
+    print("OPENAI_MODEL:", os.getenv("OPENAI_MODEL"))
+    print("RENDER:", os.getenv("RENDER"))
+    print("CONFIG MODEL:", OPENAI_MODEL)
+    print("CONFIG KEY EXISTS:", bool(OPENAI_API_KEY))
+
+
 def run_chat_orchestrator_openai(message: str, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     محرك القرار الرئيسي: يعيد خطة JSON (action + filters + message) أو None.
     """
+    _print_openai_orchestrator_runtime_env()
+    _log_orchestrator_env_once()
+    _orch_debug_prints()
+    print("ORCHESTRATOR ENABLED:", is_chat_orchestrator_enabled())
     if not is_chat_orchestrator_enabled():
+        print("AI SKIPPED: orchestrator disabled (flag or missing key)")
         return None
     key = (OPENAI_API_KEY or "").strip()
     if not key:
+        print("AI SKIPPED: OPENAI_API_KEY empty after config strip")
         return None
     try:
         from openai import OpenAI
-    except ImportError:
+    except ImportError as e:
+        logger.error("OpenAI SDK not installed: %s", e)
+        print("AI SKIPPED: OpenAI Python package not installed")
+        print("OPENAI ERROR:", str(e))
         return None
     payload = {
         "customer_message": (message or "").strip()[:4000],
@@ -973,6 +1043,7 @@ def run_chat_orchestrator_openai(message: str, context: Dict[str, Any]) -> Optio
         user_text = user_text[:_MAX_CONTEXT_CHARS] + "…"
     model = (OPENAI_MODEL or "gpt-4o-mini").strip() or "gpt-4o-mini"
     try:
+        print("CALLING OPENAI...")
         client = OpenAI(api_key=key)
         response = client.chat.completions.create(
             model=model,
@@ -984,11 +1055,22 @@ def run_chat_orchestrator_openai(message: str, context: Dict[str, Any]) -> Optio
                 {"role": "user", "content": user_text},
             ],
         )
+        print("OPENAI RESPONSE RECEIVED")
         raw = (response.choices[0].message.content or "").strip()
         if not raw:
+            logger.warning("OpenAI orchestrator returned empty completion content")
+            print("AI SKIPPED: empty completion content")
             return None
-        data = json.loads(raw)
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as e:
+            logger.warning("OpenAI orchestrator invalid JSON: %s", e)
+            print("AI SKIPPED: JSON parse failed")
+            print("OPENAI ERROR:", str(e))
+            return None
         if not isinstance(data, dict):
+            logger.warning("OpenAI orchestrator JSON root is not an object")
+            print("AI SKIPPED: JSON root is not an object")
             return None
         action = str(data.get("action") or "").strip().lower()
         allowed_actions = frozenset(
@@ -1002,14 +1084,17 @@ def run_chat_orchestrator_openai(message: str, context: Dict[str, Any]) -> Optio
             }
         )
         if action not in allowed_actions:
+            logger.warning("OpenAI orchestrator unknown action: %r", action)
+            print("AI SKIPPED: unknown or invalid action:", action)
             return None
         plan = merge_gender_into_plan(message, data)
         plan = merge_user_context_into_plan(message, plan)
         plan = normalize_orchestrator_plan(plan, context, message)
         plan = coerce_shopping_to_product_search(plan, message)
         return plan
-    except Exception:
-        logger.exception("OpenAI chat orchestrator failed")
+    except Exception as e:
+        logger.exception("OpenAI chat orchestrator API failed")
+        print("OPENAI ERROR:", str(e))
         return None
 
 

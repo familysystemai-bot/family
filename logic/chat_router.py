@@ -251,6 +251,10 @@ def _try_rule_based_branch_location_phone(message: str, branch_list: list) -> Op
 
 def _orchestrator_hard_fallback(message: str, branch_list: list) -> Any:
     """عند تعطيل/فشل المنسّق: بحث منتج ثم طبقة OpenAI الاحتياطية."""
+    print("FALLBACK TRIGGERED")
+    logger.warning(
+        "FALLBACK_TRIGGERED: orchestrator disabled, API error, or invalid JSON — using hard fallback"
+    )
     uctx = ai_fb.extract_user_context(message)
     g = ai_fb.infer_gender_from_message(message)
     g_use = g if g in ("male", "female") else None
@@ -285,11 +289,21 @@ def _orchestrator_hard_fallback(message: str, branch_list: list) -> Any:
 
 
 def _execute_ai_orchestrator(message: str, branch_list: list) -> Any:
+    print("ENTER AI ORCHESTRATOR")
     db = cs.get_db()
     context = ai_fb.build_orchestrator_context(
         db, message, session.get("chat_dialect")
     )
+    print("ROUTING TO AI")
     plan = ai_fb.run_chat_orchestrator_openai(message, context)
+    if plan:
+        try:
+            import json as _json
+
+            _ps = _json.dumps(plan, ensure_ascii=False)
+        except Exception:
+            _ps = str(plan)
+        print("PLAN:", _ps[:4000] + ("..." if len(_ps) > 4000 else ""))
     if not plan:
         return _orchestrator_hard_fallback(message, branch_list)
 
@@ -640,18 +654,21 @@ def _router_pending_and_services(message: str, branch_list: list) -> Optional[An
 def _router_intent_branch(message: str, branch_list: list) -> Any:
     """قواعد ضيقة (أقسام، فرع/دوام) ثم المنسّق الذكي لباقي الرسائل."""
     if _looks_like_section_stock_question(message):
+        print("AI SKIPPED: section stock question rule")
         session["chat_current_intent"] = "section"
         session["chat_pending_action"] = None
         return _section_chat_response(message)
 
     t_norm = cs.normalize_message_for_branch_search(message)
     if any(k in t_norm for k in kw.SECTION_KEYWORDS):
+        print("AI SKIPPED: section keywords rule")
         session["chat_current_intent"] = "section"
         session["chat_pending_action"] = None
         return _section_chat_response(message)
 
     rule_branch = _try_rule_based_branch_location_phone(message, branch_list)
     if rule_branch is not None:
+        print("AI SKIPPED: branch/location/hours/phone rule")
         return rule_branch
 
     return _execute_ai_orchestrator(message, branch_list)
@@ -675,6 +692,7 @@ def dispatch_chat_query():
 
     mc = cust_ch.try_marketing_consent_reply(message, db)
     if mc is not None:
+        print("AI SKIPPED: marketing consent / consent reply path")
         return mc
 
     cust_ch.sync_customer_from_session(db, message)
@@ -683,7 +701,9 @@ def dispatch_chat_query():
         early = _router_early_exits(data)
         if early is not None:
             if data.get("account_session_sync"):
+                print("AI SKIPPED: early exit (account_session_sync)")
                 return early
+            print("AI SKIPPED: early exit (greeting/attachment/name/salam/...)")
             return cust_ch.attach_marketing_followup_if_needed(early)
 
         _maybe_reset_product_section_context(message)
@@ -693,6 +713,9 @@ def dispatch_chat_query():
 
         mid = _router_pending_and_services(message, branch_list)
         if mid is not None:
+            print(
+                "AI SKIPPED: pending branch/wizard/time/complaint/product followup handled"
+            )
             return cust_ch.attach_marketing_followup_if_needed(_maybe_enrich_json_response(mid))
 
         return cust_ch.attach_marketing_followup_if_needed(
