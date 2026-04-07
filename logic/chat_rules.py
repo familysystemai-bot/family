@@ -92,6 +92,50 @@ _PRODUCT_OR_SHOPPING_SUBSTRINGS = (
     "اكسسوارات",
 )
 
+# أفعال/صيغ طلب — لا تُحفظ كاسم شخص حتى لو كانت كلمتين
+_REQUEST_VERB_MARKERS = frozenset(
+    {
+        "ابغى",
+        "ابغي",
+        "أبغى",
+        "أبغي",
+        "أبي",
+        "ابي",
+        "أريد",
+        "اريد",
+        "عندكم",
+        "عندك",
+        "دور",
+        "دوري",
+        "فين",
+        "وين",
+        "عرض",
+        "بكم",
+        "كم",
+    }
+)
+
+# مدن/فروع شائعة في النص — ليست أسماء أشخاص
+_BRANCH_OR_CITY_FRAGMENTS = (
+    "مكة",
+    "مكه",
+    "جدة",
+    "جده",
+    "المدينة",
+    "المدينه",
+    "خميس",
+    "مشيط",
+    "قلوة",
+    "قلوه",
+    "الرياض",
+    "الدمام",
+    "فرع",
+    "فروع",
+    "موقع",
+    "عنوان",
+    "خرائط",
+)
+
 DIRECT_REQUEST_MARKERS = (
     "ابغى",
     "أبغى",
@@ -133,17 +177,25 @@ def looks_like_direct_request(text: str) -> bool:
 
 def is_plausible_person_name(text: str) -> bool:
     """
-    اسم مقبول: حتى 3 كلمات، بدون كلمات استفسار/طلب واضحة.
+    اسم مقبول: كلمة أو كلمتان فقط، بدون طلب/منتج/مدينة/فرع.
     """
     s = (text or "").strip()
-    if len(s) < 2 or len(s) > 40:
+    if len(s) < 2 or len(s) > 36:
         return False
     words = _normalize_tokens(s)
-    if not words or len(words) > 3:
+    if not words or len(words) > 2:
+        return False
+    sn = s.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ى", "ي")
+    for frag in _BRANCH_OR_CITY_FRAGMENTS:
+        if frag in sn or frag in s:
+            return False
+    if "فرع" in s or "موقع" in s:
         return False
     for w in words:
         wl = w.lower()
         if wl in INQUIRY_TOKENS or w in INQUIRY_TOKENS:
+            return False
+        if w in _REQUEST_VERB_MARKERS or wl in _REQUEST_VERB_MARKERS:
             return False
     # أرقام فقط
     if all(c.isdigit() for c in s.replace(" ", "")):

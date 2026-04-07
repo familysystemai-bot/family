@@ -41,15 +41,53 @@ def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+def normalize_message_for_branch_search(message: Optional[str]) -> str:
+    """
+    تطبيع صياغي لتحسين مطابقة الفروع (مثل: بمكة / في مكة → تمييز «مكة» بلا حرف جر).
+    لا يغيّر معنى طلب المنتجات بشكل جوهري؛ يُستخدم قبل استخراج الفرع وتحليل النية.
+    """
+    if not message or not str(message).strip():
+        return ""
+    t = str(message).strip()
+    t = t.replace("ٱ", "ا").replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+    pairs = (
+        ("بمكة", " مكة "),
+        ("بمكه", " مكة "),
+        ("في مكة", " مكة "),
+        ("في مكه", " مكة "),
+        ("من مكة", " مكة "),
+        ("للمكة", " مكة "),
+        ("بجدة", " جدة "),
+        ("بجده", " جدة "),
+        ("في جدة", " جدة "),
+        ("في جده", " جدة "),
+        ("بالمدينة", " المدينة "),
+        ("في المدينة", " المدينة "),
+        ("في المدينه", " المدينة "),
+        ("للمدينة", " المدينة "),
+        ("بخميس مشيط", " خميس مشيط "),
+        ("خميس مشيط", " خميس مشيط "),
+        ("بقلوة", " قلوة "),
+        ("في قلوة", " قلوة "),
+        ("عندكم فرع", " فرع "),
+        ("عندك فرع", " فرع "),
+    )
+    for a, b in pairs:
+        if a in t:
+            t = t.replace(a, b)
+    return " ".join(t.split())
+
+
 def extract_branch_name(message):
     """تبحث في رسالة العميل عن اسم مدينة/فرع مسجل في قاعدة البيانات"""
     if not message:
         return None
+    blob = normalize_message_for_branch_search(message) + " " + (message or "")
     branches = get_db().get_all_branches()
     for branch in branches:
         branch_name = branch["city_name"]
         city_only = branch_name.replace("فرع", "").strip()
-        if city_only in message or branch_name in message:
+        if city_only in blob or branch_name in blob:
             return branch_name
     return None
 
@@ -59,9 +97,10 @@ _CHAT_PENDING_BRANCH = "await_branch_for_location"
 
 
 def _branch_selection_prompt() -> str:
-    lines = branch_list_lines()
-    tail = "\n".join(lines) if lines else "• جدة\n• مكة\n• المدينة\n• خميس مشيط\n• قلوة"
-    return f"أي فرع تقصد؟\n{tail}"
+    """سؤال واحد مختصر — بدون سرد طويل إلا عند الحاجة."""
+    if session.get("chat_last_branch") or session.get("chat_selected_branch"):
+        return "أي فرع تقصد بالضبط؟ (جدة، مكة، المدينة، خميس مشيط، قلوة)"
+    return "أي مدينة؟ جدة، مكة، المدينة، خميس مشيط، أو قلوة."
 
 
 def _ensure_chat_user_session():
@@ -94,11 +133,12 @@ def resolve_branch_from_message(message: str):
     """استخراج اسم الفرع كما هو مخزن في branches.city_name لموحدة get_branch_id_by_city_name."""
     if not message or not message.strip():
         return None
+    msg = normalize_message_for_branch_search(message.strip()) + " " + message.strip()
     direct = extract_branch_name(message)
     if direct:
         return direct
 
-    msg = message.strip()
+    msg = msg.strip()
     branches = get_db().get_all_branches()
     candidates = []
     for b in branches:

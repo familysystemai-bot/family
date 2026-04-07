@@ -463,11 +463,11 @@ def _router_intent_branch(message: str, branch_list: list) -> Any:
                 if (b.get("name") or "").strip()
             ]
             if len(labels) >= 2:
-                msg = f"أي فرع تقصد؟ {labels[0]} ولا {labels[1]}؟"
+                msg = f"أي فرع؟ {labels[0]} ولا {labels[1]}؟"
             elif len(labels) == 1:
-                msg = f"تقصد فرع {labels[0]}؟ أكّد لي اسم الفرع عشان أرسل لك رقم التواصل."
+                msg = f"تقصد {labels[0]}؟ أكّد اسم المدينة لأرسل رقم التواصل."
             else:
-                msg = f"أي فرع تقصد يا {cs._display_name()}؟ {cs._branch_selection_prompt()}"
+                msg = f"أي مدينة يا {cs._display_name()}؟ {cs._branch_selection_prompt()}"
             return jsonify(
                 {
                     "products": [],
@@ -546,9 +546,39 @@ def _router_intent_branch(message: str, branch_list: list) -> Any:
 
     if intent == "unknown":
         session["chat_current_intent"] = "unknown"
-        # تحليل OpenAI للاستخراج فقط ثم بحث DB (القرار النهائي من القواعد + البيانات)
+        msg_for_branch = cs.normalize_message_for_branch_search(message)
+        ai_route = ai_fb.classify_unknown_intent_openai(message)
+        if ai_route == "complaint":
+            session["chat_pending_action"] = None
+            return _handle_new_complaint_intent(message, branch_list)
+        if ai_route == "location":
+            bn_ai = _resolve_branch_for_location(msg_for_branch) or cs.resolve_branch_from_message(
+                msg_for_branch
+            )
+            if bn_ai:
+                session["chat_pending_action"] = None
+                session["chat_selected_branch"] = bn_ai
+                chat_ctx.remember_branch_by_name(bn_ai)
+                return jsonify(_branch_location_json(bn_ai, message))
+            session["chat_pending_action"] = cs._CHAT_PENDING_BRANCH
+            return jsonify(
+                {
+                    "products": [],
+                    "message": f"حاضر يا {cs._display_name()}، {cs._branch_selection_prompt()}",
+                    "branches": branch_list,
+                    "intent": "location",
+                }
+            )
+        if ai_route == "product":
+            psq_p = ai_fb.enhance_search_query_with_openai(message, "product")
+            prod_ai = _build_products_response(psq_p, hint_source_message=message)
+            if prod_ai and prod_ai.get("products"):
+                session["chat_current_intent"] = "product"
+                session["chat_pending_action"] = None
+                chat_ctx.set_last_intent("product")
+                return jsonify(prod_ai)
+        # تحليل OpenAI للاستخراج ثم بحث DB — القرار النهائي من البيانات
         psq = ai_fb.enhance_search_query_with_openai(message, intent)
-        # DB أولاً: استعلام المنتجات قبل LLM/توليد رد نصي
         prod_db = _build_products_response(psq, hint_source_message=message)
         if prod_db and prod_db.get("products"):
             session["chat_current_intent"] = "product"

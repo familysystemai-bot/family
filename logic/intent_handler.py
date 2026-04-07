@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, Optional
 
 from logic import keywords as kw
+from logic.chat_service import normalize_message_for_branch_search
 
 # إعادة تصدير لبقية المشروع (مثلاً chat_service)
 PRODUCT_HINTS = kw.PRODUCT_HINTS
@@ -89,7 +90,7 @@ def detect_chat_intent(message: str, resolve_branch: Callable[[str], Optional[st
                         return True
         return False
 
-    t = (message or "").strip()
+    t = normalize_message_for_branch_search((message or "").strip())
     tl = t.lower()
     if not tl:
         return "unknown"
@@ -161,7 +162,9 @@ def pre_route_intent_snapshot(
     from logic.product_query_parse import normalize_for_product_search
     from logic.product_service import _looks_like_next_product_request
 
-    primary = detect_chat_intent(message, resolve_branch)
+    primary = detect_chat_intent(
+        normalize_message_for_branch_search((message or "").strip()), resolve_branch
+    )
     product_sub: Optional[str] = None
     if primary == "product":
         product_sub = (
