@@ -19,6 +19,7 @@ from logic.product_query_parse import (
     extract_gender_filter,
     normalize_for_product_search,
 )
+from logic.product_repository import filter_rows_keyword_in_product_name
 
 
 def _cs():
@@ -765,7 +766,7 @@ def _looks_like_product_interest_confirmation(message: str) -> bool:
 
 def _try_pending_product_intent_confirmation(message: str):
     """
-    بعد عرض منتجات بدون ذكر فروع: إذا أكد العميل الاهتمام نعرض الفروع/السؤال فقط.
+    بعد عرض منتجات: إذا طلب المستخدم «فروع/وين» نذكر الفروع؛ وإلا رد قصير بدون سرد فروع.
     """
     if not session.get("pending_product_intent"):
         return None
@@ -775,6 +776,22 @@ def _try_pending_product_intent_confirmation(message: str):
     cs = _cs()
     get_db = cs.get_db
     _display_name = cs._display_name
+    t = (message or "").strip()
+    wants_branch_detail = any(
+        k in t
+        for k in (
+            "أي فرع",
+            "اي فرع",
+            "أي فرع؟",
+            "وين الفرع",
+            "وين الفروع",
+            "الفروع",
+            "فروعكم",
+            "موقع الفرع",
+            "اقرب فرع",
+            "أقرب فرع",
+        )
+    )
     ids = list(session.get("last_products") or [])
     if not ids and session.get("chat_last_product"):
         try:
@@ -788,18 +805,21 @@ def _try_pending_product_intent_confirmation(message: str):
             continue
         variants = get_db().get_product_variants(pid) or []
         out_products.append(
-            _product_dict_for_chat(p, pid, variants, show_branch_in_chat=True)
+            _product_dict_for_chat(p, pid, variants, show_branch_in_chat=False)
         )
-    cities = _distinct_branch_city_labels(out_products)
     d = session.get("chat_dialect") or "default"
-    msg = dialect_message(d, "product_branch_prompt", name=_display_name())
-    if cities:
-        msg += "\n" + "\n".join(f"• {c}" for c in cities)
+    if wants_branch_detail:
+        cities = _distinct_branch_city_labels(out_products)
+        msg = dialect_message(d, "product_branch_prompt", name=_display_name())
+        if cities:
+            msg += "\n" + "\n".join(f"• {c}" for c in cities)
+        return jsonify({"products": [], "message": msg, "intent": "product"})
+    msg = dialect_message(d, "product_available_ack", name=_display_name())
     return jsonify({"products": [], "message": msg, "intent": "product"})
 
 
 def _product_dict_for_chat(
-    p: dict, product_id: int, variants: list, *, show_branch_in_chat: bool = True
+    p: dict, product_id: int, variants: list, *, show_branch_in_chat: bool = False
 ) -> dict:
     cs = _cs()
     get_db = cs.get_db
@@ -871,6 +891,44 @@ def _product_dict_for_chat(
     }
 
 
+def _infer_keyword_for_name_filter(message: str, needle: str) -> str:
+    """
+    كلمة أساسية للتأكد أن اسم المنتج يحتويها (مثل تشيرت وليس مطابقة وصف/قسم فقط).
+    """
+    from logic import keywords as kw
+
+    t = normalize_for_product_search((message or "").strip())
+    best = ""
+    for h in kw.PRODUCT_HINTS:
+        hs = (h or "").strip()
+        if len(hs) >= 2 and hs in t and len(hs) > len(best):
+            best = hs
+    if best:
+        return best
+    n = (needle or "").strip()
+    stop = frozenset(
+        {
+            "أبغى",
+            "ابغى",
+            "أبي",
+            "ابي",
+            "أريد",
+            "اريد",
+            "عندكم",
+            "عندك",
+            "فيه",
+            "ودي",
+            "ابغي",
+            "أبغي",
+        }
+    )
+    parts = [p for p in n.replace("؟", " ").split() if len(p) >= 2]
+    parts = [p for p in parts if p not in stop]
+    if not parts:
+        return n[:40] if n else ""
+    return max(parts, key=len)
+
+
 def _distinct_branch_city_labels(out_products: list) -> list:
     """أسماء فروع مميزة بالترتيب (من بيانات المنتج في الشات)."""
     seen = set()
@@ -888,9 +946,9 @@ def _distinct_branch_city_labels(out_products: list) -> list:
 
 
 def _product_list_intro_message(_display_name, out_products: list, has_more: bool) -> str:
-    """مقدمة قصيرة مبنية على بيانات فعلية فقط — بدون ادّعاء مخزون غير معروض."""
+    """مقدمة قصيرة — بدون سرد فروع؛ المنتجات تظهر في البطاقات."""
     d = session.get("chat_dialect") or "default"
-    intro = dialect_message(d, "product_search_intro", name=_display_name())
+    intro = dialect_message(d, "product_available_ack", name=_display_name())
     if has_more:
         intro += "\n" + dialect_message(d, "product_found_soft_more")
     return intro
@@ -917,17 +975,23 @@ def _build_products_response(message: str):
             continue
         r, h = get_db().chat_tiered_product_search(n, per_tier_limit=4)
         if r:
-            rows, has_more_tier = r, h
-            break
-    # إذا لم يُرجع البحث المُرتّب صفوفاً، نجرب البحث الشامل (مثل التوصيات) قبل اعتبار «لا نتائج»
+            fk = _infer_keyword_for_name_filter(message, n)
+            r = filter_rows_keyword_in_product_name(r, fk) if fk else r
+            if r:
+                rows, has_more_tier = r, h
+                break
+    # إذا لم يُرجع البحث المُرتّب صفوفاً، نجرب البحث على الاسم فقط
     if not rows:
         for n in all_product_search_needles(needle, (message or "").strip()):
             if len(n) < 2:
                 continue
             alt = get_db().search_products(n, limit=30)
             if alt:
-                rows, has_more_tier = alt, False
-                break
+                fk = _infer_keyword_for_name_filter(message, n)
+                alt = filter_rows_keyword_in_product_name(alt, fk) if fk else alt
+                if alt:
+                    rows, has_more_tier = alt, False
+                    break
     if not rows:
         session.pop("remaining_products", None)
         session.pop("remaining_products_intent", None)

@@ -123,19 +123,6 @@ def _try_resolve_pending_section_choice(message: str):
     )
 
 
-def _section_city_list(branch_labels: set) -> list:
-    """أسماء مدن قصيرة لصياغة الرد (بدون تكرار)."""
-    cities = []
-    seen = set()
-    for lb in sorted(branch_labels):
-        raw = (lb or "").strip()
-        city = raw.replace("فرع ", "").strip()
-        if city and city not in seen:
-            seen.add(city)
-            cities.append(city)
-    return cities
-
-
 def _section_chat_response(message: str):
     cs = _cs()
     get_db = cs.get_db
@@ -168,17 +155,10 @@ def _section_chat_response(message: str):
         session.pop("last_section", None)
         session["pending_section_choices"] = names
         lines = [
-            "لقيت أكثر من قسم يطابق طلبك — اختار اللي تقصده بالاسم:",
+            "في أكثر من تصنيف قريب من طلبك — تقصد مثلاً رجالي أو نسائي؟ أو اذكر الاسم بالضبط من القائمة:",
         ]
         for n in names:
-            cities = _section_city_list(by_section[n]["branches"])
-            if len(cities) >= 2:
-                loc = f" (متوفر في: {cities[0]} و{cities[1]})" if len(cities) == 2 else f" (متوفر بعدة فروع)"
-            elif len(cities) == 1:
-                loc = f" (متوفر في: {cities[0]})"
-            else:
-                loc = ""
-            lines.append(f"• {n}{loc}")
+            lines.append(f"• {n}")
         msg = "\n".join(lines)
         return jsonify(
             {
@@ -203,29 +183,10 @@ def _section_chat_response(message: str):
     except Exception:
         pass
     sn = names[0]
-    cities = _section_city_list(by_section[sn]["branches"])
-    if len(cities) >= 3:
-        loc_block = "\n".join(f"• {c}" for c in cities)
-        msg = (
-            f"قسم «{sn}» موجود عندنا 👍 وتلقاه حالياً في أكثر من فرع:\n"
-            f"{loc_block}\n\n"
-            f"تبغى موديل أو لون معيّن؟ أذكر لي أي نوع يناسبك."
-        )
-    elif len(cities) == 2:
-        msg = (
-            f"قسم «{sn}» موجود عندنا في فرع {cities[0]} وكمان {cities[1]} 👍\n\n"
-            f"تبغى موديل أو لون معيّن؟ أذكر لي أي نوع يناسبك."
-        )
-    elif len(cities) == 1:
-        msg = (
-            f"قسم «{sn}» موجود حالياً في فرع {cities[0]} 👍\n\n"
-            f"تبغى موديل أو لون معيّن؟ أذكر لي أي نوع يناسبك."
-        )
-    else:
-        msg = (
-            f"قسم «{sn}» مسجل عندنا في النظام 👍\n\n"
-            f"تبغى موديل أو لون معيّن؟ أذكر لي أي نوع يناسبك."
-        )
+    msg = (
+        f"قسم «{sn}» — نعم متوفر 👍\n"
+        f"تبغى موديل أو لون معيّن؟ (لو تبغى تفاصيل الفروع اكتب «أي فرع».)"
+    )
     return jsonify(
         {
             "products": [],

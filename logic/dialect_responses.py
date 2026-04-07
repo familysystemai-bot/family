@@ -27,6 +27,7 @@ RESPONSES: Dict[str, Dict[str, str]] = {
         ),
         "product_found_soft": "يا {name}، نعم متوفر 👍 هل تبحث عن شيء معين؟",
         "product_search_intro": "يا {name}، هذا اللي طابق بحثك الحالي من عندنا 👇",
+        "product_available_ack": "نعم متوفر 👍\nتبغى موديل معين؟",
         "product_found_soft_more": "إذا حاب تشوف أكثر قلّي «غيره» أو «ورّني زيادة».",
         "product_branch_prompt": "يا {name}، أي فرع أقرب لك؟ متوفر عندنا في:",
         "product_fallback": (

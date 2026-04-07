@@ -19,6 +19,24 @@ _GENERIC_SECTION_HINTS_FOR_FOLLOWUP: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
 )
 
 
+def filter_rows_keyword_in_product_name(
+    rows: List[Dict[str, Any]], keyword: str
+) -> List[Dict[str, Any]]:
+    """
+    يحتفظ بالصفوف التي يظهر فيها keyword (بعد تطبيع عربي) ضمن اسم المنتج فقط.
+    يمنع نتائج مضلّلة (مثل تطابق الوصف/القسم دون الاسم).
+    """
+    k = _normalize_arabic_for_search(keyword or "")
+    if len(k) < 2:
+        return list(rows or [])
+    out: List[Dict[str, Any]] = []
+    for r in rows or []:
+        name = _normalize_arabic_for_search((r.get("product_name") or ""))
+        if k in name:
+            out.append(r)
+    return out
+
+
 def _normalize_arabic_for_search(s: str) -> str:
     """
     تطبيع عربي للبحث (بدون أعمدة جديدة): أ/إ/آ→ا، إزالة التشكيل، توحيد خفيف للحروف.
@@ -375,7 +393,7 @@ class ProductRepositoryMixin:
         return [w for w in t.split() if len(w) >= 2]
 
     def _search_products_one_like(self, needle: str, limit: int) -> List[Dict[str, Any]]:
-        """استعلام واحد: اسم/وصف/sub_categories/main_categories/متغيرات (بدون جداول categories/sections)."""
+        """استعلام على عمود اسم المنتج فقط: بادئة أو احتواء (يُكمّل بفلتر اسم في Python)."""
         needle = (needle or "").strip()
         if len(needle) < 2:
             return []
@@ -385,25 +403,11 @@ class ProductRepositoryMixin:
         like_parts: List[str] = []
         params: List[Any] = []
         for v in variants:
-            lv = f"%{v}%"
-            like_parts.append("(p.product_name LIKE ? OR IFNULL(p.description, '') LIKE ?)")
-            params.extend([lv, lv])
-        for v in variants:
-            lv = f"%{v}%"
-            like_parts.append("(IFNULL(sc.name, '') LIKE ? OR IFNULL(mc.name, '') LIKE ?)")
-            params.extend([lv, lv])
-        exists_parts: List[str] = []
-        for v in variants:
-            lv = f"%{v}%"
-            exists_parts.append("(IFNULL(pv.color, '') LIKE ? OR IFNULL(pv.size, '') LIKE ?)")
-            params.extend([lv, lv])
-        where_sql = (
-            "("
-            + " OR ".join(like_parts)
-            + ") OR EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND ("
-            + " OR ".join(exists_parts)
-            + "))"
-        )
+            pref = f"{v}%"
+            ins = f"%{v}%"
+            like_parts.append("(p.product_name LIKE ? OR p.product_name LIKE ?)")
+            params.extend([pref, ins])
+        where_sql = "(" + " OR ".join(like_parts) + ")"
         conn = self._get_connection()
         try:
             cursor = conn.execute(
@@ -439,42 +443,49 @@ class ProductRepositoryMixin:
 
     def search_products(self, needle: str, limit: int = 30):
         """
-        بحث في:
-        - products (اسم/وصف)
-        - sub_categories + main_categories
-        - product_variants (لون/مقاس)
-        جرّب الجملة كاملة ثم كل كلمة على حدة إذا لم يُعثر على نتائج.
+        بحث في اسم المنتج فقط (LIKE بادئة أو احتواء)، ثم تجزئة الكلمات مع
+        التحقق أن كل كلمة بحث تظهر في اسم المنتج (لا وصف/قسم فقط).
         """
         needle = (needle or "").strip()
         if len(needle) < 2:
             return []
         rows = self._search_products_one_like(needle, limit)
         if rows:
-            return rows
+            for cand in [needle] + self._search_needle_tokens(needle):
+                c = (cand or "").strip()
+                if len(c) < 2:
+                    continue
+                fr = filter_rows_keyword_in_product_name(rows, c)
+                if fr:
+                    return fr[:limit]
         tokens = self._search_needle_tokens(needle)
         if len(tokens) <= 1:
             return []
         seen = set()
         merged: List[Dict[str, Any]] = []
         for tok in tokens[:10]:
-            if tok == needle:
+            if len(tok) < 2:
                 continue
             for r in self._search_products_one_like(tok, limit):
+                ok = filter_rows_keyword_in_product_name([r], tok)
+                if not ok:
+                    continue
+                r = ok[0]
                 pid = int(r["product_id"])
                 if pid not in seen:
                     seen.add(pid)
                     merged.append(r)
                 if len(merged) >= limit:
-                    return merged
-        return merged
+                    return merged[:limit]
+        return merged[:limit]
 
     def chat_tiered_product_search(self, needle: str, per_tier_limit: int = 4) -> Tuple[List[Dict[str, Any]], bool]:
         """
-        بحث للشات — ترتيب المستويات حتى أول نتائج:
-        1) sub_categories.name (قسم)
-        2) main_categories.name (فئة)
-        3) اسم المنتج
-        4) الوصف
+        بحث للشات — ترتيب المستويات حتى أول نتائج (الاسم أولاً لتقليل الخلط):
+        1) اسم المنتج
+        2) الوصف
+        3) sub_categories.name (قسم)
+        4) main_categories.name (فئة)
         (فقط main_categories + sub_categories، بلا categories/sections)
         يعيد (قائمة صفوف، هل يوجد أكثر من 3 نتائج في المستوى المعتمد).
         """
@@ -505,10 +516,10 @@ class ProductRepositoryMixin:
                 LEFT JOIN main_categories mc ON mc.id = sc.main_id
         """
         tier_exprs = (
-            "IFNULL(sc.name, '')",
-            "IFNULL(mc.name, '')",
             "IFNULL(p.product_name, '')",
             "IFNULL(p.description, '')",
+            "IFNULL(sc.name, '')",
+            "IFNULL(mc.name, '')",
         )
         tiers: List[Tuple[str, Tuple[Any, ...]]] = []
         for expr in tier_exprs:
@@ -674,12 +685,13 @@ class ProductRepositoryMixin:
                 if len(v) < 2:
                     continue
                 lk = f"%{v}%"
+                pref = f"{v}%"
                 key = ("pd", lk)
                 if key in seen_like:
                     continue
                 seen_like.add(key)
-                kw_parts.append("(p.product_name LIKE ? OR IFNULL(p.description, '') LIKE ?)")
-                kw_params.extend([lk, lk])
+                kw_parts.append("(p.product_name LIKE ? OR p.product_name LIKE ?)")
+                kw_params.extend([pref, lk])
         if not kw_parts:
             return []
         kw_clause = "(" + " OR ".join(kw_parts) + ")"
@@ -722,7 +734,14 @@ class ProductRepositoryMixin:
                     out.append(d)
         finally:
             conn.close()
-        return out[:limit]
+        cands = [keyword] + [p.strip() for p in parts if len(p.strip()) >= 2]
+        for c in cands:
+            if len(c) < 2:
+                continue
+            fr = filter_rows_keyword_in_product_name(out, c)
+            if fr:
+                return fr[:limit]
+        return []
 
     def get_product_branches(self, product_id: int) -> List[Dict[str, Any]]:
         """
