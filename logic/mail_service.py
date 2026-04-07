@@ -47,8 +47,11 @@ class MailService:
 
         try:
             print("CONNECTING SMTP...")
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+            with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as smtp:
                 print("CONNECTED")
+                smtp.ehlo()
+                smtp.starttls()
+                smtp.ehlo()
                 print("LOGGING IN...")
                 smtp.login(from_email, password)
                 print("LOGIN SUCCESS")
