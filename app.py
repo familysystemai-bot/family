@@ -1,6 +1,7 @@
 import os
 import time
 import uuid
+from datetime import timedelta
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
 from config import (
@@ -12,7 +13,6 @@ from config import (
     FLASK_PORT,
     FOUNDER_PASSWORD,
     FOUNDER_USERNAME,
-    PERMANENT_SESSION_LIFETIME,
     SECRET_KEY,
     UPLOAD_FOLDER,
     ensure_upload_dir,
@@ -45,7 +45,7 @@ ensure_upload_dir()
 app = Flask(__name__, static_folder='static')
 app.secret_key = SECRET_KEY
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['PERMANENT_SESSION_LIFETIME'] = PERMANENT_SESSION_LIFETIME
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 
 
 @app.before_request
@@ -84,12 +84,17 @@ def _session_admin_or_founder():
     return session.get("role") in ("admin", "founder")
 
 
+def _staff_session_ok() -> bool:
+    """دخول لوحة الفروع/الإدارة فقط — زوار الشات قد يكون لديهم logged_in بدون role."""
+    return session.get("role") in ("founder", "admin", "branch")
+
+
 def _session_founder_only():
-    return session.get("logged_in") and session.get("role") == "founder"
+    return session.get("role") == "founder"
 
 
 def _session_founder_or_admin():
-    return session.get("logged_in") and session.get("role") in ("founder", "admin")
+    return session.get("role") in ("founder", "admin")
 
 
 # ==========================================
@@ -97,7 +102,7 @@ def _session_founder_or_admin():
 # ==========================================
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if 'logged_in' in session:
+    if _staff_session_ok():
         return redirect(url_for('dashboard'))
 
     if request.method == 'POST':
@@ -143,7 +148,7 @@ def login():
 @app.route('/admin/dashboard')
 def admin_dashboard():
     """لوحة المدير العام (ليست لوحة المؤسس)."""
-    if 'logged_in' not in session:
+    if not _staff_session_ok():
         return redirect(url_for('login'))
     if session.get('role') != 'admin':
         return redirect(url_for('dashboard'))
@@ -154,7 +159,7 @@ def admin_dashboard():
 
 @app.route('/dashboard')
 def dashboard():
-    if 'logged_in' not in session:
+    if not _staff_session_ok():
         return redirect(url_for('login'))
     role = session.get('role')
     if role == 'founder':
@@ -180,7 +185,7 @@ def dashboard():
 def logout():
     session.clear()
     flash("تم تسجيل الخروج بنجاح", "info")
-    return redirect(url_for('login'))
+    return redirect(url_for('index'))
 
 @app.route('/admin/create_branch', methods=['POST'])
 def create_branch():
@@ -228,7 +233,7 @@ def branch_add_category():
 # ==========================================
 @app.route('/categories/<int:category_id>/sections')
 def show_sections(category_id: int):
-    if 'logged_in' not in session:
+    if not _staff_session_ok():
         return redirect(url_for('login'))
     role = session.get('role')
     if role not in ('branch', 'admin', 'founder'):
@@ -265,7 +270,7 @@ def show_sections(category_id: int):
 @app.route('/categories/<int:category_id>/sections/<int:section_id>/delete', methods=['POST'])
 def delete_subcategory_section(category_id: int, section_id: int):
     """حذف قسم (sub_category) وجميع المنتجات المرتبطة — فرع / إدارة / مؤسس."""
-    if 'logged_in' not in session:
+    if not _staff_session_ok():
         return jsonify(ok=False, error='unauthorized'), 401
     role = session.get('role')
     if role not in ('branch', 'admin', 'founder'):
@@ -306,7 +311,7 @@ def delete_subcategory_section(category_id: int, section_id: int):
 
 @app.route('/categories/<int:category_id>/sections/add', methods=['POST'])
 def add_section(category_id: int):
-    if 'logged_in' not in session:
+    if not _staff_session_ok():
         return redirect(url_for('login'))
     if session.get('role') != 'branch':
         flash("غير مصرح.", "danger")
@@ -342,7 +347,7 @@ def add_section(category_id: int):
 # ==========================================
 @app.route('/get_sections/<int:category_id>')
 def api_get_sections(category_id: int):
-    if 'logged_in' not in session:
+    if not _staff_session_ok():
         return jsonify({"error": "unauthorized"}), 401
     if session.get('role') != 'branch':
         return jsonify({"error": "forbidden"}), 403
@@ -369,7 +374,7 @@ def api_get_sections(category_id: int):
 
 @app.route('/add_product', methods=['GET', 'POST'])
 def add_product():
-    if 'logged_in' not in session:
+    if not _staff_session_ok():
         return redirect(url_for('login'))
     if session.get('role') != 'branch':
         flash("غير مصرح.", "danger")
@@ -472,7 +477,7 @@ def add_product():
 # ==========================================
 @app.route('/products')
 def products():
-    if 'logged_in' not in session:
+    if not _staff_session_ok():
         return redirect(url_for('login'))
     if session.get('role') != 'branch':
         return redirect(url_for('dashboard'))
@@ -488,7 +493,7 @@ def products():
 
 @app.route('/products/delete/<int:product_id>', methods=['POST'])
 def delete_product(product_id: int):
-    if 'logged_in' not in session:
+    if not _staff_session_ok():
         return redirect(url_for('login'))
     role = session.get('role')
     if role not in ('branch', 'founder'):
@@ -518,7 +523,7 @@ def delete_product(product_id: int):
 
 @app.route('/edit_product/<int:product_id>', methods=['GET', 'POST'])
 def edit_product(product_id: int):
-    if 'logged_in' not in session:
+    if not _staff_session_ok():
         return redirect(url_for('login'))
     role = session.get('role')
     if role not in ('branch', 'founder'):
@@ -989,7 +994,7 @@ def founder_api_sections(category_id: int):
 # ==========================================
 @app.route("/founder/change-password", methods=["POST"])
 def founder_change_password():
-    if "logged_in" not in session:
+    if not _staff_session_ok():
         return redirect(url_for("login"))
     if session.get("role") != "founder":
         flash("هذه العملية للمؤسس فقط.", "warning")
@@ -1095,7 +1100,7 @@ def admin_settings():
 # ==========================================
 @app.route('/admin/users')
 def admin_users():
-    if 'logged_in' not in session:
+    if not _staff_session_ok():
         return redirect(url_for('login'))
     if not _session_admin_or_founder():
         return redirect(url_for('dashboard'))
@@ -1105,7 +1110,7 @@ def admin_users():
 
 @app.route('/admin/update_user/<int:branch_id>', methods=['POST'])
 def admin_update_user(branch_id: int):
-    if 'logged_in' not in session:
+    if not _staff_session_ok():
         return redirect(url_for('login'))
     if not _session_admin_or_founder():
         return redirect(url_for('dashboard'))
@@ -1121,7 +1126,7 @@ def admin_update_user(branch_id: int):
 
 @app.route("/admin/complaints")
 def admin_complaints():
-    if "logged_in" not in session:
+    if not _staff_session_ok():
         return redirect(url_for("login"))
     if not _session_admin_or_founder():
         return redirect(url_for("dashboard"))
@@ -1150,7 +1155,7 @@ def admin_complaints():
 
 @app.route("/admin/complaints/<int:complaint_id>/resolve", methods=["POST"])
 def admin_resolve_complaint(complaint_id: int):
-    if "logged_in" not in session:
+    if not _staff_session_ok():
         return redirect(url_for("login"))
     if not _session_admin_or_founder():
         return redirect(url_for("dashboard"))
@@ -1192,7 +1197,15 @@ def admin_full_diagnostics():
 # ==========================================
 @app.route('/')
 def index():
-    return render_template('index.html')
+    chat_ok = session.get("login_scope") == "chat_customer" and bool(
+        (session.get("user_email") or "").strip()
+    )
+    return render_template(
+        'index.html',
+        chat_logged_in=chat_ok,
+        chat_user_name=(session.get("user_name") or ""),
+        chat_user_email=(session.get("user_email") or ""),
+    )
 
 
 # ==========================================
@@ -1221,6 +1234,13 @@ def email_otp_verify():
     )
     if not ok or not payload:
         return jsonify({"ok": False, "error": err or "الكود غير صحيح"}), 400
+    session.permanent = True
+    session["logged_in"] = True
+    session["login_scope"] = "chat_customer"
+    session["user_email"] = (payload.get("email") or "").strip()
+    nm = (payload.get("name") or "").strip()[:120]
+    if nm:
+        session["user_name"] = nm
     return jsonify(
         {
             "ok": True,

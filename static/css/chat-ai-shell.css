@@ -434,101 +434,6 @@
   border: 1px solid rgba(255, 255, 255, 0.25);
 }
 
-/* زر الشكوى */
-.ai-chat-shell .complaint-btn-float {
-  position: fixed;
-  bottom: calc(102px + var(--safe-b));
-  inset-inline-start: max(16px, env(safe-area-inset-left, 0px));
-  width: 58px;
-  height: 58px;
-  min-width: 58px;
-  min-height: 58px;
-  background: rgba(255, 255, 255, 0.45);
-  border: 1px solid rgba(248, 113, 113, 0.4);
-  box-shadow:
-    0 8px 24px rgba(239, 68, 68, 0.2),
-    inset 0 0 16px rgba(255, 255, 255, 0.35);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  z-index: 80;
-  transition: transform 0.22s ease, box-shadow 0.22s ease;
-  border-radius: 50%;
-  color: #dc2626;
-}
-
-.ai-chat-shell .complaint-btn-float:hover {
-  transform: scale(1.06);
-  box-shadow: 0 12px 32px rgba(239, 68, 68, 0.28), inset 0 0 18px rgba(255, 255, 255, 0.45);
-}
-
-.ai-chat-shell .complaint-label {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(248, 113, 113, 0.35);
-  color: #b91c1c;
-}
-
-/* كرة AI عائمة */
-.ai-chat-shell .ai-chat-float-orb {
-  position: fixed;
-  bottom: calc(108px + var(--safe-b));
-  inset-inline-end: max(16px, env(safe-area-inset-right, 0px));
-  width: 64px;
-  height: 64px;
-  z-index: 75;
-  pointer-events: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: aiOrbFloat 4s ease-in-out infinite;
-}
-
-.ai-chat-shell .ai-chat-float-orb-inner {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.35rem;
-  color: #ffffff;
-  background: radial-gradient(
-    circle at 30% 25%,
-    rgba(0, 255, 200, 0.55),
-    rgba(0, 212, 255, 0.4) 50%,
-    rgba(255, 255, 255, 0.25)
-  );
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow:
-    0 0 0 1px rgba(0, 255, 200, 0.35),
-    0 12px 36px rgba(0, 200, 180, 0.35),
-    inset 0 2px 14px rgba(255, 255, 255, 0.55);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  animation: aiOrbPulse 2.2s ease-in-out infinite;
-}
-
-@keyframes aiOrbFloat {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-10px);
-  }
-}
-
-@keyframes aiOrbPulse {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.06);
-  }
-}
-
 /* ——— التذييل + الإدخال ——— */
 .ai-chat-shell .chat-footer {
   flex-shrink: 0;
@@ -723,14 +628,15 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Modals — زجاج فاتح متناسق */
+/* Modals — نافذة هادئة لا تغطي الشات (العناصر العائمة الزائدة أُزيلت من HTML) */
 .ai-chat-shell .modal-content {
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(28px);
-  -webkit-backdrop-filter: blur(28px);
-  border: 1px solid rgba(255, 255, 255, 0.55);
-  border-radius: 24px;
-  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.12), inset 0 0 20px rgba(255, 255, 255, 0.4);
+  border-radius: 20px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
   color: #1e293b;
 }
 
@@ -765,25 +671,31 @@
 }
 
 .ai-chat-shell .form-field input {
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 12px;
+  padding: 10px;
+  border: 1px solid #ddd;
+  background: rgba(255, 255, 255, 0.95);
   color: #1e293b;
 }
 
 .ai-chat-shell .form-field input:focus {
-  border-color: rgba(0, 255, 200, 0.55);
-  box-shadow: 0 0 0 3px rgba(0, 255, 200, 0.15);
+  border-color: #94d2b8;
+  box-shadow: 0 0 0 2px rgba(52, 120, 90, 0.12);
+  outline: none;
 }
 
 .ai-chat-shell .btn-verify {
-  background: linear-gradient(135deg, #00ffcc, #00c2ff);
-  color: #ffffff;
-  font-weight: 800;
+  border-radius: 12px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #6b9f7a 0%, #4a8f6a 45%, #3d7a5c 100%);
+  color: #f8faf8;
+  font-weight: 700;
   border: none;
+  box-shadow: 0 2px 8px rgba(45, 90, 65, 0.2);
 }
 
 .ai-chat-shell .btn-verify:hover {
-  filter: brightness(1.06);
+  filter: brightness(1.04);
 }
 
 .ai-chat-shell .btn-cancel {
@@ -821,10 +733,6 @@
     min-width: 46px;
   }
 
-  .ai-chat-shell .complaint-label {
-    display: none;
-  }
-
   .ai-chat-shell .message {
     padding: 14px 16px;
   }
@@ -845,9 +753,7 @@
 
   .ai-chat-shell .message,
   .ai-chat-shell .typing-indicator,
-  .ai-chat-shell .msg-user,
-  .ai-chat-shell .ai-chat-float-orb,
-  .ai-chat-shell .ai-chat-float-orb-inner {
+  .ai-chat-shell .msg-user {
     animation: none;
   }
 }

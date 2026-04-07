@@ -49,7 +49,7 @@ from logic.chat_handlers.time_handler import enhanced_location_reply_kind
 from logic.chat_rules import (
     SALAM_REPLY_FIRST,
     SALAM_REPLY_SECOND,
-    is_plausible_person_name,
+    is_acceptable_display_name,
     looks_like_direct_request,
 )
 
@@ -244,7 +244,7 @@ def _router_early_exits(data: dict) -> Optional[Any]:
     """account_session_sync، مرفق، مؤسس، جمع الاسم."""
     if data.get("account_session_sync"):
         proposed = (data.get("user_name") or "").strip()
-        if proposed and len(proposed) >= 2:
+        if proposed and len(proposed) >= 2 and is_acceptable_display_name(proposed):
             session["user_name"] = proposed[:120]
             session["awaiting_user_name"] = False
             session.pop("chat_name_declined", None)
@@ -299,7 +299,7 @@ def _router_early_exits(data: dict) -> Optional[Any]:
         )
 
     if session.get("chat_awaiting_optional_name") and not chat_ctx.has_declined_name():
-        if is_plausible_person_name(message):
+        if is_acceptable_display_name(message):
             session["user_name"] = message.strip()[:120]
             session["chat_awaiting_optional_name"] = False
             u = session["user_name"]

@@ -27,6 +27,7 @@ INQUIRY_TOKENS = frozenset(
         "أبغى",
         "ابغى",
         "ابغي",
+        "أبغي",
         "أبي",
         "ابي",
         "أريد",
@@ -58,6 +59,39 @@ INQUIRY_TOKENS = frozenset(
 )
 
 # بداية طلب مباشر (منتج / موقع / شكوى) يُذكر مع السلام
+# كلمات/جُزُئيات تدل على منتج أو وصف تسوق — لا تُحفَظ كاسم شخص
+_PRODUCT_OR_SHOPPING_SUBSTRINGS = (
+    "تشيرت",
+    "تيشيرت",
+    "بنطلون",
+    "فستان",
+    "فساتين",
+    "شنطة",
+    "شنط",
+    "حقيبة",
+    "حقائب",
+    "حذاء",
+    "جزمة",
+    "جزم",
+    "عباية",
+    "عبايات",
+    "ملابس",
+    "مقاس",
+    "لون",
+    "سواريه",
+    "سهرة",
+    "رجالي",
+    "نسائي",
+    "اطفال",
+    "أطفال",
+    "كعب",
+    "كاجوال",
+    "زواج",
+    "زفاف",
+    "اكسسوار",
+    "اكسسوارات",
+)
+
 DIRECT_REQUEST_MARKERS = (
     "ابغى",
     "أبغى",
@@ -99,15 +133,14 @@ def looks_like_direct_request(text: str) -> bool:
 
 def is_plausible_person_name(text: str) -> bool:
     """
-    اسم مقبول: كلمة أو كلمتان كحد أقصى، بدون كلمات استفسار.
+    اسم مقبول: حتى 3 كلمات، بدون كلمات استفسار/طلب واضحة.
     """
     s = (text or "").strip()
     if len(s) < 2 or len(s) > 40:
         return False
     words = _normalize_tokens(s)
-    if not words or len(words) > 2:
+    if not words or len(words) > 3:
         return False
-    low = {w.lower() for w in words}
     for w in words:
         wl = w.lower()
         if wl in INQUIRY_TOKENS or w in INQUIRY_TOKENS:
@@ -115,6 +148,22 @@ def is_plausible_person_name(text: str) -> bool:
     # أرقام فقط
     if all(c.isdigit() for c in s.replace(" ", "")):
         return False
+    return True
+
+
+def is_acceptable_display_name(text: str) -> bool:
+    """
+    فلتر قبل حفظ الاسم في الجلسة: ليس طلب منتج ولا وصف تسوق ولا يحتوي أرقاماً.
+    """
+    if not is_plausible_person_name(text):
+        return False
+    s = (text or "").strip()
+    if re.search(r"\d", s):
+        return False
+    sn = s.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ى", "ي")
+    for frag in _PRODUCT_OR_SHOPPING_SUBSTRINGS:
+        if frag in sn or frag in s:
+            return False
     return True
 
 

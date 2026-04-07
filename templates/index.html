@@ -12,6 +12,15 @@
     <link href="{{ url_for('static', filename='css/chat-ai-shell.css') }}" rel="stylesheet">
     <style>
         .modal.fade .modal-dialog { transition: transform 0.3s ease-out, opacity 0.3s ease-out; }
+        .header-logout-link {
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.75);
+            text-decoration: none;
+            padding: 6px 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+        .header-logout-link:hover { color: #fff; border-color: rgba(255,255,255,0.35); }
     </style>
 </head>
 <body class="ai-chat-shell">
@@ -32,6 +41,7 @@
         <div id="userBadge" class="chat-user-badge" style="display:none;">
             <i class="fa-solid fa-user-check"></i> <span id="displayUserName"></span>
         </div>
+        <a href="{{ url_for('logout') }}" id="chatLogoutLink" class="header-logout-link" style="display:none;" title="تسجيل خروج">خروج</a>
     </header>
 
     <main class="chat-body" id="chatBox">
@@ -57,21 +67,10 @@
     </footer>
     </div>
 
-    <button class="complaint-btn-float" onclick="handleComplaintClick()">
-        <span class="complaint-label">تقديم شكوى</span>
-        <i class="fa-solid fa-circle-exclamation fa-2xl"></i>
-    </button>
-
-    <div class="ai-chat-float-orb" aria-hidden="true">
-        <span class="ai-chat-float-orb-inner">
-            <i class="fa-solid fa-comments"></i>
-        </span>
-    </div>
-
     <!-- Modal Login -->
     <div class="modal fade" id="loginModal" tabindex="-1" data-bs-backdrop="static">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content p-4">
+            <div class="modal-content ai-modal-panel">
                 <button class="modal-close-x" data-bs-dismiss="modal" aria-label="إغلاق"><i class="fa-solid fa-xmark"></i></button>
                 {{ site_logo_pair('login-logo', 'site-logo-k--index-modal') }}
                 <h5 class="text-center mb-3" style="font-weight:900;">تسجيل دخول سريع للشكاوى</h5>
@@ -100,7 +99,7 @@
     <!-- Smart Login Modal: بريد + رمز OTP (الجوال لاحقاً عند الحاجة) -->
     <div class="modal fade" id="smartLoginModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered" style="max-width:380px;">
-            <div class="modal-content p-4">
+            <div class="modal-content ai-modal-panel">
                 <button class="modal-close-x" data-bs-dismiss="modal" aria-label="إغلاق"><i class="fa-solid fa-xmark"></i></button>
                 {{ site_logo_pair('login-logo login-logo--sm', 'site-logo-k--index-modal-sm') }}
                 <p class="text-center mb-3" style="font-size:0.9rem; color:#bbb; line-height:1.9;">
@@ -391,7 +390,8 @@
         let pendingOtpEmail = '';
 
         function syncAccountSession() {
-            if (!isLoggedIn || !userName) return;
+            if (!isLoggedIn) return;
+            if (!userName && !userContact) return;
             fetch('/chat_query', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -403,6 +403,25 @@
                 })
             }).catch(function() {});
         }
+
+        (function applyServerChatSession() {
+            const srvChat = {{ chat_logged_in | tojson }};
+            const srvName = {{ chat_user_name | tojson }};
+            const srvEmail = {{ chat_user_email | tojson }};
+            if (!srvChat || !srvEmail) return;
+            isLoggedIn = true;
+            userName = (srvName || '').trim();
+            userContact = srvEmail;
+            const hb = document.getElementById('headerLoginBtn');
+            const badge = document.getElementById('userBadge');
+            const lo = document.getElementById('chatLogoutLink');
+            const du = document.getElementById('displayUserName');
+            if (hb) hb.style.display = 'none';
+            if (badge) badge.style.display = 'flex';
+            if (lo) lo.style.display = 'inline-flex';
+            if (du) du.textContent = userName || srvEmail;
+            syncAccountSession();
+        })();
 
         function smartLoginBackToStep1() {
             document.getElementById('smartStep2').style.display = 'none';
@@ -470,7 +489,9 @@
                 isLoggedIn = true;
                 if (smartLoginModal) smartLoginModal.hide();
                 document.getElementById('headerLoginBtn').style.display = 'none';
-                document.getElementById('userBadge').style.display = 'block';
+                document.getElementById('userBadge').style.display = 'flex';
+                var lo = document.getElementById('chatLogoutLink');
+                if (lo) lo.style.display = 'inline-flex';
                 document.getElementById('displayUserName').textContent = userName;
                 document.getElementById('smartName').value = '';
                 document.getElementById('smartEmail').value = '';
@@ -508,7 +529,9 @@
                 isLoggedIn = true;
                 if(loginModal) loginModal.hide();
                 document.getElementById('headerLoginBtn').style.display = 'none';
-                document.getElementById('userBadge').style.display = 'block';
+                document.getElementById('userBadge').style.display = 'flex';
+                var lo = document.getElementById('chatLogoutLink');
+                if (lo) lo.style.display = 'inline-flex';
                 document.getElementById('displayUserName').textContent = userName;
                 document.getElementById('step1').style.display = 'block';
                 document.getElementById('step2').style.display = 'none';

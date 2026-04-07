@@ -10,6 +10,7 @@ from typing import Optional
 
 from flask import session
 
+from logic.chat_rules import is_acceptable_display_name
 from logic.database import DatabaseManager
 from logic import chat_context as _chat_context
 from site_config.branches import branch_list_lines
@@ -76,6 +77,8 @@ def _apply_session_display_name(proposed: str, *, account_logged_in: bool) -> No
         session["user_name"] = proposed[:120]
         session["awaiting_user_name"] = False
     elif not session.get("user_name"):
+        if not is_acceptable_display_name(proposed):
+            return
         session["user_name"] = proposed[:120]
         session["awaiting_user_name"] = False
 
