@@ -6,9 +6,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from typing import Any, Dict, List, Optional, Set
+
+logger = logging.getLogger(__name__)
 
 from config import OPENAI_API_KEY, OPENAI_MODEL
 from logic.chat_semantic_expand import all_product_search_needles
@@ -182,4 +185,5 @@ def generate_ai_response(message: str, db_data: Dict[str, Any]) -> Optional[str]
         content = (choice.message.content or "").strip()
         return content or None
     except Exception:
+        logger.exception("OpenAI chat fallback failed")
         return None

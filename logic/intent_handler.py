@@ -49,9 +49,28 @@ def location_reply_kind(user_message: str) -> str:
     return "default"
 
 
+def _complaint_signals_negated(text: str) -> bool:
+    """صياغات تدل على عدم وجود شكوى — لا نصنّف كـ complaint عندها."""
+    t = (text or "").strip()
+    tl = t.lower()
+    if "ما عندي مشكلة" in t or "ما عندك مشكلة" in t:
+        return True
+    if "ما في مشكلة" in t or "ما فيه مشكلة" in t or "مافي مشكلة" in tl:
+        return True
+    if "بدون مشكلة" in t:
+        return True
+    if "لا مشكلة" in t or "ولا مشكلة" in t:
+        return True
+    if "مو مشكلة" in tl or "مش مشكلة" in t:
+        return True
+    return False
+
+
 def detect_chat_intent(message: str, resolve_branch: Callable[[str], Optional[str]]) -> str:
     """
-    ترتيب النية: ترحيب → شكوى → سياسة استرجاع → موقع/دوام/مفتوح الآن → شكر/وداع → قسم → توصية → منتج → عام → فرع مختصر → unknown.
+    ترتيب النية: ترحيب → سياسة استرجاع → موقع/دوام/مفتوح الآن → شكر/وداع → قسم → توصية → منتج → عام → شكوى → فرع مختصر → unknown.
+
+    الشكوى بعد إشارات المنتج حتى لا تُلتقط استفسارات التسوق كشكوى بسبب كلمات عامة (مثل «مشكلة»).
 
     القيم المُرجعة (ثابتة مع المسارات الحالية): greeting | complaint | return_policy | branch_phone | location | thanks | goodbye | section | recommendation | product | general | location_pick | unknown
     """
@@ -77,9 +96,6 @@ def detect_chat_intent(message: str, resolve_branch: Callable[[str], Optional[st
 
     if any(k in t for k in kw.GREETING_KEYWORDS):
         return "greeting"
-
-    if any(k in t for k in kw.COMPLAINT_KEYWORDS) or any(p in t for p in kw.COMPLAINT_NATURAL_PHRASES):
-        return "complaint"
 
     if any(k in t for k in kw.RETURN_POLICY_KEYWORDS):
         return "return_policy"
@@ -121,6 +137,12 @@ def detect_chat_intent(message: str, resolve_branch: Callable[[str], Optional[st
 
     if len(t) < 2:
         return "unknown"
+
+    if not _complaint_signals_negated(t) and (
+        any(k in t for k in kw.COMPLAINT_KEYWORDS)
+        or any(p in t for p in kw.COMPLAINT_NATURAL_PHRASES)
+    ):
+        return "complaint"
 
     br = resolve_branch(t)
     if br and len(t) < 36 and not has_product_word and not has_request:

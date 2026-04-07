@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_INTENTS = frozenset({"complaint", "product", "branch", "location", "unknown"})
 
+# دون هذا الحد لا يُستخدم مخرج المحلل في التوجيه (سلوك القواعد فقط).
+LLM_MIN_USABLE_CONFIDENCE = 0.6
+
 SYSTEM_PROMPT = """أنت مصنّف واستخراج مفردات فقط — لا تبحث في قاعدة بيانات ولا تقترح منتجات أو أقسام.
 دورك: فهم نية الرسالة واستخراج كلمات من النص نفسه (نوع المنتج، لون، رجالي/نسائي إن وُجدت صراحة).
 قواعد إلزامية:
@@ -38,9 +41,11 @@ SYSTEM_PROMPT = """أنت مصنّف واستخراج مفردات فقط — ل
   "cleaned_message": جملة عربية واضحة تعيد صياغة طلب المستخدم فقط (بدون إضافات)
   "branch": null أو أحد الأسماء: جدة | مكة | المدينة | خميس مشيط | قلوة (بلا كلمة فرع)
   "keywords": مصفوفة 0–8 كلمات عربية من النص: نوع المنتج، لون، رجالي/نسائي، مناسبة… (لا تخترع أصنافاً)
+  "confidence": رقم عشري من 0 إلى 1 يعبّر عن ثقتك في التصنيف والكلمات (1 = متأكد، 0 = غير متأكد).
+    إن كنت غير متأكد أو النص غامضاً استخدم قيمة منخفضة (مثل 0.3–0.5).
 
 مثال صالح:
-{"intent":"product","cleaned_message":"أبحث عن تشيرت رجالي أسود","branch":null,"keywords":["تشيرت","رجالي","أسود"]}
+{"intent":"product","confidence":0.85,"cleaned_message":"أبحث عن تشيرت رجالي أسود","branch":null,"keywords":["تشيرت","رجالي","أسود"]}
 """
 
 
@@ -88,6 +93,19 @@ def _normalize_branch(v: Any) -> Optional[str]:
     return None
 
 
+def _normalize_confidence(v: Any) -> float:
+    """يحوّل ثقة النموذج إلى [0,1]؛ القيم غير الصالحة → 0.0"""
+    if v is None:
+        return 0.0
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return 0.0
+    if x != x:  # NaN
+        return 0.0
+    return max(0.0, min(1.0, x))
+
+
 def _normalize_keywords(v: Any) -> List[str]:
     if not v:
         return []
@@ -112,11 +130,13 @@ def normalize_llm_result(raw: Optional[Dict[str, Any]]) -> Optional[Dict[str, An
     cleaned = str(raw.get("cleaned_message", "")).strip()
     branch = _normalize_branch(raw.get("branch"))
     keywords = _normalize_keywords(raw.get("keywords"))
+    confidence = _normalize_confidence(raw.get("confidence"))
     return {
         "intent": intent,
         "cleaned_message": cleaned,
         "branch": branch,
         "keywords": keywords,
+        "confidence": confidence,
     }
 
 

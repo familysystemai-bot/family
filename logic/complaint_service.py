@@ -52,6 +52,33 @@ _EXPLICIT_PRODUCT_SWITCH = (
     "ابي اشتري",
     "أبحث عن منتج",
 )
+# نيات واضحة خارج سياق الشكوى — تُنهي المعالج وتُعيد التوجيه لمسار عادي
+_INTENTS_EXIT_COMPLAINT_CONTEXT = frozenset(
+    {
+        "greeting",
+        "product",
+        "location",
+        "location_pick",
+        "section",
+        "recommendation",
+        "return_policy",
+        "branch_phone",
+        "thanks",
+        "goodbye",
+        "general",
+    }
+)
+
+
+def _fresh_intent_exits_complaint_flow(message: str) -> bool:
+    """رسالة جديدة تُصنَّف بنية غير شكوى → لا نُبقي المستخدم في حوار الشكوى."""
+    from logic.intent_handler import detect_chat_intent
+
+    cs = _cs()
+    intent = detect_chat_intent((message or "").strip(), cs.resolve_branch_from_message)
+    return intent in _INTENTS_EXIT_COMPLAINT_CONTEXT
+
+
 _EXPLICIT_LOCATION_SWITCH = (
     "فين الموقع",
     "وين الموقع",
@@ -240,6 +267,9 @@ def _handle_complaint_policy_precheck_turn(message: str, branch_list: list):
     if not cp:
         return None
     msg = (message or "").strip()
+    if _fresh_intent_exits_complaint_flow(msg):
+        session.pop("complaint_policy_precheck", None)
+        return None
     if _user_cancels_policy_precheck(msg):
         session.pop("complaint_policy_precheck", None)
         return jsonify(
@@ -307,6 +337,9 @@ def _try_complaint_wizard(message: str, branch_list: list):
     if not w:
         return None
     msg = (message or "").strip()
+    if _fresh_intent_exits_complaint_flow(msg):
+        session.pop("complaint_wizard", None)
+        return None
 
     apology_merge = bool(w.pop("_apology_turn_merged", False))
 
@@ -492,6 +525,11 @@ def _try_chat_active_complaint_turn(message: str, branch_list: list):
     _CHAT_PENDING_BRANCH = cs._CHAT_PENDING_BRANCH
     cid = session.get("chat_active_complaint_id")
     if session.get("chat_current_intent") != "complaint" or not cid:
+        return None
+    if _fresh_intent_exits_complaint_flow(message):
+        session.pop("chat_active_complaint_id", None)
+        session.pop("complaint_branch_label", None)
+        session["chat_current_intent"] = None
         return None
     sw = _explicit_switch_from_complaint(message)
     if sw == "product":

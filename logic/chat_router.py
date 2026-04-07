@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 from typing import Any, Optional
@@ -27,12 +28,14 @@ from logic.complaint_service import (
 from logic import ai_fallback as ai_fb
 from logic.dialect_detector import detect_dialect
 from logic.dialect_responses import dialect_message
-from logic.llm_analyzer import analyze_user_message
+from logic.llm_analyzer import LLM_MIN_USABLE_CONFIDENCE, analyze_user_message
 from logic.intent_handler import detect_chat_intent, pre_route_intent_snapshot
 from logic.product_service import (
     NO_PRODUCTS_PAYLOAD,
+    PRODUCT_CLARIFY_PAYLOAD,
     _build_products_response,
     _build_search_text_from_llm,
+    _keywords_grounded_in_user_text,
     _recommendation_response,
     _try_last_section_product_followup,
     _try_next_remaining_product_response,
@@ -52,6 +55,9 @@ from logic.chat_rules import (
     is_acceptable_display_name,
     looks_like_direct_request,
 )
+
+logger = logging.getLogger(__name__)
+
 
 def _try_openai_fallback(message: str, intent: str) -> Optional[Any]:
     """رد OpenAI الاحتياطي — فقط عند السماح ولوجود مفتاح."""
@@ -177,10 +183,18 @@ def _apply_llm_classification(parsed: dict, original_message: str, branch_list: 
     """
     if not parsed:
         return None
+    try:
+        conf = float(parsed.get("confidence", 0.0))
+    except (TypeError, ValueError):
+        conf = 0.0
+    if conf < LLM_MIN_USABLE_CONFIDENCE:
+        return None
     ai = (parsed.get("intent") or "unknown").strip().lower()
     cleaned = (parsed.get("cleaned_message") or "").strip()
     branch_hint = parsed.get("branch")
-    keywords = parsed.get("keywords") or []
+    keywords = _keywords_grounded_in_user_text(
+        parsed.get("keywords") or [], original_message
+    )
 
     base_msg = cleaned if cleaned else original_message
     composite = base_msg
@@ -212,7 +226,7 @@ def _apply_llm_classification(parsed: dict, original_message: str, branch_list: 
 
     if ai == "product":
         needle = _build_search_text_from_llm(cleaned, keywords, original_message)
-        prod = _build_products_response(needle)
+        prod = _build_products_response(needle, hint_source_message=original_message)
         if prod and prod.get("products"):
             session["chat_current_intent"] = "product"
             session["chat_pending_action"] = None
@@ -222,7 +236,7 @@ def _apply_llm_classification(parsed: dict, original_message: str, branch_list: 
             session["chat_current_intent"] = "product"
             session["chat_pending_action"] = None
             return jsonify(prod)
-        return jsonify(NO_PRODUCTS_PAYLOAD)
+        return jsonify(PRODUCT_CLARIFY_PAYLOAD)
 
     return None
 
@@ -533,16 +547,9 @@ def _router_intent_branch(message: str, branch_list: list) -> Any:
         r = _try_llm_fallback_route(message, branch_list)
         if r is not None:
             return r
-        if ai_fb.is_ai_fallback_allowed(message, "unknown"):
-            db_data = ai_fb.build_fallback_db_data(cs.get_db(), message)
-            if db_data.get("products"):
-                prod = _build_products_response(message)
-                if prod and prod.get("products"):
-                    session["chat_current_intent"] = "product"
-                    session["chat_pending_action"] = None
-                    chat_ctx.set_last_intent("product")
-                    return jsonify(prod)
-            # بدون منتجات مؤكدة من الـ DB لا يُولَّد نص عبر الـ AI (تفادي الاختراع)
+        oai = _try_openai_fallback(message, "unknown")
+        if oai is not None:
+            return oai
         d = session.get("chat_dialect") or "default"
         return jsonify(
             {
@@ -577,21 +584,37 @@ def dispatch_chat_query():
 
     cust_ch.sync_customer_from_session(db, message)
 
-    early = _router_early_exits(data)
-    if early is not None:
-        if data.get("account_session_sync"):
-            return early
-        return cust_ch.attach_marketing_followup_if_needed(early)
+    try:
+        early = _router_early_exits(data)
+        if early is not None:
+            if data.get("account_session_sync"):
+                return early
+            return cust_ch.attach_marketing_followup_if_needed(early)
 
-    _maybe_reset_product_section_context(message)
+        _maybe_reset_product_section_context(message)
 
-    branches = db.get_all_branches()
-    branch_list = [{"name": b["city_name"]} for b in branches]
+        branches = db.get_all_branches()
+        branch_list = [{"name": b["city_name"]} for b in branches]
 
-    mid = _router_pending_and_services(message, branch_list)
-    if mid is not None:
-        return cust_ch.attach_marketing_followup_if_needed(_maybe_enrich_json_response(mid))
+        mid = _router_pending_and_services(message, branch_list)
+        if mid is not None:
+            return cust_ch.attach_marketing_followup_if_needed(_maybe_enrich_json_response(mid))
 
-    return cust_ch.attach_marketing_followup_if_needed(
-        _maybe_enrich_json_response(_router_intent_branch(message, branch_list))
-    )
+        return cust_ch.attach_marketing_followup_if_needed(
+            _maybe_enrich_json_response(_router_intent_branch(message, branch_list))
+        )
+    except Exception:
+        logger.exception("dispatch_chat_query failed")
+        d = session.get("chat_dialect") or "default"
+        return (
+            jsonify(
+                {
+                    "products": [],
+                    "message": dialect_message(
+                        d, "server_error", name=cs._display_name()
+                    ),
+                    "intent": "error",
+                }
+            ),
+            500,
+        )
