@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from typing import Callable, Optional
+from typing import Any, Callable, Dict, Optional
 
 from logic import keywords as kw
 
@@ -127,3 +127,28 @@ def detect_chat_intent(message: str, resolve_branch: Callable[[str], Optional[st
         return "location_pick"
 
     return "unknown"
+
+
+def pre_route_intent_snapshot(
+    message: str, resolve_branch: Callable[[str], Optional[str]]
+) -> Dict[str, Any]:
+    """
+    لقطة قبل التوجيه: نية رئيسية + تصنيف فرعي لمسار المنتج (بحث جديد / متابعة عرض).
+    يُستدعى مرة واحدة لكل رسالة من مسار الشات.
+    """
+    from logic.product_query_parse import normalize_for_product_search
+    from logic.product_service import _looks_like_next_product_request
+
+    primary = detect_chat_intent(message, resolve_branch)
+    product_sub: Optional[str] = None
+    if primary == "product":
+        product_sub = (
+            "product_followup"
+            if _looks_like_next_product_request(message)
+            else "product_search"
+        )
+    return {
+        "primary_intent": primary,
+        "product_sub_intent": product_sub,
+        "normalized_for_search": normalize_for_product_search(message),
+    }

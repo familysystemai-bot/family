@@ -1,6 +1,8 @@
 """
 إعدادات التطبيق المركزية (مسارات، مفاتيح، قيم افتراضية).
-يُحمَّل .env من جذر المشروع تلقائياً.
+
+- الإنتاج (مثل Render): المتغيرات من لوحة Environment فقط — لا يُفترض وجود ملف .env.
+- محلياً: اختياريًا تحميل `.env` من جذر المشروع عند عدم تعيين RENDER.
 
 ملاحظة: حزمة بيانات العلامة والفروع موجودة في المجلد site_config/ لتفادي التعارض مع اسم هذا الملف.
 """
@@ -11,13 +13,16 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
-from dotenv import load_dotenv
 from werkzeug.security import check_password_hash, generate_password_hash
 
 # جذر المشروع (حيث يقع config.py)
 BASE_DIR = Path(__file__).resolve().parent
 _ENV_PATH = BASE_DIR / ".env"
-load_dotenv(_ENV_PATH)
+
+if os.getenv("RENDER") is None:
+    from dotenv import load_dotenv
+
+    load_dotenv(_ENV_PATH)
 
 # ——— قاعدة البيانات ———
 DATA_DIR = BASE_DIR / "data"
@@ -48,7 +53,7 @@ FOUNDER_PUBLIC_PHONE = os.getenv("FOUNDER_PUBLIC_PHONE", "0538344673")
 
 # ——— البريد ———
 # المرسل الرسمي لـ SMTP (المستلمون: MAIN_RECEIVER_EMAIL / الفروع / الإدارة — لا تُستخدم كمرسل)
-SENDER_EMAIL = os.getenv("SENDER_EMAIL", "familysystemai@gmail.com")
+SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
 ADMIN_OFFICE_EMAIL = os.getenv("ADMIN_OFFICE_EMAIL", "management@family-mall.com")
@@ -71,7 +76,9 @@ DIAGNOSTICS_ALERT_COOLDOWN_SECONDS = int(
 
 # ——— نماذج ذكاء اصطناعي (اختياري، يُقرأ من البيئة) ———
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
-OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or "").strip() or None
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if OPENAI_API_KEY is not None:
+    OPENAI_API_KEY = OPENAI_API_KEY.strip() or None
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")

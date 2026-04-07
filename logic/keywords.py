@@ -259,6 +259,7 @@ PRODUCT_REQUEST_WORDS = (
     "اريد",
     "أبغي",
     "عندك",
+    "فيه",
 )
 
 PRODUCT_CONTEXT_WORDS = (

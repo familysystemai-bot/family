@@ -25,12 +25,12 @@ from logic.complaint_service import (
     _try_complaint_wizard,
 )
 from logic import ai_fallback as ai_fb
-from logic.ai_fallback import generate_ai_response
 from logic.dialect_detector import detect_dialect
 from logic.dialect_responses import dialect_message
 from logic.llm_analyzer import analyze_user_message
-from logic.intent_handler import detect_chat_intent
+from logic.intent_handler import detect_chat_intent, pre_route_intent_snapshot
 from logic.product_service import (
+    NO_PRODUCTS_PAYLOAD,
     _build_products_response,
     _build_search_text_from_llm,
     _recommendation_response,
@@ -62,7 +62,7 @@ def _try_openai_fallback(message: str, intent: str) -> Optional[Any]:
     # أولوية لعرض منتجات حقيقية من DB إذا وُجدت مطابقة (حتى لو كانت قليلة)
     if db_data.get("products"):
         prod = _build_products_response(message)
-        if prod:
+        if prod and prod.get("products"):
             session["chat_current_intent"] = "product"
             session["chat_pending_action"] = None
             chat_ctx.set_last_intent("product")
@@ -213,16 +213,16 @@ def _apply_llm_classification(parsed: dict, original_message: str, branch_list: 
     if ai == "product":
         needle = _build_search_text_from_llm(cleaned, keywords, original_message)
         prod = _build_products_response(needle)
-        if prod:
+        if prod and prod.get("products"):
             session["chat_current_intent"] = "product"
             session["chat_pending_action"] = None
             return jsonify(prod)
         prod = _build_products_response(original_message)
-        if prod:
+        if prod and prod.get("products"):
             session["chat_current_intent"] = "product"
             session["chat_pending_action"] = None
             return jsonify(prod)
-        return None
+        return jsonify(NO_PRODUCTS_PAYLOAD)
 
     return None
 
@@ -525,7 +525,7 @@ def _router_intent_branch(message: str, branch_list: list) -> Any:
         session["chat_current_intent"] = "unknown"
         # DB أولاً: استعلام المنتجات قبل LLM/AI (كلمات مثل تشيرت قد لا تُصنَّف كـ product)
         prod_db = _build_products_response(message)
-        if prod_db:
+        if prod_db and prod_db.get("products"):
             session["chat_current_intent"] = "product"
             session["chat_pending_action"] = None
             chat_ctx.set_last_intent("product")
@@ -537,20 +537,12 @@ def _router_intent_branch(message: str, branch_list: list) -> Any:
             db_data = ai_fb.build_fallback_db_data(cs.get_db(), message)
             if db_data.get("products"):
                 prod = _build_products_response(message)
-                if prod:
+                if prod and prod.get("products"):
                     session["chat_current_intent"] = "product"
                     session["chat_pending_action"] = None
                     chat_ctx.set_last_intent("product")
                     return jsonify(prod)
-            ai_reply = generate_ai_response(message, db_data)
-            if ai_reply:
-                return jsonify(
-                    {
-                        "products": [],
-                        "message": ai_reply,
-                        "intent": "unknown",
-                    }
-                )
+            # بدون منتجات مؤكدة من الـ DB لا يُولَّد نص عبر الـ AI (تفادي الاختراع)
         d = session.get("chat_dialect") or "default"
         return jsonify(
             {
@@ -564,26 +556,17 @@ def _router_intent_branch(message: str, branch_list: list) -> Any:
     session["chat_pending_action"] = None
     chat_ctx.set_last_intent("product")
     prod = _build_products_response(message)
-    if not prod:
-        ai_r = _try_openai_fallback(message, "product")
-        if ai_r is not None:
-            return ai_r
-        d = session.get("chat_dialect") or "default"
-        return jsonify(
-            {
-                "products": [],
-                "message": dialect_message(d, "product_fallback"),
-                "intent": "product",
-            }
-        )
     return jsonify(prod)
 
 
 def dispatch_chat_query():
-    """مسار /chat_query — نفس الترتيب والردود السابقة."""
+    """مسار /chat_query — تحليل نية أولي ثم نفس الترتيب المعتاد."""
     data = request.get_json(silent=True) or {}
     message = (data.get("message") or "").strip()
     session["chat_dialect"] = detect_dialect(message)
+    session["chat_intent_snapshot"] = pre_route_intent_snapshot(
+        message, cs.resolve_branch_from_message
+    )
 
     cust_ch.apply_request_basics(data)
     db = cs.get_db()

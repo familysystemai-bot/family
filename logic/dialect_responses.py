@@ -26,12 +26,11 @@ RESPONSES: Dict[str, Dict[str, str]] = {
             "ذكّرني باسم المنتج أو نوع اللبس اللي تدور عليه وأرشدك."
         ),
         "product_found_soft": "يا {name}، نعم متوفر 👍 هل تبحث عن شيء معين؟",
-        "product_found_soft_more": "عندي خيارات أكثر إذا حاب أعرض لك.",
+        "product_search_intro": "يا {name}، هذا اللي طابق بحثك الحالي من عندنا 👇",
+        "product_found_soft_more": "إذا حاب تشوف أكثر قلّي «غيره» أو «ورّني زيادة».",
         "product_branch_prompt": "يا {name}، أي فرع أقرب لك؟ متوفر عندنا في:",
         "product_fallback": (
-            "ما طلع عندي في البيانات الحالية مطابقة قوية لطلبك، "
-            "لكن نقدر نقرب الموضوع: جرّب اسم أقرب للمنتج، أو قلّي المناسبة "
-            "(زواج، سهرة، طلعة…) أو اسأل عن قسم معيّن."
+            "حالياً ما عندنا طلبك بهذا الشكل 🙏\nتبغى نبحث لك بشي قريب؟"
         ),
         "collect_name_declined": "تمام، كيف أقدر أخدمك؟",
         "after_optional_name": "تمام يا {name}، كيف أقدر أخدمك؟",
@@ -42,7 +41,9 @@ RESPONSES: Dict[str, Dict[str, str]] = {
         "goodbye": "مع السلامة يا {name}، بالتوفيق.",
         "general": "يا {name}، تفضل اسأل عن منتج، موقع فرع، أو شكوى إن احتجت.",
         "unknown_fallback": "أقدر أساعدك بمنتج أو فرع؛ وضّح لي وش تبي بالضبط.",
-        "product_fallback": "ما لقيت مطابقة قوية؛ جرّب تصف المنتج أو المناسبة وأنا أقرب لك الخيار.",
+        "product_fallback": (
+            "حالياً ما عندنا طلبك بهذا الشكل 🙏\nتبغى نبحث لك بشي قريب؟"
+        ),
         "collect_name_declined": "تمام، كيف أقدر أساعدك؟",
         "after_optional_name": "تمام يا {name}، كيف أقدر أساعدك؟",
     },
@@ -54,7 +55,9 @@ RESPONSES: Dict[str, Dict[str, str]] = {
         "goodbye": "في أمان الله يا {name}، نورتنا.",
         "general": "يا {name}، اسأل عن منتج، موقع فرع، أو شكوى إذا تحتاج.",
         "unknown_fallback": "أقدر أساعدك؛ قلّي وش تبي بالضبط — منتج، قسم، أو فرع.",
-        "product_fallback": "ما طلع عندي مطابقة واضحة؛ جرّب كلمة أوضح للمنتج أو المناسبة.",
+        "product_fallback": (
+            "حالياً ما عندنا طلبك بهذا الشكل 🙏\nتبغى نبحث لك بشي قريب؟"
+        ),
         "collect_name_declined": "تمام، كيف أقدر أخدمك؟",
         "after_optional_name": "تمام يا {name}، كيف أقدر أخدمك؟",
     },
@@ -64,7 +67,9 @@ RESPONSES: Dict[str, Dict[str, str]] = {
         "goodbye": "مع السلامة يا {name}.",
         "general": "يا {name}، تفضل — منتج، موقع فرع، أو شكوى.",
         "unknown_fallback": "أقدر أساعدك؛ وضّح لي ذا وش تبغاه بالضبط.",
-        "product_fallback": "ما لقيت مطابقة قوية؛ جرّب توصف المنتج أو المناسبة أكثر.",
+        "product_fallback": (
+            "حالياً ما عندنا طلبك بهذا الشكل 🙏\nتبغى نبحث لك بشي قريب؟"
+        ),
         "collect_name_declined": "تمام، كيف أقدر أخدمك؟",
         "after_optional_name": "تمام يا {name}، كيف أقدر أخدمك؟",
     },
@@ -74,7 +79,9 @@ RESPONSES: Dict[str, Dict[str, str]] = {
         "goodbye": "مع السلامة يا {name}.",
         "general": "يا {name}، اسأل عن منتج، موقع فرع، أو شكوى.",
         "unknown_fallback": "أقدر أساعدك؛ وضّح شلون أقدر أخدمك.",
-        "product_fallback": "ما طلع عندي مطابقة زينة؛ جرّب توصف المنتج أكثر.",
+        "product_fallback": (
+            "حالياً ما عندنا طلبك بهذا الشكل 🙏\nتبغى نبحث لك بشي قريب؟"
+        ),
         "collect_name_declined": "تمام، شلون أقدر أساعدك؟",
         "after_optional_name": "تمام يا {name}، شلون أقدر أساعدك؟",
     },
@@ -84,7 +91,9 @@ RESPONSES: Dict[str, Dict[str, str]] = {
         "goodbye": "مع السلامة يا {name}.",
         "general": "يا {name}، تقدر تسأل عن منتج، موقع فرع، أو شكوى.",
         "unknown_fallback": "أقدر أساعدك؛ وشلون أقدر أخدمك بالضبط؟",
-        "product_fallback": "ما لقيت مطابقة قوية؛ جرّب توضح الطلب أكثر.",
+        "product_fallback": (
+            "حالياً ما عندنا طلبك بهذا الشكل 🙏\nتبغى نبحث لك بشي قريب؟"
+        ),
         "collect_name_declined": "تمام، كيف أقدر أخدمك؟",
         "after_optional_name": "تمام يا {name}، كيف أقدر أخدمك؟",
     },
@@ -94,7 +103,9 @@ RESPONSES: Dict[str, Dict[str, str]] = {
         "goodbye": "مع السلامة يا {name}.",
         "general": "يا {name}، اسأل عن منتج، موقع فرع، أو شكوى.",
         "unknown_fallback": "أقدر أساعدك؛ وضّح لي ايش تبي بالضبط.",
-        "product_fallback": "ما لقيت مطابقة واضحة؛ جرّب توصف المنتج أو المناسبة.",
+        "product_fallback": (
+            "حالياً ما عندنا طلبك بهذا الشكل 🙏\nتبغى نبحث لك بشي قريب؟"
+        ),
         "collect_name_declined": "تمام، كيف أقدر أساعدك؟",
         "after_optional_name": "تمام يا {name}، كيف أقدر أساعدك؟",
     },
@@ -104,7 +115,9 @@ RESPONSES: Dict[str, Dict[str, str]] = {
         "goodbye": "مع السلامة يا {name}، نورتنا.",
         "general": "يا {name}، تقدر تسأل عن منتج، موقع فرع، أو شكوى.",
         "unknown_fallback": "أقدر أساعدك؛ قولّي عايز إيه بالظبط.",
-        "product_fallback": "مفيش مطابقة قوية في البيانات؛ جرّب توصف المنتج أو المناسبة.",
+        "product_fallback": (
+            "حالياً ما عندنا طلبك بهذا الشكل 🙏\nتبغى نبحث لك بشي قريب؟"
+        ),
         "collect_name_declined": "تمام، تحب أساعدك في إيه؟",
         "after_optional_name": "تمام يا {name}، تحب أساعدك في إيه؟",
     },
@@ -114,7 +127,9 @@ RESPONSES: Dict[str, Dict[str, str]] = {
         "goodbye": "مع السلامة يا {name}.",
         "general": "يا {name}، تفضل — منتج، موقع فرع، أو شكوى.",
         "unknown_fallback": "بقدر أساعدك؛ شو بدك بالضبط؟",
-        "product_fallback": "ما لقيت مطابقة قوية؛ جرّب توضح شو عم تدور عليه.",
+        "product_fallback": (
+            "حالياً ما عندنا طلبك بهذا الشكل 🙏\nتبغى نبحث لك بشي قريب؟"
+        ),
         "collect_name_declined": "تمام، كيف بقدر أساعدك؟",
         "after_optional_name": "تمام يا {name}، كيف بقدر أساعدك؟",
     },
@@ -124,7 +139,9 @@ RESPONSES: Dict[str, Dict[str, str]] = {
         "goodbye": "مع السلامة يا {name}.",
         "general": "يا {name}، تقدر تسأل عن منتج، موقع فرع، أو شكوى.",
         "unknown_fallback": "أقدر أساعدك؛ وضّح شلون تريد.",
-        "product_fallback": "ما طلع عندي مطابقة قوية؛ جرّب توصف المنتج أو المناسبة.",
+        "product_fallback": (
+            "حالياً ما عندنا طلبك بهذا الشكل 🙏\nتبغى نبحث لك بشي قريب؟"
+        ),
         "collect_name_declined": "تمام، شلون أقدر أساعدك؟",
         "after_optional_name": "تمام يا {name}، شلون أقدر أساعدك؟",
     },

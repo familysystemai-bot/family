@@ -14,6 +14,11 @@ from flask import jsonify, session
 from logic.chat_semantic_expand import all_product_search_needles
 from logic.dialect_responses import dialect_message
 from logic.keywords import PRODUCT_HINTS
+from logic.product_query_parse import (
+    blob_matches_gender_filter,
+    extract_gender_filter,
+    normalize_for_product_search,
+)
 
 
 def _cs():
@@ -22,7 +27,14 @@ def _cs():
     return m
 
 
-_PRODUCT_UNAVAILABLE_MSG = "حالياً هذا المنتج غير متوفر، تحب أعرض لك بدائل؟"
+NO_PRODUCTS_MESSAGE = "ما حصلت نفس الطلب، تبغى خيارات قريبة؟"
+NO_PRODUCTS_PAYLOAD = {
+    "intent": "no_products",
+    "message": NO_PRODUCTS_MESSAGE,
+    "products": [],
+}
+# نفس الرد القصير عند عدم توفر مطابقة بحث / توصية (بدون نصوص طويلة أو تخمين)
+_PRODUCT_UNAVAILABLE_MSG = NO_PRODUCTS_MESSAGE
 
 _LAST_PRODUCT_SHOWN_MSG = "هذا آخر الموجود حالياً 👍"
 
@@ -37,6 +49,12 @@ _NEXT_PRODUCT_TRIGGER_PHRASES = (
     "ورني أكثر",
     "وريني اكثر",
     "وريني أكثر",
+    "ابي لون",
+    "أبي لون",
+    "ابغى لون",
+    "ابغي لون",
+    "لون ثاني",
+    "لون غير",
 )
 
 
@@ -51,18 +69,20 @@ def _looks_like_next_product_request(message: str) -> bool:
     return False
 
 
-def _apply_step_by_step_slice(out_products: list, list_intent: str) -> List[dict]:
+def _apply_step_by_step_slice(
+    out_products: list, list_intent: str, max_visible: int = 2
+) -> List[dict]:
     """
-    يعرض أول منتج فقط ويخزّن الباقي في الجلسة لعرض تفاعلي لاحقاً.
-    منطق البحث يبني out_products كاملاً كما سبق؛ التقطيع هنا فقط.
+    يعرض حتى max_visible منتجاً (افتراضياً 2) ويخزّن الباقي في الجلسة.
     """
     if not out_products:
         session["remaining_products"] = []
         session["remaining_products_intent"] = list_intent
         return []
-    session["remaining_products"] = [copy.deepcopy(x) for x in out_products[1:]]
+    mv = max(1, min(int(max_visible or 2), 6))
+    session["remaining_products"] = [copy.deepcopy(x) for x in out_products[mv:]]
     session["remaining_products_intent"] = list_intent
-    return out_products[:1]
+    return out_products[:mv]
 
 
 def _try_next_remaining_product_response(message: str):
@@ -565,8 +585,8 @@ def _compose_product_search_text(name, desc, colors, sizes) -> str:
 
 
 def _parse_product_query_constraints(message: str) -> dict:
-    """استخراج مقاس/لون/كلمات وصف من رسالة العميل، وباقي النص كمدخل بحث."""
-    t = (message or "").strip()
+    """استخراج مقاس/لون/جنس/كلمات وصف من رسالة العميل، وباقي النص كمدخل بحث."""
+    t = normalize_for_product_search((message or "").strip())
     t = t.replace("؟", " ").replace("?", " ")
     sizes = []
     colors = []
@@ -605,11 +625,14 @@ def _parse_product_query_constraints(message: str) -> dict:
     if len(needle) < 2:
         needle = t
 
+    gender = extract_gender_filter(t)
+
     return {
         "needle": needle,
         "sizes": sizes,
         "colors": colors,
         "desc_keywords": [],
+        "gender": gender,
     }
 
 
@@ -626,10 +649,17 @@ def _product_matches_query_constraints(
     product_description: str,
     search_text: str,
     constraints: dict,
+    *,
+    extra_blob: str = "",
 ) -> bool:
     sizes_req = constraints.get("sizes") or []
     colors_req = constraints.get("colors") or []
     desc_kw = constraints.get("desc_keywords") or []
+    gender = constraints.get("gender")
+
+    blob_for_gender = f"{search_text} {(product_description or '')} {extra_blob}".strip()
+    if gender and not blob_matches_gender_filter(blob_for_gender, gender):
+        return False
 
     if desc_kw:
         blob = f"{search_text} {(product_description or '')}"
@@ -858,11 +888,11 @@ def _distinct_branch_city_labels(out_products: list) -> list:
 
 
 def _product_list_intro_message(_display_name, out_products: list, has_more: bool) -> str:
-    """مقدمة عرض المنتجات — عامة وطبيعية دون ذكر الفروع (تُذكر لاحقاً بعد تأكيد الاهتمام)."""
+    """مقدمة قصيرة مبنية على بيانات فعلية فقط — بدون ادّعاء مخزون غير معروض."""
     d = session.get("chat_dialect") or "default"
-    intro = dialect_message(d, "product_found_soft", name=_display_name())
-    if has_more and len(out_products) >= 3:
-        intro += "\n\n" + dialect_message(d, "product_found_soft_more")
+    intro = dialect_message(d, "product_search_intro", name=_display_name())
+    if has_more:
+        intro += "\n" + dialect_message(d, "product_found_soft_more")
     return intro
 
 
@@ -870,8 +900,9 @@ def _build_products_response(message: str):
     """
     بحث منتجات للشات — على كل الفروع، بترتيب: قسم فرعي → فئة → اسم → وصف،
     مع توسيع المناسبات العامة (زواج، مناسبة، …).
-    يعرض حتى 3 نتائج مع رسالة عند وجود المزيد.
+    يعرض حتى منتجين لكل رد؛ الباقي يُعرض عند طلب «غيره».
     """
+    message = normalize_for_product_search((message or "").strip())
     cs = _cs()
     get_db = cs.get_db
     _display_name = cs._display_name
@@ -900,7 +931,7 @@ def _build_products_response(message: str):
     if not rows:
         session.pop("remaining_products", None)
         session.pop("remaining_products_intent", None)
-        return None
+        return dict(NO_PRODUCTS_PAYLOAD)
 
     out_products = []
     for p in rows:
@@ -914,23 +945,25 @@ def _build_products_response(message: str):
             colors,
             sizes,
         )
+        extra_blob = f"{(p.get('category_name') or '')} {(p.get('section_name') or '')}"
         if not _product_matches_query_constraints(
             variants,
             p.get("description") or "",
             search_text,
             constraints,
+            extra_blob=extra_blob,
         ):
             continue
         out_products.append(
             _product_dict_for_chat(p, product_id, variants, show_branch_in_chat=False)
         )
-        if len(out_products) >= 3:
+        if len(out_products) >= 2:
             break
 
     if not out_products:
         session.pop("remaining_products", None)
         session.pop("remaining_products_intent", None)
-        return None
+        return dict(NO_PRODUCTS_PAYLOAD)
 
     has_more = has_more_tier or len(rows) > len(out_products)
     session["last_products"] = [int(x["id"]) for x in out_products]
@@ -966,14 +999,6 @@ def _build_search_text_from_llm(cleaned: str, keywords: list, original: str) -> 
     return (original or "").strip()
 
 
-def _recommendation_fallback_needle() -> str:
-    for h in PRODUCT_HINTS:
-        h = (h or "").strip()
-        if len(h) >= 3:
-            return h
-    return "فستان"
-
-
 def _recommendation_response():
     """بدائل ذكية: نفس القسم أو نفس كلمات البحث، بدون تكرار المعرض سابقاً."""
     cs = _cs()
@@ -994,13 +1019,7 @@ def _recommendation_response():
 
     has_ctx = bool(snap or session.get("last_products") or session.get("last_section"))
     if not has_ctx:
-        return jsonify(
-            {
-                "products": [],
-                "message": "حدد لي النوع اللي تبيه وبعرض لك خيارات",
-                "intent": "recommendation",
-            }
-        )
+        return jsonify(NO_PRODUCTS_PAYLOAD)
 
     if not session.get("last_products") and snap:
         session["last_products"] = [int(snap["id"])]
@@ -1025,7 +1044,7 @@ def _recommendation_response():
     if not needle:
         needle = (session.get("last_section") or "").strip()
     if not needle or len(needle) < 2:
-        needle = _recommendation_fallback_needle()
+        return jsonify(NO_PRODUCTS_PAYLOAD)
 
     last_section = session.get("last_section")
     rows = []
@@ -1036,20 +1055,12 @@ def _recommendation_response():
                 break
     if not rows:
         rows = get_db().search_products(needle, limit=30)
-    if not rows and last_section:
-        rows = get_db().search_products(last_section, limit=30)
 
     filtered = [r for r in rows if int(r["product_id"]) not in exclude][:12]
     if not filtered:
         session.pop("remaining_products", None)
         session.pop("remaining_products_intent", None)
-        return jsonify(
-            {
-                "products": [],
-                "message": _PRODUCT_UNAVAILABLE_MSG,
-                "intent": "recommendation",
-            }
-        )
+        return jsonify(NO_PRODUCTS_PAYLOAD)
 
     out_products = []
     for p in filtered:
@@ -1058,7 +1069,7 @@ def _recommendation_response():
         out_products.append(
             _product_dict_for_chat(p, product_id, variants, show_branch_in_chat=False)
         )
-        if len(out_products) >= 3:
+        if len(out_products) >= 2:
             break
 
     prev = list(session.get("last_products") or [])
@@ -1077,7 +1088,7 @@ def _recommendation_response():
     except Exception:
         pass
     d = session.get("chat_dialect") or "default"
-    rec_msg = dialect_message(d, "product_found_soft", name=_display_name())
+    rec_msg = dialect_message(d, "product_search_intro", name=_display_name())
     return jsonify(
         {
             "products": shown,
@@ -1104,16 +1115,8 @@ def _try_last_section_product_followup(message: str):
     if any(k in t for k in _sec_kw):
         return None
     if not _section_followup_has_meaningful_term(t):
-        return jsonify(
-            {
-                "products": [],
-                "message": (
-                    "حاب أظبط لك الخيارات — اذكر نوع الموديل أو اللون أو المقاس اللي في بالك "
-                    "وأرشدك لأنسب اللي عندنا في نفس القسم."
-                ),
-                "intent": "product",
-            }
-        )
+        return jsonify(NO_PRODUCTS_PAYLOAD)
+    t = normalize_for_product_search(t)
     constraints = _parse_product_query_constraints(t)
     query = _section_followup_non_filler_text(t) or t
     needle = (constraints.get("needle") or "").strip()
@@ -1122,7 +1125,6 @@ def _try_last_section_product_followup(message: str):
     blob_candidates = f"{t} {needle} {query}"
     section_candidates = get_db().section_names_for_followup(last, blob_candidates)
     rows = []
-    used_global_fallback = False
     for sec in section_candidates:
         rows = get_db().search_products_in_section(sec, needle, limit=50)
         if rows:
@@ -1133,23 +1135,9 @@ def _try_last_section_product_followup(message: str):
             if rows:
                 break
     if not rows:
-        rows = get_db().search_products(needle, limit=50)
-        if rows:
-            used_global_fallback = True
-    if not rows:
-        rows = get_db().search_products(query, limit=50)
-        if rows:
-            used_global_fallback = True
-    if not rows:
         session.pop("remaining_products", None)
         session.pop("remaining_products_intent", None)
-        return jsonify(
-            {
-                "products": [],
-                "message": _PRODUCT_UNAVAILABLE_MSG,
-                "intent": "product",
-            }
-        )
+        return jsonify(NO_PRODUCTS_PAYLOAD)
     out_products = []
     for p in rows:
         product_id = int(p["product_id"])
@@ -1162,23 +1150,25 @@ def _try_last_section_product_followup(message: str):
             colors,
             sizes,
         )
+        extra_blob = f"{(p.get('category_name') or '')} {(p.get('section_name') or '')}"
         if not _product_matches_query_constraints(
             variants,
             p.get("description") or "",
             search_text,
             constraints,
+            extra_blob=extra_blob,
         ):
             continue
         out_products.append(
             _product_dict_for_chat(p, product_id, variants, show_branch_in_chat=False)
         )
-        if len(out_products) >= 10:
+        if len(out_products) >= 2:
             break
 
     if not out_products:
         session.pop("remaining_products", None)
         session.pop("remaining_products_intent", None)
-        return None
+        return jsonify(NO_PRODUCTS_PAYLOAD)
     session["last_products"] = [int(p["id"]) for p in out_products]
     session["pending_product_intent"] = True
     _save_chat_last_product_snapshot(
@@ -1194,7 +1184,7 @@ def _try_last_section_product_followup(message: str):
     except Exception:
         pass
     d = session.get("chat_dialect") or "default"
-    msg = dialect_message(d, "product_found_soft", name=_display_name())
+    msg = dialect_message(d, "product_search_intro", name=_display_name())
     return jsonify(
         {
             "products": shown,

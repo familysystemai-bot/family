@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 منطق الشات — تهيئة قاعدة البيانات، الجلسة، واستخراج الفرع.
-توجيه مسار /chat_query في logic.chat_router (نفس السلوك السابق).
+توجيه مسار /chat_query في logic.chat_router؛ يُسجَّل تحليل أولي للنية في الجلسة
+تحت المفتاح chat_intent_snapshot (قبل بناء الرد).
 """
 from __future__ import annotations
 
@@ -129,7 +130,7 @@ def _branch_label_for_chat(city_name: str) -> str:
 
 
 def chat_query():
-    """معالج مسار /chat_query — يُستدعى من app.route."""
+    """معالج مسار /chat_query — يُستدعى من app.route؛ التحليل في dispatch_chat_query."""
     _ensure_chat_user_session()
     from logic.chat_router import dispatch_chat_query
 

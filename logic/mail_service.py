@@ -22,7 +22,7 @@ class MailService:
         password = SENDER_PASSWORD
 
         if not from_email or not password:
-            print("⚠️ خطأ: بيانات البريد SENDER_EMAIL/PASSWORD غير مضبوطة في .env")
+            print("⚠️ خطأ: بيانات البريد SENDER_EMAIL/SENDER_PASSWORD غير مضبوطة (متغيرات البيئة).")
             return False
 
         msg = EmailMessage()

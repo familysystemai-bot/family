@@ -13,7 +13,7 @@ from config import MAIN_RECEIVER_EMAIL
 from logic.complaint_classifier import classify_complaint_issue, complaint_type_label_ar
 from logic.mail_service import send_email
 from logic.branch_service import _branch_location_json
-from logic.product_service import _PRODUCT_UNAVAILABLE_MSG, _build_products_response
+from logic.product_service import NO_PRODUCTS_PAYLOAD, _build_products_response
 from logic import chat_context as chat_ctx
 from logic.chat_handlers.complaint_handler import random_opening_apology, success_message
 from site_config.branches import get_branch, get_management_emails
@@ -134,7 +134,7 @@ def _send_complaint_email(complaint_id, branch_label, issue_text, is_append=Fals
     if not ok:
         print(
             f"❌ فشل إرسال بريد الشكوى #{complaint_id} — "
-            "تحقق من SENDER_EMAIL و SENDER_PASSWORD (App Password) في .env"
+            "تحقق من SENDER_EMAIL و SENDER_PASSWORD (App Password) في متغيرات البيئة."
         )
     return ok
 
@@ -337,14 +337,8 @@ def _try_complaint_wizard(message: str, branch_list: list):
         session.pop("complaint_wizard", None)
         session["chat_pending_action"] = None
         prod = _build_products_response(msg)
-        if not prod:
-            return jsonify(
-                {
-                    "products": [],
-                    "message": _PRODUCT_UNAVAILABLE_MSG,
-                    "intent": "product",
-                }
-            )
+        if not prod.get("products"):
+            return jsonify(dict(NO_PRODUCTS_PAYLOAD))
         return jsonify(prod)
     if sw == "location":
         session.pop("complaint_wizard", None)
@@ -505,14 +499,8 @@ def _try_chat_active_complaint_turn(message: str, branch_list: list):
         session.pop("complaint_branch_label", None)
         session["chat_current_intent"] = None
         prod = _build_products_response(message)
-        if not prod:
-            return jsonify(
-                {
-                    "products": [],
-                    "message": _PRODUCT_UNAVAILABLE_MSG,
-                    "intent": "product",
-                }
-            )
+        if not prod.get("products"):
+            return jsonify(dict(NO_PRODUCTS_PAYLOAD))
         return jsonify(prod)
     if sw == "location":
         session.pop("chat_active_complaint_id", None)
