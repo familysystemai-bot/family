@@ -4,12 +4,10 @@
 توجيه مسار /chat_query في logic.chat_router؛ يُسجَّل تحليل أولي للنية في الجلسة
 تحت المفتاح chat_intent_snapshot (قبل بناء الرد).
 
-الذكاء الاصطناعي (LLM) في المشروع — دوره المحدود:
-- يُستدعى من logic.llm_analyzer عند تفعيل LLM_ENABLED فقط.
-- الوظيفة: تصنيف نية تقريبية (intent) واستخراج كلمات من نص المستخدم (نوع، لون، رجالي/نسائي)
-  في حقل keywords — دون اختراع منتجات أو أقسام.
-- لا يُستخدم لعرض منتجات أو للبحث في SQLite؛ البحث والقرار يتم عبر القواعد وقاعدة البيانات
-  (انظر logic.product_repository و logic.product_service).
+الذكاء الاصطناعي في المشروع:
+- OpenAI (عند وجود OPENAI_API_KEY): استخراج حقول بحث قبل SQLite عبر logic.ai_fallback — لا يغيّر نية التوجيه القائمة على القواعد.
+- Ollama (اختياري): logic.llm_analyzer عند LLM_ENABLED — تصنيف مساعد فقط.
+- عرض المنتجات يبقى من بيانات قاعدة البيانات فعلياً (انظر logic.product_repository و logic.product_service).
 - ردود الشات للمستخدم تُبنى من بيانات حقيقية أو قوالب ثابتة، وليس من توليد يصف مخزوناً غير مؤكد.
 """
 from __future__ import annotations

@@ -63,11 +63,12 @@ def _try_openai_fallback(message: str, intent: str) -> Optional[Any]:
     """رد OpenAI الاحتياطي — فقط عند السماح ولوجود مفتاح."""
     if not ai_fb.is_ai_fallback_allowed(message, intent):
         return None
+    search_q = ai_fb.enhance_search_query_with_openai(message, intent)
     db = cs.get_db()
-    db_data = ai_fb.build_fallback_db_data(db, message)
+    db_data = ai_fb.build_fallback_db_data(db, search_q)
     # أولوية لعرض منتجات حقيقية من DB إذا وُجدت مطابقة (حتى لو كانت قليلة)
     if db_data.get("products"):
-        prod = _build_products_response(message)
+        prod = _build_products_response(search_q, hint_source_message=message)
         if prod and prod.get("products"):
             session["chat_current_intent"] = "product"
             session["chat_pending_action"] = None
@@ -526,6 +527,14 @@ def _router_intent_branch(message: str, branch_list: list) -> Any:
 
     if intent == "general":
         session["chat_current_intent"] = "general"
+        if ai_fb.should_run_presearch_analysis(message, intent):
+            psq = ai_fb.enhance_search_query_with_openai(message, intent)
+            prod_g = _build_products_response(psq, hint_source_message=message)
+            if prod_g and prod_g.get("products"):
+                session["chat_current_intent"] = "product"
+                session["chat_pending_action"] = None
+                chat_ctx.set_last_intent("product")
+                return jsonify(prod_g)
         d = session.get("chat_dialect") or "default"
         return jsonify(
             {
@@ -537,8 +546,10 @@ def _router_intent_branch(message: str, branch_list: list) -> Any:
 
     if intent == "unknown":
         session["chat_current_intent"] = "unknown"
-        # DB أولاً: استعلام المنتجات قبل LLM/AI (كلمات مثل تشيرت قد لا تُصنَّف كـ product)
-        prod_db = _build_products_response(message)
+        # تحليل OpenAI للاستخراج فقط ثم بحث DB (القرار النهائي من القواعد + البيانات)
+        psq = ai_fb.enhance_search_query_with_openai(message, intent)
+        # DB أولاً: استعلام المنتجات قبل LLM/توليد رد نصي
+        prod_db = _build_products_response(psq, hint_source_message=message)
         if prod_db and prod_db.get("products"):
             session["chat_current_intent"] = "product"
             session["chat_pending_action"] = None
@@ -562,7 +573,8 @@ def _router_intent_branch(message: str, branch_list: list) -> Any:
     session["chat_current_intent"] = "product"
     session["chat_pending_action"] = None
     chat_ctx.set_last_intent("product")
-    prod = _build_products_response(message)
+    psq = ai_fb.enhance_search_query_with_openai(message, intent)
+    prod = _build_products_response(psq, hint_source_message=message)
     return jsonify(prod)
 
 
