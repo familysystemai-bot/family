@@ -12,31 +12,27 @@ from typing import Any, Optional
 
 from flask import current_app, jsonify, request, session
 
-from config import LLM_ENABLED
+from logic import keywords as kw
 from logic.branch_service import _branch_location_json, branch_phone_payload
 from logic.category_service import (
     _looks_like_section_stock_question,
     _section_chat_response,
     _try_resolve_pending_section_choice,
 )
+from logic.chat_handlers.complaint_handler import random_opening_apology
 from logic.complaint_service import (
     _handle_complaint_policy_precheck_turn,
-    _handle_new_complaint_intent,
     _try_chat_active_complaint_turn,
     _try_complaint_wizard,
 )
 from logic import ai_fallback as ai_fb
 from logic.dialect_detector import detect_dialect
 from logic.dialect_responses import dialect_message
-from logic.llm_analyzer import LLM_MIN_USABLE_CONFIDENCE, analyze_user_message
-from logic.intent_handler import detect_chat_intent, pre_route_intent_snapshot
+from logic.intent_handler import user_wants_open_now
+from logic.product_query_parse import normalize_for_product_search
 from logic.product_service import (
-    NO_PRODUCTS_PAYLOAD,
-    PRODUCT_CLARIFY_PAYLOAD,
     _build_products_response,
-    _build_search_text_from_llm,
-    _keywords_grounded_in_user_text,
-    _recommendation_response,
+    _looks_like_next_product_request,
     _try_last_section_product_followup,
     _try_next_remaining_product_response,
     _try_pending_product_intent_confirmation,
@@ -100,20 +96,35 @@ def _resolve_branch_for_location(message: str) -> Optional[str]:
         return fb
     return None
 
-# نيات تدل على خروج واضح من سياق المنتج/القسم (موقع، شكوى، سياسة، إلخ.)
-_CHAT_RESET_PRODUCT_SECTION_INTENTS = frozenset(
-    {
-        "location",
-        "location_pick",
-        "branch_phone",
-        "complaint",
-        "return_policy",
-        "greeting",
-        "thanks",
-        "goodbye",
-        "recommendation",
-    }
-)
+def _should_reset_product_section_context(message: str) -> bool:
+    """إشارات موضوعية لترك سياق المنتج/القسم — دون تصنيف نية كامل."""
+    t = cs.normalize_message_for_branch_search((message or "").strip())
+    if not t:
+        return False
+    tl = t.lower()
+    if any(k in t for k in kw.THANKS_KEYWORDS):
+        return True
+    if any(k in tl for k in kw.GOODBYE_KEYWORDS):
+        return True
+    if any(k in t for k in kw.BRANCH_PHONE_CONTACT_TRIGGERS):
+        return True
+    if any(k in t for k in kw.BRANCH_LOCATION_KEYWORDS):
+        return True
+    if any(k in t for k in kw.BRANCH_HOURS_KEYWORDS):
+        return True
+    if user_wants_open_now(t):
+        return True
+    if any(k in t for k in kw.RETURN_POLICY_KEYWORDS):
+        return True
+    if any(k in t for k in kw.GREETING_KEYWORDS):
+        return True
+    if any(k in t for k in kw.RECOMMENDATION_PHRASES):
+        return True
+    if any(k in t for k in kw.COMPLAINT_KEYWORDS) or any(
+        p in t for p in kw.COMPLAINT_NATURAL_PHRASES
+    ):
+        return True
+    return False
 
 
 def _maybe_enrich_json_response(resp: Any) -> Any:
@@ -142,6 +153,7 @@ def _try_time_or_phone_followup(message: str, branch_list: list) -> Optional[Any
         "hours",
         "when_open",
         "open_now",
+        "location_link",
     ):
         return None
     bn = _resolve_branch_for_location(message)
@@ -166,8 +178,7 @@ def _maybe_reset_product_section_context(message: str) -> None:
         or session.get("pending_section_choices")
     ):
         return
-    intent = detect_chat_intent(message, cs.resolve_branch_from_message)
-    if intent not in _CHAT_RESET_PRODUCT_SECTION_INTENTS:
+    if not _should_reset_product_section_context(message):
         return
     session.pop("chat_last_product", None)
     session.pop("last_products", None)
@@ -178,39 +189,48 @@ def _maybe_reset_product_section_context(message: str) -> None:
     session.pop("remaining_products_intent", None)
 
 
-def _apply_llm_classification(parsed: dict, original_message: str, branch_list: list):
+def _try_rule_based_branch_location_phone(message: str, branch_list: list) -> Optional[Any]:
     """
-    يوجّه حسب مخرجات المحلل فقط. يعيد كائن الاستجابة من jsonify أو None.
+    قواعد فقط: دوام/موقع/رقم فرع — بدون تصنيف نية بالكامل (انظر intent_handler للكلمات).
     """
-    if not parsed:
+    t = cs.normalize_message_for_branch_search((message or "").strip())
+    if not t:
         return None
-    try:
-        conf = float(parsed.get("confidence", 0.0))
-    except (TypeError, ValueError):
-        conf = 0.0
-    if conf < LLM_MIN_USABLE_CONFIDENCE:
-        return None
-    ai = (parsed.get("intent") or "unknown").strip().lower()
-    cleaned = (parsed.get("cleaned_message") or "").strip()
-    branch_hint = parsed.get("branch")
-    keywords = _keywords_grounded_in_user_text(
-        parsed.get("keywords") or [], original_message
-    )
 
-    base_msg = cleaned if cleaned else original_message
-    composite = base_msg
-    if branch_hint:
-        hint = str(branch_hint).strip()
-        if hint and hint not in composite:
-            composite = f"{composite} {hint}".strip()
-
-    if ai == "complaint":
+    if any(x in t for x in kw.BRANCH_PHONE_CONTACT_TRIGGERS):
         session["chat_pending_action"] = None
-        return _handle_new_complaint_intent(composite, branch_list)
+        session["chat_current_intent"] = "branch_phone"
+        bn = cs.resolve_branch_from_message(message) or chat_ctx.get_last_branch()
+        if not bn:
+            labels = [
+                (b.get("name") or "").strip()
+                for b in branch_list
+                if (b.get("name") or "").strip()
+            ]
+            if len(labels) >= 2:
+                msg = f"أي فرع؟ {labels[0]} ولا {labels[1]}؟"
+            elif len(labels) == 1:
+                msg = f"تقصد {labels[0]}؟ أكّد اسم المدينة لأرسل رقم التواصل."
+            else:
+                msg = f"أي مدينة يا {cs._display_name()}؟ {cs._branch_selection_prompt()}"
+            return jsonify(
+                {
+                    "products": [],
+                    "message": msg,
+                    "branches": branch_list,
+                    "intent": "branch_phone",
+                }
+            )
+        chat_ctx.remember_branch_by_name(bn)
+        return jsonify(branch_phone_payload(bn))
 
-    if ai in ("branch", "location"):
+    if (
+        any(k in t for k in kw.BRANCH_LOCATION_KEYWORDS)
+        or any(k in t for k in kw.BRANCH_HOURS_KEYWORDS)
+        or user_wants_open_now(t)
+    ):
         session["chat_current_intent"] = "location"
-        branch_name = _resolve_branch_for_location(composite)
+        branch_name = _resolve_branch_for_location(message)
         if not branch_name:
             session["chat_pending_action"] = cs._CHAT_PENDING_BRANCH
             return jsonify(
@@ -223,36 +243,251 @@ def _apply_llm_classification(parsed: dict, original_message: str, branch_list: 
             )
         session["chat_pending_action"] = None
         session["chat_selected_branch"] = branch_name
-        return jsonify(_branch_location_json(branch_name, composite))
-
-    if ai == "product":
-        needle = _build_search_text_from_llm(cleaned, keywords, original_message)
-        prod = _build_products_response(needle, hint_source_message=original_message)
-        if prod and prod.get("products"):
-            session["chat_current_intent"] = "product"
-            session["chat_pending_action"] = None
-            return jsonify(prod)
-        prod = _build_products_response(original_message)
-        if prod and prod.get("products"):
-            session["chat_current_intent"] = "product"
-            session["chat_pending_action"] = None
-            return jsonify(prod)
-        return jsonify(PRODUCT_CLARIFY_PAYLOAD)
+        chat_ctx.remember_branch_by_name(branch_name)
+        return jsonify(_branch_location_json(branch_name, message))
 
     return None
 
 
-def _try_llm_fallback_route(message: str, branch_list: list):
-    """محاولة واحدة: محلل LLM ثم توجيه للنظام الحالي."""
-    if not LLM_ENABLED:
-        return None
-    try:
-        parsed = analyze_user_message(message)
-    except Exception:
-        return None
-    if not parsed:
-        return None
-    return _apply_llm_classification(parsed, message, branch_list)
+def _orchestrator_hard_fallback(message: str, branch_list: list) -> Any:
+    """عند تعطيل/فشل المنسّق: بحث منتج ثم طبقة OpenAI الاحتياطية."""
+    uctx = ai_fb.extract_user_context(message)
+    g = ai_fb.infer_gender_from_message(message)
+    g_use = g if g in ("male", "female") else None
+    widened = ai_fb.apply_shopping_context_to_search_query(message, g_use, uctx)
+    psq = ai_fb.enhance_search_query_with_openai(widened, "unknown")
+    prod = _build_products_response(psq, hint_source_message=message)
+    if prod and prod.get("products"):
+        session["chat_current_intent"] = "product"
+        session["chat_pending_action"] = None
+        chat_ctx.set_last_intent("product")
+        out = dict(prod)
+        titles = [
+            str(p.get("name") or "").strip()
+            for p in (out.get("products") or [])
+            if p.get("name")
+        ]
+        out["message"] = ai_fb.enrich_product_recommendation_message(
+            message, uctx, out.get("message") or "", titles
+        )
+        return jsonify(out)
+    oai = _try_openai_fallback(message, "unknown")
+    if oai is not None:
+        return oai
+    d = session.get("chat_dialect") or "default"
+    return jsonify(
+        {
+            "products": [],
+            "message": dialect_message(d, "unknown_fallback"),
+            "intent": "unknown",
+        }
+    )
+
+
+def _execute_ai_orchestrator(message: str, branch_list: list) -> Any:
+    db = cs.get_db()
+    context = ai_fb.build_orchestrator_context(
+        db, message, session.get("chat_dialect")
+    )
+    plan = ai_fb.run_chat_orchestrator_openai(message, context)
+    if not plan:
+        return _orchestrator_hard_fallback(message, branch_list)
+
+    action = str(plan.get("action") or "").strip().lower()
+    filters = plan.get("filters") if isinstance(plan.get("filters"), dict) else {}
+    ai_msg = str(plan.get("message") or "").strip()
+    needs_branch = bool(plan.get("needs_branch"))
+    gender_f = filters.get("gender")
+    if gender_f not in ("male", "female"):
+        gender_f = ai_fb.infer_gender_from_message(message)
+    rx = ai_fb.extract_user_context(message)
+    px = plan.get("context") if isinstance(plan.get("context"), dict) else {}
+    uctx = {
+        "occasion": rx.get("occasion") or px.get("occasion"),
+        "target": rx.get("target") or px.get("target"),
+        "style": rx.get("style") or px.get("style"),
+    }
+
+    if action == "complaint":
+        session["chat_pending_action"] = None
+        br = cs.resolve_branch_from_message(message) or chat_ctx.get_last_branch()
+        if br:
+            chat_ctx.remember_branch_by_name(br)
+        needs_b = bool(plan.get("needs_branch", True)) and not br
+        needs_d = bool(plan.get("needs_details", True))
+        if len((message or "").strip()) < 22:
+            needs_d = True
+        session["complaint_wizard"] = {
+            "apology_sent": True,
+            "issue": message,
+            "branch": br,
+            "step": "collecting",
+        }
+        dn = cs._display_name()
+        opening = ai_msg
+        if not opening:
+            if needs_b:
+                opening = (
+                    f"يا {dn}، نعتذر منك… عشان نخدمك صح، وش الفرع اللي صار فيه الموضوع؟ "
+                    f"واكتب لي تفاصيل اللي صار."
+                )
+            elif needs_d:
+                opening = (
+                    f"يا {dn}، نعتذر منك… زوّدني بتفاصيل أوضح عن المشكلة عشان نراجعها مع الفريق."
+                )
+            else:
+                opening = random_opening_apology()
+        else:
+            if needs_b:
+                opening = (
+                    f"{opening}\n\n"
+                    f"يا {dn}، أكّد لي اسم الفرع إن ما كان واضح، واكتب تفاصيلك كاملة."
+                )
+            elif needs_d:
+                opening = (
+                    f"{opening}\n\n"
+                    f"يا {dn}، لو تقدر تزيد تفاصيل (متى، وش صار بالضبط) يساعدنا نتابع أسرع."
+                )
+        return jsonify(
+            {
+                "products": [],
+                "message": opening,
+                "intent": "complaint_wizard",
+                "branches": branch_list,
+            }
+        )
+
+    if action == "return_policy":
+        session["chat_pending_action"] = None
+        session["chat_current_intent"] = "return_policy"
+        return jsonify(
+            {
+                "products": [],
+                "message": build_return_policy_chat_message(cs._display_name(), message),
+                "intent": "return_policy",
+            }
+        )
+
+    if action == "branch_request":
+        session["chat_current_intent"] = "location"
+        bn = _resolve_branch_for_location(message)
+        if not bn:
+            session["chat_pending_action"] = cs._CHAT_PENDING_BRANCH
+            base = (
+                ai_msg
+                if ai_msg
+                else f"حاضر يا {cs._display_name()}، {cs._branch_selection_prompt()}"
+            )
+            return jsonify(
+                {
+                    "products": [],
+                    "message": base,
+                    "branches": branch_list,
+                    "intent": "location",
+                }
+            )
+        session["chat_pending_action"] = None
+        session["chat_selected_branch"] = bn
+        chat_ctx.remember_branch_by_name(bn)
+        payload = _branch_location_json(bn, message)
+        if isinstance(payload, dict) and ai_msg:
+            om = (payload.get("message") or "").strip()
+            payload["message"] = (ai_msg + ("\n\n" + om if om else "")).strip()
+        return jsonify(payload)
+
+    if action == "general_response":
+        session["chat_current_intent"] = "general"
+        session["chat_pending_action"] = None
+        msg_out = ai_msg
+        if not msg_out:
+            d = session.get("chat_dialect") or "default"
+            msg_out = dialect_message(d, "general", name=cs._display_name())
+        if needs_branch:
+            msg_out = (msg_out + "\n\n" + cs._branch_selection_prompt()).strip()
+        return jsonify(
+            {
+                "products": [],
+                "message": msg_out,
+                "intent": "general",
+            }
+        )
+
+    if action == "category_suggestion":
+        session["chat_current_intent"] = "general"
+        cats = filters.get("suggested_categories") or []
+        if not isinstance(cats, list):
+            cats = []
+        cats = [c for c in cats if isinstance(c, str) and c.strip()]
+        if not cats:
+            cats = ai_fb.pick_fallback_categories(
+                context,
+                message,
+                gender_f if gender_f in ("male", "female") else None,
+            )
+        msg_parts = [ai_msg] if ai_msg else []
+        if cats:
+            msg_parts.append("أقسام قد تناسبك: " + "، ".join(str(c) for c in cats[:8] if c))
+        if needs_branch:
+            msg_parts.append(cs._branch_selection_prompt())
+        final_msg = "\n\n".join(p for p in msg_parts if p).strip()
+        if not final_msg:
+            d = session.get("chat_dialect") or "default"
+            final_msg = dialect_message(d, "unknown_fallback")
+        final_msg = ai_fb.contextualize_no_product_message(
+            final_msg, message, uctx, cats
+        )
+        return jsonify({"products": [], "message": final_msg, "intent": "general"})
+
+    if action == "product_search":
+        sq = str(filters.get("search_query") or "").strip()
+        base_q = sq if len(sq) >= 2 else message
+        g_use = gender_f if gender_f in ("male", "female") else None
+        merged_q = ai_fb.apply_shopping_context_to_search_query(base_q, g_use, uctx)
+        psq = ai_fb.enhance_search_query_with_openai(merged_q, "product")
+        prod = _build_products_response(psq, hint_source_message=message)
+        if prod and prod.get("products"):
+            session["chat_current_intent"] = "product"
+            session["chat_pending_action"] = None
+            chat_ctx.set_last_intent("product")
+            out = dict(prod)
+            titles = [
+                str(p.get("name") or "").strip()
+                for p in (out.get("products") or [])
+                if p.get("name")
+            ]
+            out["message"] = ai_fb.enrich_product_recommendation_message(
+                message, uctx, ai_msg, titles
+            )
+            return jsonify(out)
+
+        cats = filters.get("suggested_categories") or []
+        if not isinstance(cats, list):
+            cats = []
+        cats = [c for c in cats if isinstance(c, str) and c.strip()]
+        if not cats:
+            cats = ai_fb.pick_fallback_categories(
+                context,
+                message,
+                gender_f if gender_f in ("male", "female") else None,
+            )
+        msg_parts = []
+        if ai_msg:
+            msg_parts.append(ai_msg)
+        if cats:
+            msg_parts.append("ممكن تتفرّج على أقسام قريبة من طلبك: " + "، ".join(cats[:8]))
+        if needs_branch:
+            msg_parts.append(cs._branch_selection_prompt())
+        final_msg = "\n\n".join(msg_parts).strip()
+        if not final_msg:
+            final_msg = dialect_message(
+                session.get("chat_dialect") or "default", "unknown_fallback"
+            )
+        final_msg = ai_fb.contextualize_no_product_message(
+            final_msg, message, uctx, cats
+        )
+        return jsonify({"products": [], "message": final_msg, "intent": "general"})
+
+    return _orchestrator_hard_fallback(message, branch_list)
 
 
 def _router_early_exits(data: dict) -> Optional[Any]:
@@ -403,209 +638,23 @@ def _router_pending_and_services(message: str, branch_list: list) -> Optional[An
 
 
 def _router_intent_branch(message: str, branch_list: list) -> Any:
-    """تحليل النية ثم التوجيه حسب intent."""
-    intent = detect_chat_intent(message, cs.resolve_branch_from_message)
-
+    """قواعد ضيقة (أقسام، فرع/دوام) ثم المنسّق الذكي لباقي الرسائل."""
     if _looks_like_section_stock_question(message):
         session["chat_current_intent"] = "section"
         session["chat_pending_action"] = None
         return _section_chat_response(message)
 
-    if intent == "greeting":
-        session.pop("complaint_wizard", None)
-        session["chat_pending_action"] = None
-        session["chat_current_intent"] = "greeting"
-        chat_ctx.set_last_intent("greeting")
-        d = session.get("chat_dialect") or "default"
-        return jsonify(
-            {
-                "products": [],
-                "message": dialect_message(
-                    d, "greeting", name=cs._display_name()
-                ),
-                "intent": "greeting",
-            }
-        )
-
-    if intent in ("thanks", "goodbye"):
-        session["chat_pending_action"] = None
-        session["chat_current_intent"] = intent
-        d = session.get("chat_dialect") or "default"
-        key = "thanks" if intent == "thanks" else "goodbye"
-        msg = dialect_message(d, key, name=cs._display_name())
-        resp = jsonify({"products": [], "message": msg, "intent": intent})
-        cust_ch.prepare_closing_marketing_offer(cs.get_db())
-        return cust_ch.attach_marketing_followup_if_needed(resp)
-
-    if intent == "complaint":
-        session["chat_pending_action"] = None
-        return _handle_new_complaint_intent(message, branch_list)
-
-    if intent == "return_policy":
-        session["chat_pending_action"] = None
-        session["chat_current_intent"] = "return_policy"
-        return jsonify(
-            {
-                "products": [],
-                "message": build_return_policy_chat_message(cs._display_name(), message),
-                "intent": "return_policy",
-            }
-        )
-
-    if intent == "branch_phone":
-        session["chat_pending_action"] = None
-        session["chat_current_intent"] = "branch_phone"
-        bn = cs.resolve_branch_from_message(message) or chat_ctx.get_last_branch()
-        if not bn:
-            labels = [
-                (b.get("name") or "").strip()
-                for b in branch_list
-                if (b.get("name") or "").strip()
-            ]
-            if len(labels) >= 2:
-                msg = f"أي فرع؟ {labels[0]} ولا {labels[1]}؟"
-            elif len(labels) == 1:
-                msg = f"تقصد {labels[0]}؟ أكّد اسم المدينة لأرسل رقم التواصل."
-            else:
-                msg = f"أي مدينة يا {cs._display_name()}؟ {cs._branch_selection_prompt()}"
-            return jsonify(
-                {
-                    "products": [],
-                    "message": msg,
-                    "branches": branch_list,
-                    "intent": "branch_phone",
-                }
-            )
-        chat_ctx.remember_branch_by_name(bn)
-        return jsonify(branch_phone_payload(bn))
-
-    if intent == "location":
-        session["chat_current_intent"] = "location"
-        branch_name = _resolve_branch_for_location(message)
-        if not branch_name:
-            session["chat_pending_action"] = cs._CHAT_PENDING_BRANCH
-            return jsonify(
-                {
-                    "products": [],
-                    "message": f"حاضر يا {cs._display_name()}، {cs._branch_selection_prompt()}",
-                    "branches": branch_list,
-                    "intent": "location",
-                }
-            )
-        session["chat_pending_action"] = None
-        session["chat_selected_branch"] = branch_name
-        chat_ctx.remember_branch_by_name(branch_name)
-        return jsonify(_branch_location_json(branch_name, message))
-
-    if intent == "location_pick":
-        session["chat_current_intent"] = "location"
-        bn = _resolve_branch_for_location(message)
-        if not bn:
-            session["chat_pending_action"] = cs._CHAT_PENDING_BRANCH
-            return jsonify(
-                {
-                    "products": [],
-                    "message": f"حاضر يا {cs._display_name()}، {cs._branch_selection_prompt()}",
-                    "branches": branch_list,
-                    "intent": "location",
-                }
-            )
-        session["chat_pending_action"] = None
-        session["chat_selected_branch"] = bn
-        chat_ctx.remember_branch_by_name(bn)
-        return jsonify(_branch_location_json(bn, message))
-
-    if intent == "section":
+    t_norm = cs.normalize_message_for_branch_search(message)
+    if any(k in t_norm for k in kw.SECTION_KEYWORDS):
         session["chat_current_intent"] = "section"
         session["chat_pending_action"] = None
         return _section_chat_response(message)
 
-    if intent == "recommendation":
-        session["chat_current_intent"] = "recommendation"
-        session["chat_pending_action"] = None
-        return _recommendation_response()
+    rule_branch = _try_rule_based_branch_location_phone(message, branch_list)
+    if rule_branch is not None:
+        return rule_branch
 
-    if intent == "general":
-        session["chat_current_intent"] = "general"
-        if ai_fb.should_run_presearch_analysis(message, intent):
-            psq = ai_fb.enhance_search_query_with_openai(message, intent)
-            prod_g = _build_products_response(psq, hint_source_message=message)
-            if prod_g and prod_g.get("products"):
-                session["chat_current_intent"] = "product"
-                session["chat_pending_action"] = None
-                chat_ctx.set_last_intent("product")
-                return jsonify(prod_g)
-        d = session.get("chat_dialect") or "default"
-        return jsonify(
-            {
-                "products": [],
-                "message": dialect_message(d, "general", name=cs._display_name()),
-                "intent": "general",
-            }
-        )
-
-    if intent == "unknown":
-        session["chat_current_intent"] = "unknown"
-        msg_for_branch = cs.normalize_message_for_branch_search(message)
-        ai_route = ai_fb.classify_unknown_intent_openai(message)
-        if ai_route == "complaint":
-            session["chat_pending_action"] = None
-            return _handle_new_complaint_intent(message, branch_list)
-        if ai_route == "location":
-            bn_ai = _resolve_branch_for_location(msg_for_branch) or cs.resolve_branch_from_message(
-                msg_for_branch
-            )
-            if bn_ai:
-                session["chat_pending_action"] = None
-                session["chat_selected_branch"] = bn_ai
-                chat_ctx.remember_branch_by_name(bn_ai)
-                return jsonify(_branch_location_json(bn_ai, message))
-            session["chat_pending_action"] = cs._CHAT_PENDING_BRANCH
-            return jsonify(
-                {
-                    "products": [],
-                    "message": f"حاضر يا {cs._display_name()}، {cs._branch_selection_prompt()}",
-                    "branches": branch_list,
-                    "intent": "location",
-                }
-            )
-        if ai_route == "product":
-            psq_p = ai_fb.enhance_search_query_with_openai(message, "product")
-            prod_ai = _build_products_response(psq_p, hint_source_message=message)
-            if prod_ai and prod_ai.get("products"):
-                session["chat_current_intent"] = "product"
-                session["chat_pending_action"] = None
-                chat_ctx.set_last_intent("product")
-                return jsonify(prod_ai)
-        # تحليل OpenAI للاستخراج ثم بحث DB — القرار النهائي من البيانات
-        psq = ai_fb.enhance_search_query_with_openai(message, intent)
-        prod_db = _build_products_response(psq, hint_source_message=message)
-        if prod_db and prod_db.get("products"):
-            session["chat_current_intent"] = "product"
-            session["chat_pending_action"] = None
-            chat_ctx.set_last_intent("product")
-            return jsonify(prod_db)
-        r = _try_llm_fallback_route(message, branch_list)
-        if r is not None:
-            return r
-        oai = _try_openai_fallback(message, "unknown")
-        if oai is not None:
-            return oai
-        d = session.get("chat_dialect") or "default"
-        return jsonify(
-            {
-                "products": [],
-                "message": dialect_message(d, "unknown_fallback"),
-                "intent": "unknown",
-            }
-        )
-
-    session["chat_current_intent"] = "product"
-    session["chat_pending_action"] = None
-    chat_ctx.set_last_intent("product")
-    psq = ai_fb.enhance_search_query_with_openai(message, intent)
-    prod = _build_products_response(psq, hint_source_message=message)
-    return jsonify(prod)
+    return _execute_ai_orchestrator(message, branch_list)
 
 
 def dispatch_chat_query():
@@ -613,9 +662,13 @@ def dispatch_chat_query():
     data = request.get_json(silent=True) or {}
     message = (data.get("message") or "").strip()
     session["chat_dialect"] = detect_dialect(message)
-    session["chat_intent_snapshot"] = pre_route_intent_snapshot(
-        message, cs.resolve_branch_from_message
-    )
+    session["chat_intent_snapshot"] = {
+        "primary_intent": "ai_orchestrator",
+        "product_sub_intent": (
+            "product_followup" if _looks_like_next_product_request(message) else "product_search"
+        ),
+        "normalized_for_search": normalize_for_product_search(message),
+    }
 
     cust_ch.apply_request_basics(data)
     db = cs.get_db()
