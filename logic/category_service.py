@@ -7,8 +7,6 @@ from __future__ import annotations
 
 from flask import jsonify, session
 
-from logic.product_service import NO_PRODUCTS_MESSAGE
-
 
 def _cs():
     import logic.chat_service as m
@@ -134,7 +132,7 @@ def _section_chat_response(message: str):
         return jsonify(
             {
                 "products": [],
-                "message": NO_PRODUCTS_MESSAGE,
+                "message": "",
                 "intent": "section",
                 "sections": [],
             }

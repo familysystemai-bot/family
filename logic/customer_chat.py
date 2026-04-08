@@ -78,7 +78,11 @@ def _is_marketing_no(message: str) -> bool:
 
 
 def _in_complaint_flow() -> bool:
-    return bool(session.get("complaint_wizard") or session.get("chat_active_complaint_id"))
+    return bool(
+        session.get("complaint_wizard")
+        or session.get("chat_active_complaint_id")
+        or session.get("complaint_data")
+    )
 
 
 def apply_request_basics(data: dict) -> None:

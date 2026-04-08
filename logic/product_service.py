@@ -31,7 +31,7 @@ def _cs():
     return m
 
 
-NO_PRODUCTS_MESSAGE = "ما حصلت نفس الطلب، تبغى خيارات قريبة؟"
+NO_PRODUCTS_MESSAGE = ""
 NO_PRODUCTS_PAYLOAD = {
     "intent": "no_products",
     "message": NO_PRODUCTS_MESSAGE,

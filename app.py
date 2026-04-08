@@ -1249,7 +1249,7 @@ def index():
     return render_template(
         'index.html',
         chat_logged_in=chat_ok,
-        chat_user_name=(session.get("user_name") or ""),
+        chat_user_name=(session.get("user_name") or session.get("name") or ""),
         chat_user_email=(session.get("user_email") or ""),
         chat_user_contact=uid,
     )
@@ -1269,14 +1269,27 @@ def chat_login():
     session["logged_in"] = True
     session["login_scope"] = "chat_customer"
     session["user"] = value
-    session.pop("user_name", None)
+    nm = (data.get("name") or "").strip()
+    if nm:
+        session["name"] = nm[:120]
+        session["user_name"] = nm[:120]
+    else:
+        session.pop("name", None)
+        session.pop("user_name", None)
     if kind == "email":
         session["user_email"] = value
         session.pop("user_phone", None)
     else:
         session["user_phone"] = value
         session["user_email"] = ""
-    return jsonify({"ok": True, "kind": kind, "identifier": value})
+    return jsonify(
+        {
+            "ok": True,
+            "kind": kind,
+            "identifier": value,
+            "name": (session.get("name") or session.get("user_name") or ""),
+        }
+    )
 
 
 @app.route('/chat_query', methods=['POST'])

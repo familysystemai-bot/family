@@ -41,7 +41,7 @@
         <div id="userBadge" class="chat-user-badge" style="display:none;">
             <i class="fa-solid fa-user-check"></i> <span id="displayUserName"></span>
         </div>
-        <a href="{{ url_for('logout') }}" id="chatLogoutLink" class="header-logout-link" style="display:none;" title="تسجيل خروج">خروج</a>
+        <a href="{{ url_for('logout') }}" id="chatLogoutLink" class="header-logout-link" style="display:none;" title="تسجيل خروج">تسجيل خروج</a>
     </header>
 
     <main class="chat-body" id="chatBox">
@@ -74,8 +74,11 @@
                 <button class="modal-close-x" data-bs-dismiss="modal" aria-label="إغلاق"><i class="fa-solid fa-xmark"></i></button>
                 {{ site_logo_pair('login-logo login-logo--sm', 'site-logo-k--index-modal-sm') }}
                 <p class="text-center mb-3" style="font-size:0.9rem; color:#bbb; line-height:1.9;">
-                    للشكاوى وتتبع الطلب: أدخل بريدك الإلكتروني أو رقم جوالك (9 أرقام)
+                    للشكاوى وتتبع الطلب: اسمك ثم بريدك أو رقم جوالك (9 أرقام)
                 </p>
+                <div class="form-field">
+                    <input type="text" id="smartUserName" name="name" placeholder="اسمك" required autocomplete="name" enterkeyhint="next">
+                </div>
                 <div class="form-field">
                     <input type="text" id="smartIdentifier" placeholder="البريد الإلكتروني أو رقم الجوال (9 أرقام)" autocomplete="username" inputmode="email">
                 </div>
@@ -97,6 +100,8 @@
             smartLoginModalElement.addEventListener('hidden.bs.modal', function () {
                 var si = document.getElementById('smartIdentifier');
                 if (si) si.value = '';
+                var sn = document.getElementById('smartUserName');
+                if (sn) sn.value = '';
             });
         }
 
@@ -372,7 +377,12 @@
         })();
 
         async function smartLoginSubmit() {
+            const nameRaw = (document.getElementById('smartUserName') && document.getElementById('smartUserName').value || '').trim();
             const identifier = (document.getElementById('smartIdentifier') && document.getElementById('smartIdentifier').value || '').trim();
+            if (!nameRaw) {
+                alert('يرجى إدخال اسمك');
+                return;
+            }
             if (!identifier) {
                 alert('يرجى إدخال البريد أو رقم الجوال');
                 return;
@@ -384,14 +394,14 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'same-origin',
-                    body: JSON.stringify({ identifier: identifier }),
+                    body: JSON.stringify({ identifier: identifier, name: nameRaw }),
                 });
                 const j = await r.json().catch(function () { return {}; });
                 if (!r.ok || !j.ok) {
                     alert(j.error || 'تعذر تسجيل الدخول');
                     return;
                 }
-                userName = '';
+                userName = (j.name || nameRaw || '').trim();
                 userContact = j.identifier || identifier;
                 isLoggedIn = true;
                 if (smartLoginModal) smartLoginModal.hide();
@@ -399,9 +409,11 @@
                 document.getElementById('userBadge').style.display = 'flex';
                 var lo = document.getElementById('chatLogoutLink');
                 if (lo) lo.style.display = 'inline-flex';
-                document.getElementById('displayUserName').textContent = userContact;
+                document.getElementById('displayUserName').textContent = userName || userContact;
                 var si = document.getElementById('smartIdentifier');
                 if (si) si.value = '';
+                var sn = document.getElementById('smartUserName');
+                if (sn) sn.value = '';
                 syncAccountSession();
             } catch (e) {
                 alert('خطأ في الاتصال');
