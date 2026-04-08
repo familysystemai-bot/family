@@ -82,6 +82,7 @@ def _in_complaint_flow() -> bool:
         session.get("complaint_wizard")
         or session.get("chat_active_complaint_id")
         or session.get("complaint_data")
+        or session.get("complaint_active")
     )
 
 

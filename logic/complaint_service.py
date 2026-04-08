@@ -6,7 +6,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
+import random
+from typing import Literal, Optional
 import re
 from datetime import datetime
 
@@ -34,8 +35,8 @@ logger = logging.getLogger(__name__)
 # حوار شكوى متعدد الخطوات (جمع التفاصيل + الفرع)
 _MIN_COMPLAINT_DETAIL = 22
 
-# كشف شكوى بسيط بالقواعد (قبل AI) — أوزان صغيرة قابلة للتعديل لاحقاً
-_COMPLAINT_RULE_KW = (
+# كلمات أساسية للشكوى (+2 عند وجود أي منها)
+_COMPLAINT_SCORE_PRIMARY = (
     "شكوى",
     "شكوي",
     "مشكله",
@@ -45,34 +46,68 @@ _COMPLAINT_RULE_KW = (
     "تعامل",
     "ازعاج",
     "إزعاج",
+    "تأخير",
+    "ماعجبني",
+    "ما عجبني",
+    "غلط",
 )
-_NEGATIVE_SENTIMENT_MARKERS = (
+# نبرة سلبية إضافية (+1)
+_COMPLAINT_SCORE_NEGATIVE_TONE = (
+    "زعلان",
+    "مو راضي",
+    "موراضي",
+    "خايس",
     "سيء",
     "سيئة",
-    "زعلان",
     "منزعج",
     "أسوأ",
-    "تأخير",
     "ما وصل",
     "سوء",
 )
 
+_GULF_APOLOGIES = [
+    "نعتذر منك على اللي صار",
+    "حقك علينا وما يصير إلا كل خير",
+    "سامحنا على التقصير",
+    "نقدر زعلك واعتذارنا لك",
+    "ما كان هذا مستوى الخدمة اللي نطمح له",
+    "أبشر بنحل الموضوع بأسرع وقت",
+    "المعذرة منك ونجري تحسين فوري",
+    "نعتذر لك ونعوضك عن التجربة",
+]
+_EGYPT_APOLOGIES = [
+    "معلش على اللي حصل",
+    "حقك علينا وآسفين جدًا",
+    "نأسف للتجربة دي",
+    "سامحنا على التقصير",
+    "إحنا مقدّرين شكواك جدًا",
+    "هنحل المشكلة في أسرع وقت",
+    "متأسفين جدًا على الإزعاج",
+]
+_STANDARD_APOLOGIES = [
+    "نعتذر لك عن أي تقصير",
+    "نقدر ملاحظتك ونعمل على حلها",
+    "المعذرة ولن يتكرر بإذن الله",
+    "نأسف لما حدث ونعمل على تحسين الخدمة",
+    "حقك علينا ونعالج الموضوع فوراً",
+]
 
-def detect_complaint_intent(message: str) -> bool:
+
+def detect_complaint_score(message: str) -> int:
     """
-    قواعد خفيفة: إذا المجموع >= 2 تُعتبر شكوى محتملة.
-    - كلمات شكوى: +2 إن وُجدت أي منها
-    - اسم فرع معروف في النص: +1
-    - مشاعر سلبية: +1
+    نقاط شكوى: كلمات أساسية +2، نبرة سلبية +1، ذكر فرع معروف +1.
+    عند score >= 2 تُفعّل معالجة الشكوى.
     """
     raw = (message or "").strip()
     if not raw:
-        return False
+        return 0
     cs = _cs()
     t = cs.normalize_message_for_branch_search(raw)
     score = 0
-    if any(k in t for k in _COMPLAINT_RULE_KW):
+    if any(k in t for k in _COMPLAINT_SCORE_PRIMARY):
         score += 2
+    if any(k in t for k in _COMPLAINT_SCORE_NEGATIVE_TONE):
+        score += 1
     try:
         for b in cs.get_db().get_all_branches() or []:
             cn = (b.get("city_name") or "").strip()
@@ -81,13 +116,105 @@ def detect_complaint_intent(message: str) -> bool:
                 break
     except Exception:
         pass
-    if any(m in t for m in _NEGATIVE_SENTIMENT_MARKERS):
-        score += 1
-    return score >= 2
+    return score
+
+
+def detect_complaint_intent(message: str) -> bool:
+    """توافق خلفي: شكوى عندما تكون النقاط >= 2."""
+    return detect_complaint_score(message) >= 2
+
+
+def _complaint_apology_bucket(message: str) -> Literal["gulf", "egypt", "standard"]:
+    """تصنيف بسيط للاعتذار حسب أسلوب الرسالة + لهجة الجلسة."""
+    t = (message or "").strip()
+    if any(x in t for x in ("وش", "ابغى", "أبغى", "إبغى", "عندكم", "عندك")):
+        return "gulf"
+    if any(x in t for x in ("عايز", "محتاج", "فين", "إيه", "ايه", "أيه")):
+        return "egypt"
+    cd = (session.get("chat_dialect") or "default").strip()
+    if cd == "masri":
+        return "egypt"
+    if cd in ("hijazi", "najdi", "janoubi", "sharqi", "shamali", "yemeni"):
+        return "gulf"
+    return "standard"
+
+
+def _apology_lines_for_bucket(bucket: str) -> list[str]:
+    if bucket == "gulf":
+        return list(_GULF_APOLOGIES)
+    if bucket == "egypt":
+        return list(_EGYPT_APOLOGIES)
+    return list(_STANDARD_APOLOGIES)
+
+
+def _pick_apology_line(message: str) -> str:
+    """اختيار اعتذار عشوائي دون تكرار الجملة السابقة مباشرة."""
+    bucket = _complaint_apology_bucket(message)
+    lines = _apology_lines_for_bucket(bucket)
+    last = (session.get("last_apology") or "").strip()
+    pool = [x for x in lines if x != last] if last else lines
+    if not pool:
+        pool = lines
+    pick = random.choice(pool)
+    session["last_apology"] = pick
+    return pick
+
+
+def _complaint_prompt_body(
+    message: str, kind: Literal["need_branch", "need_details", "need_target"]
+) -> str:
+    """نص بشري: اعتذار حسب اللهجة + سطر المتابعة."""
+    apology = _pick_apology_line(message)
+    if kind == "need_branch":
+        return f"{apology} 🙏\nممكن تحدد لي الفرع؟"
+    if kind == "need_details":
+        return f"{apology} 🙏\nممكن توضح لي وش صار بالضبط؟"
+    return (
+        f"{apology} 🙏\n"
+        "تم تسجيل شكواك، تبغى نرفعها لإدارة الفرع أو الإدارة العليا؟\n"
+        "اكتب «الفرع» أو «الإدارة العليا» — أو 1 للفرع و 2 للإدارة العليا."
+    )
+
+
+def _complaint_retry_target_message(message: str) -> str:
+    a = _pick_apology_line(message)
+    return f"{a} 🙏\nاختَر بوضوح: اكتب «الفرع» أو «الإدارة العليا» أو أرسل 1 أو 2."
+
+
+def complaint_ready_for_ai() -> bool:
+    """
+    جاهز لإثراء AI: فرع معروف + تفاصيل كافية.
+    لا يُمنع بسبب إعادة طلب الهدف — المنع فقط عند نقص الفرع أو التفاصيل.
+    """
+    if not session.get("complaint_active"):
+        return False
+    return bool(session.get("complaint_branch")) and bool(session.get("complaint_details"))
+
+
+def _sync_complaint_progress_session(*, invalid_target: bool = False) -> None:
+    """
+    يحدّث مفاتيح الجلسة للشكوى: فرع، تفاصيل كافية، محاولة هدف خاطئ، ومنع/السماح بدمج AI.
+    يُستدعى بعد كل تحديث لـ complaint_data.
+    """
+    cd = session.get("complaint_data") or {}
+    br = cd.get("branch")
+    issue = (cd.get("issue") or "").strip()
+    session["complaint_active"] = True
+    session["complaint_branch"] = br if br else None
+    session["complaint_details"] = len(issue) >= _MIN_COMPLAINT_DETAIL
+    session["complaint_invalid_target_retry"] = bool(invalid_target)
+    session["complaint_block_ai_merge"] = not (
+        bool(session.get("complaint_branch")) and bool(session.get("complaint_details"))
+    )
 
 
 def _exit_complaint_rule_session():
     session.pop("complaint_data", None)
+    session.pop("complaint_active", None)
+    session.pop("complaint_block_ai_merge", None)
+    session.pop("complaint_branch", None)
+    session.pop("complaint_details", None)
+    session.pop("complaint_invalid_target_retry", None)
 
 
 # كلمات تربط الشكوى بسياسة الاستبدال/الاسترجاع → ملخص سياسة قبل التسجيل
@@ -178,6 +305,12 @@ def _exit_complaint_mode_after_successful_submit():
     session.pop("complaint_data", None)
     session.pop("chat_active_complaint_id", None)
     session.pop("complaint_branch_label", None)
+    session.pop("complaint_active", None)
+    session.pop("complaint_block_ai_merge", None)
+    session.pop("complaint_branch", None)
+    session.pop("complaint_details", None)
+    session.pop("complaint_invalid_target_retry", None)
+    session.pop("last_apology", None)
     session["chat_current_intent"] = None
 
 
@@ -795,17 +928,6 @@ def _submit_complaint_rule_session(
     return complaint_id, None, email_ok, ctype
 
 
-_MSG_NEED_BRANCH = (
-    "أعتذر لك على اللي حصل 🙏\n"
-    "ممكن تحدد لي الفرع؟"
-)
-_MSG_NEED_DETAILS = "أفهم عليك، ممكن توضح لي وش صار بالضبط؟"
-_MSG_NEED_TARGET = (
-    "تبغى نرفع الشكوى لإدارة الفرع أو الإدارة العليا؟\n"
-    "اكتب «الفرع» أو «الإدارة العليا» — أو 1 للفرع و 2 للإدارة العليا."
-)
-
-
 def _try_complaint_rule_flow(message: str, branch_list: list):
     """
     تدفق شكوى بالقواعد (قبل AI): complaint_data في الجلسة.
@@ -822,6 +944,11 @@ def _try_complaint_rule_flow(message: str, branch_list: list):
     if cd:
         if _fresh_intent_exits_complaint_flow(msg):
             session.pop("complaint_data", None)
+            session.pop("complaint_active", None)
+            session.pop("complaint_block_ai_merge", None)
+            session.pop("complaint_branch", None)
+            session.pop("complaint_details", None)
+            session.pop("complaint_invalid_target_retry", None)
             return None
         step = cd.get("step") or "need_branch"
         issue = (cd.get("issue") or "").strip()
@@ -838,10 +965,11 @@ def _try_complaint_rule_flow(message: str, branch_list: list):
                     "issue": merged,
                     "branch": None,
                 }
+                _sync_complaint_progress_session(invalid_target=False)
                 return jsonify(
                     {
                         "products": [],
-                        "message": _MSG_NEED_BRANCH,
+                        "message": _complaint_prompt_body(msg, "need_branch"),
                         "intent": "complaint_rule",
                         "branches": branch_list,
                     }
@@ -853,10 +981,11 @@ def _try_complaint_rule_flow(message: str, branch_list: list):
                     "issue": merged,
                     "branch": br,
                 }
+                _sync_complaint_progress_session(invalid_target=False)
                 return jsonify(
                     {
                         "products": [],
-                        "message": _MSG_NEED_DETAILS,
+                        "message": _complaint_prompt_body(msg, "need_details"),
                         "intent": "complaint_rule",
                         "branches": branch_list,
                     }
@@ -867,10 +996,11 @@ def _try_complaint_rule_flow(message: str, branch_list: list):
                 "branch": br,
             }
             session["chat_current_intent"] = "complaint"
+            _sync_complaint_progress_session(invalid_target=False)
             return jsonify(
                 {
                     "products": [],
-                    "message": _MSG_NEED_TARGET,
+                    "message": _complaint_prompt_body(msg, "need_target"),
                     "intent": "complaint_rule",
                     "branches": branch_list,
                 }
@@ -887,10 +1017,11 @@ def _try_complaint_rule_flow(message: str, branch_list: list):
                     "issue": merged,
                     "branch": None,
                 }
+                _sync_complaint_progress_session(invalid_target=False)
                 return jsonify(
                     {
                         "products": [],
-                        "message": _MSG_NEED_BRANCH,
+                        "message": _complaint_prompt_body(msg, "need_branch"),
                         "intent": "complaint_rule",
                         "branches": branch_list,
                     }
@@ -901,10 +1032,11 @@ def _try_complaint_rule_flow(message: str, branch_list: list):
                     "issue": merged,
                     "branch": br,
                 }
+                _sync_complaint_progress_session(invalid_target=False)
                 return jsonify(
                     {
                         "products": [],
-                        "message": _MSG_NEED_DETAILS,
+                        "message": _complaint_prompt_body(msg, "need_details"),
                         "intent": "complaint_rule",
                         "branches": branch_list,
                     }
@@ -914,10 +1046,11 @@ def _try_complaint_rule_flow(message: str, branch_list: list):
                 "issue": merged,
                 "branch": br,
             }
+            _sync_complaint_progress_session(invalid_target=False)
             return jsonify(
                 {
                     "products": [],
-                    "message": _MSG_NEED_TARGET,
+                    "message": _complaint_prompt_body(msg, "need_target"),
                     "intent": "complaint_rule",
                     "branches": branch_list,
                 }
@@ -926,17 +1059,16 @@ def _try_complaint_rule_flow(message: str, branch_list: list):
         if step == "need_target":
             tgt = _parse_escalation_target(msg)
             if not tgt:
+                _sync_complaint_progress_session(invalid_target=True)
                 return jsonify(
                     {
                         "products": [],
-                        "message": (
-                            "اختَر بوضوح: اكتب «الفرع» أو «الإدارة العليا» "
-                            "أو أرسل 1 أو 2."
-                        ),
+                        "message": _complaint_retry_target_message(msg),
                         "intent": "complaint_rule",
                         "branches": branch_list,
                     }
                 )
+            _sync_complaint_progress_session(invalid_target=False)
             br = br_prev or resolve_branch_from_message(issue) or chat_ctx.get_last_branch()
             bid = get_db().get_branch_id_by_city_name(br) if br else None
             cid, err, email_ok, ctype = _submit_complaint_rule_session(issue, br, tgt)
@@ -963,7 +1095,7 @@ def _try_complaint_rule_flow(message: str, branch_list: list):
     if session.get("complaint_policy_precheck"):
         return None
 
-    if not detect_complaint_intent(message):
+    if detect_complaint_score(message) < 2:
         return None
 
     br = resolve_branch_from_message(msg) or chat_ctx.get_last_branch()
@@ -979,10 +1111,11 @@ def _try_complaint_rule_flow(message: str, branch_list: list):
             "branch": None,
         }
         session["chat_current_intent"] = "complaint"
+        _sync_complaint_progress_session(invalid_target=False)
         return jsonify(
             {
                 "products": [],
-                "message": _MSG_NEED_BRANCH,
+                "message": _complaint_prompt_body(msg, "need_branch"),
                 "intent": "complaint_rule",
                 "branches": branch_list,
             }
@@ -994,10 +1127,11 @@ def _try_complaint_rule_flow(message: str, branch_list: list):
             "branch": br,
         }
         session["chat_current_intent"] = "complaint"
+        _sync_complaint_progress_session(invalid_target=False)
         return jsonify(
             {
                 "products": [],
-                "message": _MSG_NEED_DETAILS,
+                "message": _complaint_prompt_body(msg, "need_details"),
                 "intent": "complaint_rule",
                 "branches": branch_list,
             }
@@ -1008,10 +1142,11 @@ def _try_complaint_rule_flow(message: str, branch_list: list):
         "branch": br,
     }
     session["chat_current_intent"] = "complaint"
+    _sync_complaint_progress_session(invalid_target=False)
     return jsonify(
         {
             "products": [],
-            "message": _MSG_NEED_TARGET,
+            "message": _complaint_prompt_body(msg, "need_target"),
             "intent": "complaint_rule",
             "branches": branch_list,
         }

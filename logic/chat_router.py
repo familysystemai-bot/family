@@ -5,12 +5,13 @@
 """
 from __future__ import annotations
 
+import copy
 import logging
 import os
 import uuid
 from typing import Any, Optional
 
-from flask import current_app, jsonify, request, session
+from flask import Response, current_app, jsonify, request, session
 
 from logic import keywords as kw
 from logic.branch_service import _branch_location_json, branch_phone_payload
@@ -21,6 +22,7 @@ from logic.category_service import (
 )
 from logic.chat_handlers.complaint_handler import random_opening_apology
 from logic.complaint_service import (
+    complaint_ready_for_ai,
     _handle_complaint_policy_precheck_turn,
     _try_chat_active_complaint_turn,
     _try_complaint_rule_flow,
@@ -54,10 +56,69 @@ from logic.chat_rules import (
 
 logger = logging.getLogger(__name__)
 
+# يميّز «لم يُمرَّر precalc» عن «النتيجة None بعد تشغيل pending مرة واحدة» (تجنّب استدعاء مزدوج).
+_PENDING_PRECALC_MISSING = object()
+
 
 def _silent_chat_response() -> Any:
     """لا نص — الواجهة لا تعرض فقرة جديدة عندما يكون المحتوى فارغاً."""
     return jsonify({"products": [], "message": "", "intent": "silent"})
+
+
+def _scrub_disallowed_bot_phrases(text: str) -> str:
+    """
+    يزيل عبارات عديمة الفائدة (غالباً من نموذج) دون المساس بباقي النص.
+    إن أصبح النص فارغاً بعد الإزالة يُعاد سلسلة فارغة → مسار صامت لاحقاً.
+    """
+    t = (text or "").strip()
+    if not t:
+        return ""
+    # عبارات ممنوعة كاملة أو مكررة بلا قيمة مضافة
+    banned = (
+        "ما حصلت نفس الطلب",
+        "ما حصلت نفس الطلب.",
+    )
+    for b in banned:
+        if b in t:
+            t = t.replace(b, " ")
+    t = " ".join(t.split()).strip()
+    return t
+
+
+def _maybe_scrub_json_response(resp: Any) -> Any:
+    """يطبّق _scrub_disallowed_bot_phrases على حقل message في استجابات JSON."""
+    from flask import Response
+
+    if isinstance(resp, tuple) and resp:
+        inner = _maybe_scrub_json_response(resp[0])
+        return (inner,) + resp[1:] if len(resp) > 1 else (inner,)
+
+    if not isinstance(resp, Response):
+        return resp
+    data = resp.get_json(silent=True)
+    if not isinstance(data, dict):
+        return resp
+    msg = (data.get("message") or "").strip()
+    scrubbed = _scrub_disallowed_bot_phrases(msg)
+    if scrubbed == msg:
+        return resp
+    out = dict(data)
+    out["message"] = scrubbed
+    prods = out.get("products") or []
+    if not scrubbed and (not isinstance(prods, list) or len(prods) == 0):
+        intent = str(out.get("intent") or "")
+        if intent not in (
+            "complaint_rule",
+            "complaint_wizard",
+            "complaint",
+            "return_policy",
+            "attachment",
+            "collect_name",
+            "error",
+            "account_session_sync",
+        ):
+            out["intent"] = "silent"
+    return jsonify(out)
 
 
 def _deduplicate_bot_outgoing(resp: Any) -> Any:
@@ -80,12 +141,266 @@ def _deduplicate_bot_outgoing(resp: Any) -> Any:
 
 
 def _finalize_chat_outputs(raw_resp: Any, message: str) -> Any:
-    """تسجيل آخر رسالة مستخدم، إثراء الاسم، تسويق، منع تكرار رد البوت."""
+    """تسجيل آخر رسالة مستخدم، إثراء الاسم، تنظيف عبارات عديمة الفائدة، تسويق، منع تكرار رد البوت."""
     if message:
         session["chat_last_incoming_message"] = message
     step1 = _maybe_enrich_json_response(raw_resp)
-    step2 = cust_ch.attach_marketing_followup_if_needed(step1)
-    return _deduplicate_bot_outgoing(step2)
+    step2 = _maybe_scrub_json_response(step1)
+    step3 = cust_ch.attach_marketing_followup_if_needed(step2)
+    return _deduplicate_bot_outgoing(step3)
+
+
+def _response_to_dict(resp: Any) -> Optional[dict[str, Any]]:
+    """يستخرج dict من jsonify أو (Response, status)."""
+    if resp is None:
+        return None
+    if isinstance(resp, tuple) and len(resp) > 0:
+        return _response_to_dict(resp[0])
+    if isinstance(resp, Response):
+        d = resp.get_json(silent=True)
+        return d if isinstance(d, dict) else None
+    return None
+
+
+def _merge_ai_over_rule(ai_d: Optional[dict], rule_d: Optional[dict]) -> dict[str, Any]:
+    """
+    دمج رد القواعد مع رد المنسّق: أولوية النص والمنتجات للذكاء الاصطناعي عند وجوده،
+    مع الإبقاء على حقول مساعدة من القواعد (فروع، أقسام، شكوى).
+    """
+    base = copy.deepcopy(rule_d) if isinstance(rule_d, dict) else {}
+    ai = ai_d if isinstance(ai_d, dict) else {}
+    out: dict[str, Any] = dict(base) if base else {}
+    ai_msg = (ai.get("message") or "").strip()
+    if ai_msg:
+        out["message"] = ai["message"]
+    elif "message" not in out:
+        out["message"] = ""
+    prods = ai.get("products")
+    if isinstance(prods, list) and len(prods) > 0:
+        out["products"] = prods
+    elif "products" not in out:
+        out["products"] = []
+    ai_intent = (ai.get("intent") or "").strip()
+    if ai_intent and ai_intent != "silent":
+        out["intent"] = ai["intent"]
+    elif "intent" not in out:
+        out["intent"] = "general"
+    fol = (ai.get("followup_message") or "").strip()
+    if fol:
+        out["followup_message"] = ai["followup_message"]
+    for k in (
+        "branches",
+        "sections",
+        "complaint_id",
+        "email_sent",
+        "user_name",
+        "complaint_target",
+        "complaint_type",
+        "complaint_type_label",
+    ):
+        if k in base and k not in out:
+            out[k] = base[k]
+    return out
+
+
+def _merge_complaint_ai_append(
+    rule_d: dict[str, Any], ai_d: Optional[dict[str, Any]]
+) -> dict[str, Any]:
+    """
+    شكوى: الإبقاء على نص القواعد (اعتذار وهيكل) وإلحاق نص المنسّق دون استبدال المعنى.
+    لا يُستبدل نص الشكوى الأساسي برد AI.
+    """
+    out = copy.deepcopy(rule_d) if isinstance(rule_d, dict) else {}
+    if not isinstance(ai_d, dict):
+        return out
+    base_msg = (out.get("message") or "").strip()
+    ai_msg = (ai_d.get("message") or "").strip()
+    if ai_msg and base_msg:
+        out["message"] = f"{base_msg}\n\n{ai_msg}"
+    out["intent"] = out.get("intent") or "complaint_rule"
+    return out
+
+
+def _is_weak_location_rule_payload(d: dict) -> bool:
+    """طلب اختيار فرع / غير محدد → ضعيف ويستحق دعم المنسّق."""
+    msg = (d.get("message") or "")
+    intent = str(d.get("intent") or "")
+    if intent == "branch_phone" and "أي فرع" in msg:
+        return True
+    if intent != "location":
+        return False
+    if "maps.google" in msg or "goo.gl" in msg or "http" in msg:
+        return False
+    if "ما التقطنا الفرع" in msg or "أي فرع" in msg or "أي مدينة" in msg:
+        return True
+    if msg.startswith("حاضر يا") and "؟" in msg:
+        return True
+    return False
+
+
+def _classify_rule_strength(rule_d: Optional[dict], message: str) -> str:
+    """
+    strong: شكوى، فرع/موقع محدد، منتجات، سياسة، مرفق، وقت/هاتف مع فرع.
+    weak: ترحيب، شكر، قسم، سؤال عام، موقع بدون فرع، منتج بلا نتائج.
+    """
+    if not rule_d:
+        return "none"
+    intent = str(rule_d.get("intent") or "")
+    if intent == "complaint_rule":
+        # جمع فرع/تفاصيل: لا دمج AI؛ بعد اكتمالها يُسمح بدمج المنسّق لإثراء السؤال
+        if session.get("complaint_block_ai_merge"):
+            return "strong"
+        return "weak"
+    if intent in (
+        "complaint_wizard",
+        "complaint",
+        "return_policy",
+        "attachment",
+        "collect_name",
+    ):
+        return "strong"
+    if intent == "branch_phone":
+        msg = (rule_d.get("message") or "")
+        if "أي فرع" in msg or "أي مدينة" in msg:
+            return "weak"
+        return "strong"
+    if intent == "location":
+        return "weak" if _is_weak_location_rule_payload(rule_d) else "strong"
+    prods = rule_d.get("products") or []
+    if intent in ("product", "recommendation", "section"):
+        if isinstance(prods, list) and len(prods) > 0:
+            return "strong"
+        return "weak"
+    if intent in ("greeting", "thanks", "goodbye", "general"):
+        return "weak"
+    if intent in ("silent", "no_products"):
+        return "weak"
+    return "weak"
+
+
+def _intent_snapshot_unclear(decision: dict) -> bool:
+    r = decision.get("route") or ""
+    if r in ("needs_openai", "complex", "ambiguous", "weak"):
+        return True
+    return False
+
+
+def _rule_payload_needs_orchestrator(
+    rule_d: Optional[dict], decision: dict, message: str
+) -> bool:
+    """متى نستدعي المنسّق بعد القواعد: ضعيف، بلا منتجات رغم طلب تسوّق، موقع غامض، أو لا رد قواعد."""
+    if not rule_d:
+        return True
+    intent = str(rule_d.get("intent") or "")
+    if intent == "silent":
+        return True
+    st = _classify_rule_strength(rule_d, message)
+    if st == "weak":
+        return True
+    prods = rule_d.get("products") or []
+    si = decision.get("score_intent") or ""
+    if (intent in ("product", "section", "recommendation") or si == "product") and (
+        not isinstance(prods, list) or len(prods) == 0
+    ):
+        return True
+    if intent == "location" and _is_weak_location_rule_payload(rule_d):
+        return True
+    if _intent_snapshot_unclear(decision) and st != "strong":
+        return True
+    return False
+
+
+def _router_intent_branch_rules_only(
+    message: str, branch_list: list, decision: dict
+) -> Optional[Any]:
+    """أقسام، فرع/دوام/هاتف، ثم rule_based و score_direct — دون المنسّق."""
+    if _looks_like_section_stock_question(message):
+        session["chat_current_intent"] = "section"
+        session["chat_pending_action"] = None
+        return _section_chat_response(message)
+
+    t_norm = cs.normalize_message_for_branch_search(message)
+    if any(k in t_norm for k in kw.SECTION_KEYWORDS):
+        session["chat_current_intent"] = "section"
+        session["chat_pending_action"] = None
+        return _section_chat_response(message)
+
+    rule_branch = _try_rule_based_branch_location_phone(message, branch_list)
+    if rule_branch is not None:
+        return rule_branch
+
+    rb = _dispatch_rule_based_intent(message, branch_list, decision)
+    if rb is not None:
+        return rb
+
+    sd = _dispatch_score_direct_intent(message, branch_list, decision)
+    if sd is not None:
+        return sd
+
+    return None
+
+
+def _route_main_chat_with_rules_and_ai(
+    message: str,
+    branch_list: list,
+    pending_precalc: Any = _PENDING_PRECALC_MISSING,
+) -> Any:
+    """
+    يجمع نتيجة القواعد (دون إيقاف المسار)، ثم يستدعي المنسّق عند الحاجة ويدمج (AI أولاً).
+    pending_precalc: إن وُجد (بما فيه None بعد تشغيل pending مرة) يُستخدم بدل إعادة استدعاء _router_pending_and_services.
+    """
+    pending = (
+        pending_precalc
+        if pending_precalc is not _PENDING_PRECALC_MISSING
+        else _router_pending_and_services(message, branch_list)
+    )
+    decision = get_intent_routing_decision(message, cs.resolve_branch_from_message)
+    session["chat_intent_score_snapshot"] = decision.get("score_snapshot") or decision
+
+    if pending is not None:
+        intent_rules = None
+    else:
+        intent_rules = _router_intent_branch_rules_only(message, branch_list, decision)
+
+    rule_resp = pending if pending is not None else intent_rules
+    rule_d = _response_to_dict(rule_resp)
+    need_ai = _rule_payload_needs_orchestrator(rule_d, decision, message)
+    if session.get("complaint_active"):
+        need_ai = complaint_ready_for_ai()
+
+    ai_resp = None
+    if need_ai:
+        ai_resp = _execute_ai_orchestrator(
+            message, branch_list, intent_decision=decision
+        )
+
+    ai_d = _response_to_dict(ai_resp)
+    rd = rule_d if isinstance(rule_d, dict) else {}
+    intent_r = str(rd.get("intent") or "")
+    use_complaint_append = (
+        intent_r == "complaint_rule"
+        and complaint_ready_for_ai()
+        and isinstance(ai_d, dict)
+        and (ai_d.get("message") or "").strip()
+    )
+    if use_complaint_append:
+        merged = _merge_complaint_ai_append(rd, ai_d)
+    else:
+        merged = _merge_ai_over_rule(ai_d, rule_d)
+
+    msg_out = (merged.get("message") or "").strip()
+    prods_out = merged.get("products") or []
+    if not msg_out and (not isinstance(prods_out, list) or len(prods_out) == 0):
+        if session.get("complaint_active"):
+            return jsonify(
+                {
+                    "products": [],
+                    "message": "ممكن توضح لي أكثر؟",
+                    "intent": "complaint_rule",
+                }
+            )
+        return _silent_chat_response()
+    return jsonify(merged)
 
 
 def _resolve_branch_for_location(message: str) -> Optional[str]:
@@ -735,39 +1050,15 @@ def _dispatch_score_direct_intent(message: str, branch_list: list, decision: dic
     return None
 
 
-def _router_intent_branch(message: str, branch_list: list) -> Any:
-    """قواعد ضيقة (أقسام، فرع/دوام) ثم نقاط النية ثم المنسّق الذكي عند الضعف."""
-    if _looks_like_section_stock_question(message):
-        print("AI SKIPPED: section stock question rule")
-        session["chat_current_intent"] = "section"
-        session["chat_pending_action"] = None
-        return _section_chat_response(message)
-
-    t_norm = cs.normalize_message_for_branch_search(message)
-    if any(k in t_norm for k in kw.SECTION_KEYWORDS):
-        print("AI SKIPPED: section keywords rule")
-        session["chat_current_intent"] = "section"
-        session["chat_pending_action"] = None
-        return _section_chat_response(message)
-
-    rule_branch = _try_rule_based_branch_location_phone(message, branch_list)
-    if rule_branch is not None:
-        print("AI SKIPPED: branch/location/hours/phone rule")
-        return rule_branch
-
-    decision = get_intent_routing_decision(message, cs.resolve_branch_from_message)
-    session["chat_intent_score_snapshot"] = decision.get("score_snapshot") or decision
-
-    rb = _dispatch_rule_based_intent(message, branch_list, decision)
-    if rb is not None:
-        print("AI SKIPPED: rule_based intent from score router")
-        return rb
-
-    sd = _dispatch_score_direct_intent(message, branch_list, decision)
-    if sd is not None:
-        return sd
-
-    return _execute_ai_orchestrator(message, branch_list, intent_decision=decision)
+def _router_intent_branch(
+    message: str,
+    branch_list: list,
+    pending_precalc: Any = _PENDING_PRECALC_MISSING,
+) -> Any:
+    """قواعد + دمج اختياري مع المنسّق (المسار الموحّد)."""
+    return _route_main_chat_with_rules_and_ai(
+        message, branch_list, pending_precalc=pending_precalc
+    )
 
 
 def dispatch_chat_query():
@@ -808,14 +1099,9 @@ def dispatch_chat_query():
         branch_list = [{"name": b["city_name"]} for b in branches]
 
         mid = _router_pending_and_services(message, branch_list)
-        if mid is not None:
-            print(
-                "AI SKIPPED: pending branch/wizard/time/complaint/product followup handled"
-            )
-            return _finalize_chat_outputs(mid, message)
-
         return _finalize_chat_outputs(
-            _router_intent_branch(message, branch_list), message
+            _router_intent_branch(message, branch_list, pending_precalc=mid),
+            message,
         )
     except Exception:
         logger.exception("dispatch_chat_query failed")
