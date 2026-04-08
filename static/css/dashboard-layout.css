@@ -200,12 +200,14 @@ body.fd-dashboard .dash-menu-btn:focus-visible {
   }
 
   /* الشريط الجانبي على مستوى aside — أعلى من الطبقة */
+  /* يجب أن يغلب قواعد .dash-sidebar-col أعلاه (width:0 !important) وإلا يبقى العرض 0 والدرج غير مرئي */
   .dash-layout aside.dash-sidebar-col {
     position: fixed;
     top: 0;
     right: -100%;
-    width: 80%;
-    max-width: min(320px, 92vw);
+    width: 80% !important;
+    max-width: min(320px, 92vw) !important;
+    flex: none !important;
     height: 100%;
     height: 100dvh;
     z-index: 1001;
@@ -213,6 +215,7 @@ body.fd-dashboard .dash-menu-btn:focus-visible {
     overflow: hidden;
     visibility: visible;
     background: var(--sidebar-bg, #fff);
+    pointer-events: auto;
   }
 
   .dash-layout aside.dash-sidebar-col.open {
