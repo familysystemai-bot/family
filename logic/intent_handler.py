@@ -8,6 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
+from flask import session
+
 from config import (
     GLOBAL_RULE_THRESHOLD,
     INTENT_SCORE_MARGIN_AMBIGUOUS,
@@ -83,18 +85,59 @@ def location_reply_kind(user_message: str) -> str:
 
 
 def _complaint_signals_negated(text: str) -> bool:
-    """صياغات تدل على عدم وجود شكوى."""
+    """صياغات تدل على عدم وجود شكوى أو رغبة بالخروج من سيناريو الشكوى."""
     t = (text or "").strip()
+    if not t or len(t) > 200:
+        return False
     tl = t.lower()
+    tn = (
+        tl.replace("أ", "ا")
+        .replace("إ", "ا")
+        .replace("آ", "ا")
+        .replace("ة", "ه")
+        .replace("ى", "ي")
+    )
     if "ما عندي مشكلة" in t or "ما عندك مشكلة" in t:
         return True
-    if "ما في مشكلة" in t or "ما فيه مشكلة" in t or "مافي مشكلة" in tl:
+    if (
+        "ما في مشكلة" in t
+        or "ما فيه مشكلة" in t
+        or "مافي مشكلة" in tl
+        or "مافي مشكله" in tn
+        or "ما في مشكله" in tn
+    ):
         return True
     if "بدون مشكلة" in t:
         return True
     if "لا مشكلة" in t or "ولا مشكلة" in t:
         return True
     if "مو مشكلة" in tl or "مش مشكلة" in t:
+        return True
+    if any(
+        k in tn
+        for k in (
+            "كله تمام",
+            "كل شي تمام",
+            "ما ابغي اشتكي",
+            "ما ابغى اشتكي",
+            "مو ناوي اشتكي",
+            "ماني شاكي",
+            "ماودي شكوى",
+            "ما ودي شكوى",
+            "الغي الشكوى",
+            "الغاء الشكوى",
+            "الغي الموضوع",
+            "خلاص موضوع",
+            "كفايه كذا",
+            "يكفي كذا",
+            "ما في شكوى",
+            "ما عندي شكوى",
+            "سلامتكم",
+            "بس استفسار",
+        )
+    ):
+        return True
+    if len(t) <= 24 and t in ("تمام", "خلاص", "لا شكرا", "لا شكراً", "وعليكم السلام"):
         return True
     return False
 
@@ -242,6 +285,28 @@ def score_message_intents(
     }
 
 
+def _session_in_active_product_flow() -> bool:
+    """بعد عرض منتجات/أقسام: الرسالة التالية غالباً تخصيص بحث وليس نية عامة."""
+    li = (session.get("chat_last_intent") or "").strip()
+    ci = (session.get("chat_current_intent") or "").strip()
+    if ci == "product":
+        return True
+    return li in ("product", "recommendation", "section")
+
+
+def _continuation_message_looks_like_product_query(raw: str, t: str) -> bool:
+    """استفسار إضافي قصير يُفترض أنه بحث منتج (وليس شكوى/تحية)."""
+    s = (raw or "").strip()
+    if len(s) < 2 or len(s) > 140:
+        return False
+    if _complaint_signals_negated(s):
+        return False
+    tl = (t or "").strip().lower()
+    if tl in kw.ACK_GENERAL or (len(tl) <= 4 and tl in kw.ACK_GENERAL):
+        return False
+    return True
+
+
 def _legacy_early_intent_fixed(
     t: str, tl: str, resolve_branch: Callable[[str], Optional[str]]
 ) -> Optional[str]:
@@ -314,6 +379,8 @@ def get_intent_routing_decision(
     has_product_word = any(
         (h or "").strip() in t and len((h or "").strip()) >= 2 for h in kw.PRODUCT_HINTS
     )
+    has_product_phrase = any((p in t) for p in kw.PRODUCT_QUERY_PHRASES)
+    has_product_signal = has_product_word or has_product_phrase
     if has_request and has_context_word:
         return {
             "route": "score_direct",
@@ -326,7 +393,7 @@ def get_intent_routing_decision(
             "needs_clarification": False,
             "score_snapshot": snap,
         }
-    if has_request and has_product_word:
+    if has_request and has_product_signal:
         return {
             "route": "score_direct",
             "legacy_intent": "product",
@@ -338,7 +405,7 @@ def get_intent_routing_decision(
             "needs_clarification": False,
             "score_snapshot": snap,
         }
-    if has_product_word and not _complaint_signals_negated(t):
+    if has_product_signal and not _complaint_signals_negated(t):
         return {
             "route": "score_direct",
             "legacy_intent": "product",
@@ -415,7 +482,7 @@ def get_intent_routing_decision(
         }
 
     br = resolve_branch(t)
-    if br and len(t) < 36 and not has_product_word and not has_request:
+    if br and len(t) < 36 and not has_product_signal and not has_request:
         return {
             "route": "rule_based",
             "legacy_intent": "location_pick",
@@ -424,6 +491,22 @@ def get_intent_routing_decision(
             "detected_keywords": snap["detected_keywords"],
             "possible_intents": snap["possible_intents"],
             "top_score": top_score,
+            "needs_clarification": False,
+            "score_snapshot": snap,
+        }
+
+    # متابعة تسوق: كان السياق منتجاً والرسالة تبدو تخصيص بحث — بحث قاعدة البيانات قبل OpenAI
+    if _session_in_active_product_flow() and _continuation_message_looks_like_product_query(
+        raw, t
+    ):
+        return {
+            "route": "score_direct",
+            "legacy_intent": "product",
+            "score_intent": "product",
+            "scores": scores,
+            "detected_keywords": snap["detected_keywords"],
+            "possible_intents": snap["possible_intents"],
+            "top_score": max(top_score, INTENT_SCORE_THRESHOLD_DIRECT),
             "needs_clarification": False,
             "score_snapshot": snap,
         }

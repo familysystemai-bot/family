@@ -57,7 +57,7 @@ from logic import customer_chat as cust_ch
 from logic.chat_handlers.time_handler import enhanced_location_reply_kind
 from logic.chat_rules import (
     SALAM_REPLY_FIRST,
-    SALAM_REPLY_SECOND,
+    build_personalized_salam_followup,
     is_acceptable_display_name,
     looks_like_direct_request,
 )
@@ -915,9 +915,14 @@ def _execute_ai_orchestrator(
     ai_msg = str(plan.get("message") or "").strip()
     needs_branch = bool(plan.get("needs_branch"))
     gender_f = filters.get("gender")
-    if gender_f not in ("male", "female"):
-        gender_f = ai_fb.infer_gender_from_message(message)
-    rx = ai_fb.extract_user_context(message)
+    if action in ("product_search", "category_suggestion"):
+        if gender_f not in ("male", "female"):
+            gender_f = ai_fb.infer_gender_for_product_turn(message)
+        rx = ai_fb.extract_user_context_for_product_turn(message)
+    else:
+        if gender_f not in ("male", "female"):
+            gender_f = ai_fb.infer_gender_from_message(message)
+        rx = ai_fb.extract_user_context(message)
     px = plan.get("context") if isinstance(plan.get("context"), dict) else {}
     uctx = {
         "occasion": rx.get("occasion") or px.get("occasion"),
@@ -1040,7 +1045,7 @@ def _execute_ai_orchestrator(
         if not cats:
             cats = ai_fb.pick_fallback_categories(
                 context,
-                message,
+                ai_fb.merged_turn_text_for_shopping(message),
                 gender_f if gender_f in ("male", "female") else None,
             )
         msg_parts = [ai_msg] if ai_msg else []
@@ -1093,7 +1098,7 @@ def _execute_ai_orchestrator(
         if not cats:
             cats = ai_fb.pick_fallback_categories(
                 context,
-                message,
+                ai_fb.merged_turn_text_for_shopping(message),
                 gender_f if gender_f in ("male", "female") else None,
             )
         msg_parts = []
@@ -1192,7 +1197,13 @@ def _router_early_exits(data: dict) -> Optional[Any]:
             "intent": "greeting",
         }
         if not looks_like_direct_request(message):
-            pl["followup_message"] = SALAM_REPLY_SECOND
+            prior = int(session.get("chat_islamic_salam_named_count", 0) or 0)
+            pl["followup_message"] = build_personalized_salam_followup(
+                cs._display_name(), prior_salam_count=prior
+            )
+            dn = (cs._display_name() or "").strip()
+            if dn and dn != "حضرتك":
+                session["chat_islamic_salam_named_count"] = prior + 1
         return jsonify(pl)
 
     return None
@@ -1337,8 +1348,8 @@ def _dispatch_score_direct_intent(message: str, branch_list: list, decision: dic
         return None
 
     if si == "product":
-        uctx = ai_fb.extract_user_context(message)
-        g = ai_fb.infer_gender_from_message(message)
+        uctx = ai_fb.extract_user_context_for_product_turn(message)
+        g = ai_fb.infer_gender_for_product_turn(message)
         g_use = g if g in ("male", "female") else None
         widened = ai_fb.apply_shopping_context_to_search_query(message, g_use, uctx)
         psq = ai_fb.enhance_search_query_with_openai(widened, "product")

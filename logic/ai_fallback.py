@@ -348,6 +348,47 @@ def extract_user_context(message: str) -> Dict[str, Optional[str]]:
     return out
 
 
+def merged_turn_text_for_shopping(current_message: str) -> str:
+    """
+    يدمج الرسالة السابقة مع الحالية عند متابعة سياق التسوق (مثلاً «نساء» ثم «ملابس سباحة»).
+    يعتمد على session['chat_last_incoming_message'] المُحدَّث بعد كل رد.
+    """
+    try:
+        from flask import has_request_context, session
+    except Exception:
+        return (current_message or "").strip()
+    if not has_request_context():
+        return (current_message or "").strip()
+    cur = (current_message or "").strip()
+    prev = (session.get("chat_last_incoming_message") or "").strip()
+    if not prev or prev == cur:
+        return cur
+    if len(cur) > 120:
+        return cur
+    prev_use = prev[-400:] if len(prev) > 400 else prev
+    merged = f"{prev_use}\n{cur}"
+    g_c = infer_gender_from_message(cur)
+    g_m = infer_gender_from_message(merged)
+    if g_m in ("male", "female") and g_c is None:
+        return merged
+    li = (session.get("chat_last_intent") or "").strip()
+    ci = (session.get("chat_current_intent") or "").strip()
+    in_flow = ci == "product" or li in ("product", "recommendation", "section")
+    if in_flow and len(cur) <= 72:
+        return merged
+    return cur
+
+
+def infer_gender_for_product_turn(message: str) -> Optional[str]:
+    """استنتاج الجنس مع احتساب الرسالة السابقة عند الحاجة."""
+    return infer_gender_from_message(merged_turn_text_for_shopping(message))
+
+
+def extract_user_context_for_product_turn(message: str) -> Dict[str, Optional[str]]:
+    """سياق التسوق مع دمج الرسالة السابقة عند الحاجة."""
+    return extract_user_context(merged_turn_text_for_shopping(message))
+
+
 def merge_user_context_into_plan(message: str, plan: Dict[str, Any]) -> Dict[str, Any]:
     """يدمج extract_user_context مع أي context يعيده النموذج — يُفضَّل المستخرج قواعدياً ثم النموذج."""
     extracted = extract_user_context(message)
@@ -571,7 +612,7 @@ def merge_gender_into_plan(message: str, plan: Dict[str, Any]) -> Dict[str, Any]
     """يدمج الجنس من الرسالة + مخرجات النموذج."""
     fl = dict(plan.get("filters") or {}) if isinstance(plan.get("filters"), dict) else {}
     ai_g = str(fl.get("gender") or "").strip().lower()
-    hint = infer_gender_from_message(message)
+    hint = infer_gender_for_product_turn(message)
     if ai_g in ("male", "female"):
         final = ai_g
     elif hint in ("male", "female"):

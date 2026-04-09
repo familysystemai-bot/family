@@ -367,9 +367,11 @@ def _looks_like_shopping_followup_not_complaint(message: str) -> bool:
 
 def _fresh_intent_exits_complaint_flow(message: str) -> bool:
     """رسالة جديدة تُصنَّف بنية غير شكوى → لا نُبقي المستخدم في حوار الشكوى."""
-    from logic.intent_handler import detect_chat_intent
+    from logic.intent_handler import _complaint_signals_negated, detect_chat_intent
 
     msg = (message or "").strip()
+    if _complaint_signals_negated(msg):
+        return True
     cd = session.get("complaint_data") or {}
     if (cd.get("step") or "") == "need_target" and _parse_escalation_target(msg):
         return False
@@ -390,8 +392,16 @@ def _fresh_intent_exits_complaint_flow(message: str) -> bool:
 
 
 def maybe_clear_complaint_session_before_router(message: str) -> None:
-    """يُستدعى أول مسار الشات: يزيل وضع الشكوى إذا كانت الرسالة متابعة تسوّق واضحة."""
-    if not session.get("complaint_active"):
+    """يُستدعى أول مسار الشات: يزيل سياق الشكوى عند نية خروج واضحة.
+
+    يشمل المعالج والقواعد حتى لو complaint_active لم يُضبط بعد (_sync).
+    """
+    if not (
+        session.get("complaint_active")
+        or session.get("complaint_data")
+        or session.get("complaint_wizard")
+        or session.get("complaint_policy_precheck")
+    ):
         return
     if _fresh_intent_exits_complaint_flow((message or "").strip()):
         clear_complaint_session_for_topic_switch()
@@ -643,10 +653,10 @@ def _handle_complaint_policy_precheck_turn(message: str, branch_list: list):
         return None
     msg = (message or "").strip()
     if _fresh_intent_exits_complaint_flow(msg):
-        session.pop("complaint_policy_precheck", None)
+        clear_complaint_session_for_topic_switch()
         return None
     if _user_cancels_policy_precheck(msg):
-        session.pop("complaint_policy_precheck", None)
+        clear_complaint_session_for_topic_switch()
         return jsonify(
             {
                 "products": [],
@@ -713,7 +723,7 @@ def _try_complaint_wizard(message: str, branch_list: list):
         return None
     msg = (message or "").strip()
     if _fresh_intent_exits_complaint_flow(msg):
-        session.pop("complaint_wizard", None)
+        clear_complaint_session_for_topic_switch()
         return None
 
     apology_merge = bool(w.pop("_apology_turn_merged", False))
@@ -898,22 +908,17 @@ def _try_chat_active_complaint_turn(message: str, branch_list: list):
     if session.get("chat_current_intent") != "complaint" or not cid:
         return None
     if _fresh_intent_exits_complaint_flow(message):
-        session.pop("chat_active_complaint_id", None)
-        session.pop("complaint_branch_label", None)
-        session["chat_current_intent"] = None
+        clear_complaint_session_for_topic_switch()
         return None
     sw = _explicit_switch_from_complaint(message)
     if sw == "product":
-        session.pop("chat_active_complaint_id", None)
-        session.pop("complaint_branch_label", None)
-        session["chat_current_intent"] = None
+        clear_complaint_session_for_topic_switch()
         prod = _build_products_response(message)
         if not prod.get("products"):
             return jsonify(dict(NO_PRODUCTS_PAYLOAD))
         return jsonify(prod)
     if sw == "location":
-        session.pop("chat_active_complaint_id", None)
-        session.pop("complaint_branch_label", None)
+        clear_complaint_session_for_topic_switch()
         branch_name = resolve_branch_from_message(message)
         if not branch_name:
             session["chat_pending_action"] = _CHAT_PENDING_BRANCH
