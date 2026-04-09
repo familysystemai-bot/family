@@ -133,9 +133,12 @@ def _resolve_customer_id(db) -> Optional[int]:
         except (TypeError, ValueError):
             pass
     em = _extract_email(session.get("user_contact") or "")
-    if not em:
-        return None
-    row = db.get_customer_by_email(em)
+    ph = _digits_only(session.get("user_contact") or "")
+    row = None
+    if em:
+        row = db.get_customer_by_email(em)
+    if not row and ph:
+        row = db.get_customer_by_phone(ph)
     if not row:
         return None
     i = int(row["id"])
@@ -173,31 +176,25 @@ def sync_customer_from_session(db, message: str) -> None:
     bid = _resolve_branch_id_from_message(message, db)
 
     email = _extract_email(contact)
-    if email:
-        row = db.customer_ensure_by_email(name, email, bid)
-        if row:
-            session["customer_id"] = int(row["id"])
-            if bid:
-                db.customer_set_branch(session["customer_id"], bid)
-            dia = (session.get("chat_dialect") or "default").strip() or "default"
-            prod_snap = session.get("chat_last_product") or {}
-            prod_name = (prod_snap.get("name") or "").strip() or None
-            db.customer_touch_engagement(
-                int(row["id"]), dialect=dia, product_label=prod_name
-            )
-        return
-
-    if _looks_like_phone(contact) and session.get("customer_id"):
-        cid = int(session["customer_id"])
-        digits = _digits_only(contact)
-        if digits:
-            db.customer_set_phone(cid, digits)
-        if bid:
-            db.customer_set_branch(cid, bid)
+    phone = _digits_only(contact) if _looks_like_phone(contact) else None
+    row = db.get_or_create_customer(
+        name=name,
+        email=email,
+        phone=phone,
+        branch_id=bid,
+    )
+    if row:
+        session["customer_id"] = int(row["id"])
+        if row.get("email"):
+            session["user_email"] = row["email"]
+        if row.get("phone"):
+            session["user_phone"] = row["phone"]
         dia = (session.get("chat_dialect") or "default").strip() or "default"
         prod_snap = session.get("chat_last_product") or {}
         prod_name = (prod_snap.get("name") or "").strip() or None
-        db.customer_touch_engagement(cid, dialect=dia, product_label=prod_name)
+        db.customer_touch_engagement(
+            int(row["id"]), dialect=dia, product_label=prod_name
+        )
 
 
 def try_marketing_consent_reply(message: str, db) -> Optional[Any]:
@@ -214,6 +211,13 @@ def try_marketing_consent_reply(message: str, db) -> Optional[Any]:
             if row:
                 cid = int(row["id"])
                 session["customer_id"] = cid
+        if not cid:
+            ph = _digits_only(session.get("user_contact") or "")
+            if ph:
+                row = db.get_customer_by_phone(ph)
+                if row:
+                    cid = int(row["id"])
+                    session["customer_id"] = cid
     if not cid:
         session.pop("awaiting_marketing_consent", None)
         return None

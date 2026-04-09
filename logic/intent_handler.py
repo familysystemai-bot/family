@@ -5,10 +5,21 @@
 """
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
+from config import (
+    GLOBAL_RULE_THRESHOLD,
+    INTENT_SCORE_MARGIN_AMBIGUOUS,
+    INTENT_SCORE_THRESHOLD_DIRECT,
+    INTENT_SECOND_SCORE_AMBIGUOUS_FLOOR,
+)
+from logic.complaint_scoring import (
+    complaint_score_to_intent_score,
+    compute_complaint_score,
+    has_negative_complaint_tone,
+    has_primary_complaint_signal,
+)
 from logic import keywords as kw
 from logic.chat_service import normalize_message_for_branch_search
 
@@ -16,50 +27,20 @@ from logic.chat_service import normalize_message_for_branch_search
 PRODUCT_HINTS = kw.PRODUCT_HINTS
 
 
-# ─── عتبة القرار المباشر (بدون OpenAI كمنسّق رئيسي) ─────────────────
-def _env_float(name: str, default: float) -> float:
-    raw = os.getenv(name)
-    if raw is None or not str(raw).strip():
-        return default
-    try:
-        return float(str(raw).strip().replace(",", "."))
-    except ValueError:
-        return default
-
-
-INTENT_SCORE_THRESHOLD_DIRECT = _env_float("CHAT_INTENT_SCORE_THRESHOLD", 60.0)
-# فرق دنيا بين الأول والثاني لاعتبار النية «واضحة» (رسائل مركبة → OpenAI)
-INTENT_SCORE_MARGIN_AMBIGUOUS = _env_float("CHAT_INTENT_SCORE_MARGIN", 12.0)
-
-
 @dataclass
 class IntentScoreWeights:
     """أوزان قابلة للتعديل (يمكن تعيينها من البيئة INTENT_W_*)."""
 
-    product_hint: float = field(default_factory=lambda: _env_float("INTENT_W_PRODUCT_HINT", 38.0))
-    product_request: float = field(default_factory=lambda: _env_float("INTENT_W_PRODUCT_REQUEST", 42.0))
-    product_context_occasion: float = field(
-        default_factory=lambda: _env_float("INTENT_W_PRODUCT_CONTEXT", 36.0)
-    )
-    product_price: float = field(default_factory=lambda: _env_float("INTENT_W_PRODUCT_PRICE", 34.0))
-    product_stock: float = field(default_factory=lambda: _env_float("INTENT_W_PRODUCT_STOCK", 28.0))
-    branch_location_phrase: float = field(
-        default_factory=lambda: _env_float("INTENT_W_BRANCH_LOCATION_PHRASE", 44.0)
-    )
-    branch_hours: float = field(default_factory=lambda: _env_float("INTENT_W_BRANCH_HOURS", 40.0))
-    branch_phone: float = field(default_factory=lambda: _env_float("INTENT_W_BRANCH_PHONE", 40.0))
-    branch_generic: float = field(
-        default_factory=lambda: _env_float("INTENT_W_BRANCH_GENERIC", 18.0)
-    )  # «فرع»، «أقرب» — منخفض لتجنب overfitting
-    branch_where_weak: float = field(
-        default_factory=lambda: _env_float("INTENT_W_BRANCH_WHERE_WEAK", 8.0)
-    )  # فين/وين فقط بلا سياق فرع
-    complaint_keyword: float = field(
-        default_factory=lambda: _env_float("INTENT_W_COMPLAINT_KW", 48.0)
-    )
-    complaint_phrase: float = field(
-        default_factory=lambda: _env_float("INTENT_W_COMPLAINT_PHRASE", 52.0)
-    )
+    product_hint: float = 38.0
+    product_request: float = 42.0
+    product_context_occasion: float = 36.0
+    product_price: float = 34.0
+    product_stock: float = 28.0
+    branch_location_phrase: float = 44.0
+    branch_hours: float = 40.0
+    branch_phone: float = 40.0
+    branch_generic: float = 18.0
+    branch_where_weak: float = 8.0
 
 
 _WEIGHTS = IntentScoreWeights()
@@ -146,7 +127,9 @@ def _has_branch_context_for_where(t: str) -> bool:
     return any(m in t for m in markers)
 
 
-def score_message_intents(message: str) -> Dict[str, Any]:
+def score_message_intents(
+    message: str, resolve_branch: Optional[Callable[[str], Optional[str]]] = None
+) -> Dict[str, Any]:
     """
     يحسب نقاط product / branch / complaint ويعيد كلماتاً مطابقة وترتيباً للنوايا المحتملة.
     """
@@ -215,18 +198,28 @@ def score_message_intents(message: str) -> Dict[str, Any]:
         else:
             scores["branch"] += W.branch_where_weak
 
-    # شكوى
+    # شكوى — نفس منطق complaint_service لكن على مقياس intent العام
     if not _complaint_signals_negated(t):
-        for k in kw.COMPLAINT_KEYWORDS:
-            if k in t:
-                scores["complaint"] += W.complaint_keyword
-                detected["complaint"].append(k)
-                break
-        for p in kw.COMPLAINT_NATURAL_PHRASES:
-            if p in t:
-                scores["complaint"] += W.complaint_phrase
-                detected["complaint"].append(p[:40])
-                break
+        branch_name = resolve_branch(t) if resolve_branch is not None else None
+        complaint_score = compute_complaint_score(
+            t, has_known_branch=bool(branch_name)
+        )
+        scores["complaint"] += complaint_score_to_intent_score(complaint_score)
+        scores["complaint"] += max(W.product_request, W.branch_location_phrase)
+        if has_primary_complaint_signal(t):
+            for k in kw.COMPLAINT_KEYWORDS:
+                if k in t:
+                    detected["complaint"].append(k)
+                    break
+            else:
+                for p in kw.COMPLAINT_NATURAL_PHRASES:
+                    if p in t:
+                        detected["complaint"].append(p[:40])
+                        break
+        if has_negative_complaint_tone(t):
+            detected["complaint"].append("negative_tone")
+        if branch_name:
+            detected["complaint"].append(f"branch:{branch_name}")
 
     # إزالة تكرار في القوائم
     for k in detected:
@@ -254,10 +247,13 @@ def _legacy_early_intent_fixed(
 ) -> Optional[str]:
     if not tl:
         return "unknown"
+    if not _complaint_signals_negated(t) and (
+        any(k in t for k in kw.COMPLAINT_KEYWORDS)
+        or any(p in t for p in kw.COMPLAINT_NATURAL_PHRASES)
+    ):
+        return "complaint"
     if any(k in t for k in kw.GREETING_KEYWORDS):
         return "greeting"
-    if any(k in t for k in kw.RETURN_POLICY_KEYWORDS):
-        return "return_policy"
     if any(x in t for x in kw.BRANCH_PHONE_CONTACT_TRIGGERS):
         return "branch_phone"
     if (
@@ -266,6 +262,8 @@ def _legacy_early_intent_fixed(
         or user_wants_open_now(t)
     ):
         return "location"
+    if any(k in t for k in kw.RETURN_POLICY_KEYWORDS):
+        return "return_policy"
     if any(k in t for k in kw.THANKS_KEYWORDS):
         return "thanks"
     if any(k in tl for k in kw.GOODBYE_KEYWORDS):
@@ -289,6 +287,7 @@ def get_intent_routing_decision(
     raw = (message or "").strip()
     t = normalize_message_for_branch_search(raw)
     tl = t.lower()
+    snap = score_message_intents(raw, resolve_branch)
 
     early = _legacy_early_intent_fixed(t, tl, resolve_branch)
     if early is not None:
@@ -296,14 +295,13 @@ def get_intent_routing_decision(
             "route": "rule_based",
             "legacy_intent": early,
             "score_intent": None,
-            "scores": {"product": 0.0, "branch": 0.0, "complaint": 0.0},
-            "detected_keywords": {"product": [], "branch": [], "complaint": []},
-            "possible_intents": [],
-            "top_score": 0.0,
+            "scores": snap["scores"],
+            "detected_keywords": snap["detected_keywords"],
+            "possible_intents": snap["possible_intents"],
+            "top_score": snap["top_score"],
             "needs_clarification": False,
+            "score_snapshot": snap,
         }
-
-    snap = score_message_intents(raw)
     scores: Dict[str, float] = snap["scores"]
     top = snap["top_intent"]
     top_score = float(snap["top_score"])
@@ -353,7 +351,7 @@ def get_intent_routing_decision(
             "score_snapshot": snap,
         }
 
-    ambiguous = gap < INTENT_SCORE_MARGIN_AMBIGUOUS and second_score >= 35.0
+    ambiguous = gap < INTENT_SCORE_MARGIN_AMBIGUOUS and second_score >= INTENT_SECOND_SCORE_AMBIGUOUS_FLOOR
     strong = top_score >= INTENT_SCORE_THRESHOLD_DIRECT and not ambiguous
 
     if strong and top in ("product", "branch", "complaint"):
@@ -498,7 +496,7 @@ def pre_route_intent_snapshot(
             if _looks_like_next_product_request(message)
             else "product_search"
         )
-    ss = d.get("score_snapshot") or score_message_intents(raw)
+    ss = d.get("score_snapshot") or score_message_intents(raw, resolve_branch)
     return {
         "primary_intent": primary,
         "product_sub_intent": product_sub,
@@ -507,3 +505,23 @@ def pre_route_intent_snapshot(
         "intent_top": ss.get("top_intent"),
         "intent_routing_route": d.get("route"),
     }
+
+
+def decision_rule_confidence(decision: Dict[str, Any], mapped_intent: Optional[str] = None) -> float:
+    snap = decision.get("score_snapshot") or {}
+    scores = snap.get("scores") or decision.get("scores") or {}
+    if mapped_intent in ("product", "branch", "complaint"):
+        try:
+            return float(scores.get(mapped_intent) or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+    try:
+        return float(snap.get("top_score", decision.get("top_score")) or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def decision_meets_global_rule_threshold(
+    decision: Dict[str, Any], mapped_intent: Optional[str] = None
+) -> bool:
+    return decision_rule_confidence(decision, mapped_intent) >= GLOBAL_RULE_THRESHOLD

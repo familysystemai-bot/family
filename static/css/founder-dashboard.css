@@ -9,6 +9,11 @@
   --fd-beige: #f5f5dc;
   --fd-beige-soft: #fafaf0;
   --fd-white-card: #fffef9;
+  /* هوية الشريط الفاخرة (لوحة المؤسس) */
+  --fd-sidebar-luxury: #064e3b;
+  --fd-sidebar-luxury-deep: #022c22;
+  --fd-sidebar-hover: rgba(52, 211, 153, 0.35);
+  --fd-sidebar-active: rgba(16, 185, 129, 0.45);
   --fd-green-dark: #0f5132;
   --fd-green-mid: #157a52;
   --fd-green-btn: #1a6b4a;
@@ -45,12 +50,18 @@ body.fd-dashboard {
 
 /* ——— Sidebar ——— */
 .fd-sidebar {
-  background: linear-gradient(180deg, #0f5132 0%, #0a3d28 55%, #062a1c 100%);
-  border-left: 1px solid rgba(201, 162, 39, 0.25);
+  background: linear-gradient(
+    180deg,
+    var(--fd-sidebar-luxury) 0%,
+    var(--fd-green-dark) 48%,
+    var(--fd-sidebar-luxury-deep) 100%
+  );
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
   min-height: 100vh;
+  min-height: 100dvh;
   position: sticky;
   top: 0;
-  box-shadow: var(--fd-shadow-sm);
+  box-shadow: 4px 0 24px rgba(2, 44, 34, 0.35);
 }
 
 .fd-logo {
@@ -98,28 +109,35 @@ body.fd-dashboard {
 .fd-nav a,
 .fd-nav .nav-link {
   display: block;
-  color: rgba(245, 245, 220, 0.88);
+  color: #ffffff;
   text-decoration: none;
-  padding: 0.65rem 1rem;
-  margin: 0.15rem 0.45rem;
-  border-radius: 10px;
-  font-weight: 600;
-  font-size: 0.95rem;
-  transition: background 0.18s ease, color 0.18s ease;
+  padding: 0.85rem 1.1rem;
+  margin: 0.2rem 0.4rem;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 1.05rem;
+  line-height: 1.45;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.12s ease;
   border: 1px solid transparent;
+}
+
+/* إبراز الإيموجي في القائمة */
+.fd-nav a,
+.fd-nav .nav-link {
+  font-variant-emoji: emoji;
 }
 
 .fd-nav a:hover,
 .fd-nav .nav-link:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: var(--fd-sidebar-hover);
+  color: #ffffff;
 }
 
 .fd-nav a.active,
 .fd-nav .nav-link.active {
-  background: rgba(201, 162, 39, 0.22);
-  color: #ffe9a0;
-  border-color: rgba(201, 162, 39, 0.4);
+  background: var(--fd-sidebar-active);
+  color: #ecfdf5;
+  border-color: rgba(255, 255, 255, 0.22);
 }
 
 .fd-nav hr {
@@ -701,4 +719,158 @@ body.fd-dashboard {
 
 .fd-identity-form .fd-btn {
   box-shadow: 0 6px 20px rgba(26, 107, 74, 0.2);
+}
+
+/* ——— شريط جانبي ثابت (سطح المكتب) + محتوى بلا تداخل ——— */
+@media (min-width: 769px) {
+  html.fd-dashboard .dash-layout .dash-row {
+    position: relative;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  html.fd-dashboard .dash-layout aside.fd-sidebar.dash-sidebar-col {
+    position: fixed !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    right: 0 !important;
+    left: auto !important;
+    width: min(280px, 22vw) !important;
+    max-width: 280px !important;
+    flex: none !important;
+    height: auto !important;
+    max-height: none !important;
+    z-index: 1020;
+    overflow: hidden;
+    background: transparent !important;
+  }
+
+  html.fd-dashboard .dash-layout aside.fd-sidebar .dash-sidebar-panel {
+    height: 100vh !important;
+    height: 100dvh !important;
+    min-height: 100vh !important;
+    min-height: 100dvh !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    background: linear-gradient(
+      180deg,
+      var(--fd-sidebar-luxury) 0%,
+      var(--fd-green-dark) 48%,
+      var(--fd-sidebar-luxury-deep) 100%
+    ) !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.14) !important;
+  }
+
+  html.fd-dashboard .dash-layout .fd-main.dash-main {
+    width: calc(100% - min(280px, 22vw)) !important;
+    max-width: none !important;
+    flex: 1 1 auto !important;
+    margin-right: min(280px, 22vw) !important;
+    margin-left: 0 !important;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+}
+
+/* ——— بطاقات إحصاء كبيرة (جوال) ——— */
+.fd-stat--hero {
+  text-align: center;
+  padding-top: 1.35rem;
+  padding-bottom: 1.35rem;
+}
+
+.fd-stat--hero .fd-stat-label {
+  font-size: 0.88rem;
+  letter-spacing: 0.04em;
+}
+
+.fd-stat--hero .fd-stat-value {
+  font-size: clamp(2.35rem, 9vw, 3.1rem);
+  font-weight: 900;
+  color: var(--fd-sidebar-luxury);
+}
+
+@media (max-width: 768px) {
+  .fd-stat--hero .fd-stat-value {
+    font-size: clamp(2.75rem, 14vw, 4rem);
+  }
+}
+
+/* ——— رسم بياني يومي ——— */
+.fd-chart-card {
+  border: 1px solid rgba(6, 78, 59, 0.2);
+}
+
+.fd-chart-wrap {
+  position: relative;
+  width: 100%;
+  min-height: 280px;
+  height: min(360px, 48vh);
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid rgba(15, 81, 50, 0.12);
+  padding: 0.75rem 0.5rem 0.5rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.fd-chart-wrap canvas {
+  display: block;
+}
+
+.fd-btn--soft {
+  background: rgba(6, 78, 59, 0.1) !important;
+  color: var(--fd-sidebar-luxury) !important;
+  border: 1px solid rgba(6, 78, 59, 0.25) !important;
+  font-weight: 700;
+}
+
+.fd-btn--soft:hover {
+  background: rgba(6, 78, 59, 0.18) !important;
+  color: var(--fd-sidebar-luxury-deep) !important;
+}
+
+/* ——— أزرار الاختصارات الحديثة ——— */
+.fd-card--shortcuts .fd-btn--wide {
+  padding: 0.75rem 1.25rem;
+  font-size: 1.02rem;
+  border-radius: 12px;
+}
+
+.fd-dashboard .fd-btn.fd-btn--outline {
+  background: #fff !important;
+  color: var(--fd-green-dark) !important;
+  border: 2px solid rgba(6, 78, 59, 0.35) !important;
+  font-weight: 700;
+}
+
+.fd-dashboard .fd-btn.fd-btn--outline:hover {
+  background: rgba(6, 78, 59, 0.06) !important;
+  border-color: var(--fd-sidebar-luxury) !important;
+  color: var(--fd-sidebar-luxury-deep) !important;
+}
+
+.fd-btn--accent {
+  background: linear-gradient(135deg, #c9a227 0%, #a88620 100%) !important;
+  color: #1a1508 !important;
+  border: none !important;
+  font-weight: 800;
+}
+
+.fd-btn--accent:hover {
+  filter: brightness(1.06);
+  color: #1a1508 !important;
+}
+
+/* درج الجوال: نفس الأخضر الفاخر */
+@media (max-width: 768px) {
+  .fd-sidebar .dash-sidebar-panel,
+  html.fd-dashboard .dash-layout aside.fd-sidebar .dash-sidebar-panel {
+    background: linear-gradient(
+      180deg,
+      var(--fd-sidebar-luxury) 0%,
+      var(--fd-green-dark) 50%,
+      var(--fd-sidebar-luxury-deep) 100%
+    ) !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.14) !important;
+  }
 }

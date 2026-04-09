@@ -1,10 +1,13 @@
+import logging
 import os
 import re
 import time
 import uuid
+import atexit
 from datetime import timedelta
+from functools import wraps
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, current_app
 from config import (
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
@@ -26,7 +29,11 @@ from config import (
 )
 from logic.chat_service import chat_query as chat_query_handler, init_chat_service
 from logic.campaign_routes import create_campaign_blueprint
-from logic.campaign_scheduler import start_campaign_scheduler_thread
+from logic.campaign_scheduler import (
+    start_campaign_scheduler_thread,
+    stop_campaign_scheduler_thread,
+)
+from logic.company_info_repository import ALLOWED_COMPANY_INFO_KEYS
 from logic.database import DatabaseManager
 from logic.site_logo import (
     FOUNDER_LOGO_RELATIVE,
@@ -41,6 +48,8 @@ from logic.site_logo import (
 
 ensure_upload_dir()
 
+logger = logging.getLogger(__name__)
+
 # الملفات العامة (CSS/JS) من /static/؛ الشعار يُخزَّن تحت static/uploads/ ويُعرَض عبر url_for('static', filename='uploads/...')
 # لا تغيّر static_folder إلى uploads فقط — سيُعطّل كل الموارد الثابتة.
 app = Flask(__name__, static_folder='static')
@@ -54,9 +63,25 @@ def _make_session_permanent():
     session.permanent = True
 
 db = DatabaseManager()
+migrated_branch_passwords = db.migrate_branch_passwords_to_hashes()
+if migrated_branch_passwords:
+    logger.info(
+        "migrated %s legacy branch password(s) to hashes",
+        migrated_branch_passwords,
+    )
 init_chat_service(db)
 app.register_blueprint(create_campaign_blueprint(db))
-start_campaign_scheduler_thread(db)
+
+
+def _should_start_campaign_scheduler() -> bool:
+    if not FLASK_DEBUG:
+        return True
+    return os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+
+
+if _should_start_campaign_scheduler():
+    start_campaign_scheduler_thread(db)
+atexit.register(stop_campaign_scheduler_thread)
 
 
 def get_logo_url():
@@ -88,6 +113,25 @@ def _session_admin_or_founder():
 def _staff_session_ok() -> bool:
     """دخول لوحة الفروع/الإدارة فقط — زوار الشات قد يكون لديهم logged_in بدون role."""
     return session.get("role") in ("founder", "admin", "branch")
+
+
+def _session_branch_id_int():
+    """معرّف الفرع الحالي كعدد صحيح أو None."""
+    bid = session.get("branch_id")
+    try:
+        return int(bid) if bid is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def staff_member_required(view_func):
+    @wraps(view_func)
+    def _wrapped(*args, **kwargs):
+        if not _staff_session_ok():
+            return redirect(url_for("login"))
+        return view_func(*args, **kwargs)
+
+    return _wrapped
 
 
 def _session_founder_only():
@@ -130,7 +174,8 @@ def login():
             flash('مرحباً بك أيها المدير العام', 'success')
             return redirect(url_for('admin_dashboard'))
         
-        branch = db.check_branch_login(username, password)
+        # حسابات الفروع تدعم التوافق مع السجلات القديمة، وتُحفظ الآن كـ hash.
+        branch, branch_login_status = db.check_branch_login_with_status(username, password)
         if branch:
             session.clear()
             session.permanent = True
@@ -142,6 +187,11 @@ def login():
             flash(f'تم تسجيل الدخول لفرع: {branch["city_name"]}', 'success')
             return redirect(url_for('dashboard'))
         else:
+            current_app.logger.warning(
+                "branch login failed username=%r reason=%s",
+                (username or "").strip(),
+                branch_login_status,
+            )
             flash("بيانات الدخول غير صحيحة!", "danger")
 
     return render_template('login.html')
@@ -170,7 +220,114 @@ def admin_dashboard():
         return redirect(url_for('dashboard'))
     main_cats = db.get_main_categories()
     branches = db.get_all_branches()
-    return render_template('admin_dashboard.html', branches=branches, main_categories=main_cats)
+    branch_services_by_id = {}
+    for r in db.list_branch_services_with_branches():
+        bid = int(r["branch_id"])
+        branch_services_by_id.setdefault(bid, []).append(r)
+    return render_template(
+        "admin_dashboard.html",
+        branches=branches,
+        main_categories=main_cats,
+        branch_services_by_id=branch_services_by_id,
+    )
+
+
+@app.route("/admin/company-info", methods=["GET", "POST"])
+def admin_company_info():
+    """قراءة/تحديث معلومات الشركة وخدمات الفروع (JSON أو نموذج لوحة الإدارة)."""
+    if not _staff_session_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    role = session.get("role")
+    if request.method == "GET":
+        if role == "admin":
+            return jsonify(
+                {
+                    "company_info": db.get_all_company_info_rows(),
+                    "branch_services": db.list_branch_services_with_branches(),
+                }
+            )
+        if role == "branch":
+            bid = _session_branch_id_int()
+            if bid is None:
+                return jsonify({"error": "forbidden"}), 403
+            filtered = [
+                r
+                for r in db.list_branch_services_with_branches()
+                if int(r["branch_id"]) == bid
+            ]
+            return jsonify(
+                {
+                    "company_info": db.get_all_company_info_rows(),
+                    "branch_services": filtered,
+                }
+            )
+        return jsonify({"error": "forbidden"}), 403
+    if request.is_json:
+        if role != "admin":
+            return jsonify({"error": "forbidden"}), 403
+        payload = request.get_json(silent=True) or {}
+        ci = payload.get("company_info")
+        if isinstance(ci, dict):
+            db.bulk_set_company_info(
+                {k: str(v) if v is not None else "" for k, v in ci.items()}
+            )
+        bs = payload.get("branch_services")
+        if isinstance(bs, dict):
+            for bid_str, rows in bs.items():
+                try:
+                    bid = int(bid_str)
+                except (TypeError, ValueError):
+                    continue
+                if not isinstance(rows, list):
+                    continue
+                pairs = []
+                for item in rows:
+                    if not isinstance(item, dict):
+                        continue
+                    pairs.append(
+                        (
+                            str(item.get("title") or item.get("service_title") or ""),
+                            str(item.get("details") or ""),
+                        )
+                    )
+                db.replace_branch_services(bid, pairs)
+        return jsonify({"ok": True})
+    if role == "admin":
+        for k in ALLOWED_COMPANY_INFO_KEYS:
+            raw = request.form.get(k)
+            if raw is not None:
+                db.set_company_info_key(k, raw)
+        for b in db.get_all_branches() or []:
+            try:
+                bid = int(b["id"])
+            except (TypeError, ValueError):
+                continue
+            titles = request.form.getlist(f"b{bid}_title[]")
+            details = request.form.getlist(f"b{bid}_details[]")
+            n = max(len(titles), len(details))
+            pairs = [
+                (titles[i] if i < len(titles) else "", details[i] if i < len(details) else "")
+                for i in range(n)
+            ]
+            db.replace_branch_services(bid, pairs)
+        flash("تم حفظ خدمات الفروع.", "success")
+        return redirect(url_for("admin_dashboard"))
+    if role == "branch":
+        bid = _session_branch_id_int()
+        if bid is None:
+            flash("تعذر تحديد الفرع.", "danger")
+            return redirect(url_for("dashboard"))
+        titles = request.form.getlist(f"b{bid}_title[]")
+        details = request.form.getlist(f"b{bid}_details[]")
+        n = max(len(titles), len(details))
+        pairs = [
+            (titles[i] if i < len(titles) else "", details[i] if i < len(details) else "")
+            for i in range(n)
+        ]
+        db.replace_branch_services(bid, pairs)
+        flash("تم حفظ خدمات الفرع.", "success")
+        return redirect(url_for("dashboard"))
+    return jsonify({"error": "forbidden"}), 403
 
 
 @app.route('/dashboard')
@@ -195,7 +352,23 @@ def dashboard():
         and int(c['branch_id']) == bid_int
     ]
     products = db.get_branch_products(bid_int) if bid_int is not None else []
-    return render_template('dashboard.html', main_categories=branch_cats, products=products)
+    branch_services_by_id = {}
+    if bid_int is not None:
+        for r in db.list_branch_services_with_branches():
+            if int(r["branch_id"]) == bid_int:
+                branch_services_by_id.setdefault(bid_int, []).append(r)
+    branches = []
+    if bid_int is not None:
+        br = db.get_branch_by_id(bid_int)
+        if br:
+            branches = [br]
+    return render_template(
+        "dashboard.html",
+        main_categories=branch_cats,
+        products=products,
+        branch_services_by_id=branch_services_by_id,
+        branches=branches,
+    )
 
 @app.route('/logout')
 def logout():
@@ -634,12 +807,26 @@ def founder_dashboard():
     n_branches = len(db.get_all_branches() or [])
     n_products = db.count_products_total()
     st = db.get_complaints_stats()
+    complaints_preview = db.get_complaints(status="open", limit=40)
     return render_template(
         "founder/dashboard.html",
         n_branches=n_branches,
         n_products=n_products,
         n_complaints=st.get("total", 0),
+        complaints_preview=complaints_preview,
     )
+
+
+@app.route("/founder/complaints/<int:complaint_id>/resolve", methods=["POST"])
+def founder_resolve_complaint(complaint_id: int):
+    if not _session_founder_only():
+        return redirect(url_for("login"))
+    notes = (request.form.get("resolution_notes") or "").strip()
+    if complaint_id and db.resolve_complaint(complaint_id, resolution_notes=notes):
+        flash("تم تسجيل حل الشكوى.", "success")
+    else:
+        flash("تعذر التحديث أو الشكوى محلولة مسبقاً.", "warning")
+    return redirect(url_for("founder_dashboard"))
 
 
 @app.route("/founder/site-logo", methods=["POST"])
@@ -1139,7 +1326,10 @@ def admin_update_user(branch_id: int):
     username = request.form.get('username')
     password = request.form.get('password')
     if db.update_branch_user(branch_id, username=username, password=password):
-        flash("تم تحديث بيانات المستخدم.", "success")
+        if (password or "").strip():
+            flash("تم تحديث اسم المستخدم وإعادة تعيين كلمة المرور.", "success")
+        else:
+            flash("تم تحديث اسم المستخدم.", "success")
     else:
         flash("تعذر تحديث المستخدم.", "warning")
     return redirect(url_for('admin_users'))
@@ -1184,7 +1374,8 @@ def admin_resolve_complaint(complaint_id: int):
     fb = (request.form.get("filter_branch") or "").strip()
     fs = (request.form.get("filter_status") or "").strip()
 
-    if complaint_id and db.resolve_complaint(complaint_id):
+    notes = (request.form.get("resolution_notes") or "").strip()
+    if complaint_id and db.resolve_complaint(complaint_id, resolution_notes=notes):
         flash("تم تسجيل حل الشكوى.", "success")
     else:
         flash("تعذر التحديث أو الشكوى محلولة مسبقاً.", "warning")
@@ -1197,17 +1388,47 @@ def admin_resolve_complaint(complaint_id: int):
     return redirect(url_for("admin_complaints", **params))
 
 
+@app.route("/api/analytics/daily-line")
+def api_daily_chat_line():
+    """سلسلة يومية لتفاعلات الشات — لوحة المؤسس (الرسم البياني)."""
+    if not _session_founder_only():
+        return jsonify({"error": "forbidden"}), 403
+    raw = (request.args.get("days") or "30").strip()
+    try:
+        nd = int(raw)
+    except ValueError:
+        nd = 30
+    return jsonify(db.get_daily_chat_series(days=nd))
+
+
+@app.route("/api/analytics/trends")
+@staff_member_required
+def api_trend_analytics():
+    """تحليلات من trend_data — للفرع: يُفلتر حسب branch_id في الجلسة."""
+    scope = None
+    if session.get("role") == "branch":
+        bid = session.get("branch_id")
+        try:
+            scope = int(bid) if bid is not None else None
+        except (TypeError, ValueError):
+            scope = None
+    data = db.get_trend_analytics_snapshot(branch_scope=scope, limit=14)
+    return jsonify(data)
+
+
 @app.route("/admin/diagnostics/email")
+@staff_member_required
 def admin_email_diagnostics():
-    """تشخيص إعدادات البريد (JSON). مؤقتاً بدون تحقق دخول — أعد فرض session admin قبل الإنتاج."""
+    """تشخيص إعدادات البريد (JSON) للمستخدمين المخوّلين فقط."""
     from logic.email_diagnostics import run_email_diagnostics
 
     return jsonify(run_email_diagnostics(db))
 
 
 @app.route("/admin/diagnostics/full")
+@staff_member_required
 def admin_full_diagnostics():
-    """تشخيص شامل للمشروع (قراءة فقط). مؤقتاً بدون تحقق دخول كمسار البريد."""
+    """تشخيص شامل للمشروع (قراءة فقط) للمستخدمين المخوّلين فقط."""
     from logic.project_diagnostics import run_full_diagnostics
 
     return jsonify(run_full_diagnostics(db, send_alerts=True))
@@ -1265,23 +1486,34 @@ def chat_login():
     ok, kind, value, err = _parse_customer_login_identifier(data.get("identifier"))
     if not ok or not kind or value is None:
         return jsonify({"ok": False, "error": err or "بيانات غير صالحة"}), 400
+    nm = (data.get("name") or "").strip()
+    if len(nm) < 2:
+        return jsonify(
+            {"ok": False, "error": "الاسم مطلوب (حرفان على الأقل) كما في واجهة الشات."}
+        ), 400
     session.permanent = True
     session["logged_in"] = True
     session["login_scope"] = "chat_customer"
     session["user"] = value
-    nm = (data.get("name") or "").strip()
-    if nm:
-        session["name"] = nm[:120]
-        session["user_name"] = nm[:120]
-    else:
-        session.pop("name", None)
-        session.pop("user_name", None)
+    session["name"] = nm[:120]
+    session["user_name"] = nm[:120]
     if kind == "email":
         session["user_email"] = value
         session.pop("user_phone", None)
     else:
         session["user_phone"] = value
         session["user_email"] = ""
+    row = db.get_or_create_customer(
+        name=nm[:120],
+        email=value if kind == "email" else None,
+        phone=value if kind == "phone" else None,
+    )
+    if row:
+        session["customer_id"] = int(row["id"])
+        if row.get("email"):
+            session["user_email"] = row["email"]
+        if row.get("phone"):
+            session["user_phone"] = row["phone"]
     return jsonify(
         {
             "ok": True,
@@ -1292,19 +1524,29 @@ def chat_login():
     )
 
 
+@app.route("/chat-logout", methods=["GET", "POST"])
+def chat_visitor_logout():
+    """خروج زوار الشات من الصفحة الرئيسية دون توجيه لصفحة دخول الموظفين."""
+    if session.get("login_scope") == "chat_customer":
+        session.clear()
+        return redirect(url_for("index"))
+    return redirect(url_for("login"))
+
+
 @app.route('/chat_query', methods=['POST'])
 def chat_query():
-    # Temporary: full console trace for one request (Render / local) — لا يغيّر منطق المعالج
-    os.environ["OPENAI_ORCH_DEBUG"] = "true"
-    print("=== REQUEST START ===")
-    print("MESSAGE:", request.get_json(silent=True))
     out = chat_query_handler()
-    print("=== RESPONSE ===")
     resp_obj = out[0] if isinstance(out, tuple) and len(out) >= 1 else out
-    if hasattr(resp_obj, "get_json"):
-        print(resp_obj.get_json(silent=True))
-    else:
-        print(resp_obj)
+    try:
+        if hasattr(resp_obj, "get_json"):
+            payload = resp_obj.get_json(silent=True)
+            logger.info("chat_query response: %s", payload)
+        else:
+            logger.info("chat_query response: %r", resp_obj)
+    except UnicodeEncodeError:
+        logger.info("chat_query response: <payload omitted due to console encoding>")
+    except Exception:
+        logger.exception("chat_query response logging failed")
     return out
 
 

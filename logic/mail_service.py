@@ -1,7 +1,10 @@
 import os
 import smtplib
 import traceback
+import logging
 from email.message import EmailMessage
+
+logger = logging.getLogger(__name__)
 
 
 def send_email(recipients, subject, body):
@@ -20,13 +23,8 @@ class MailService:
         from_email = (os.environ.get("SENDER_EMAIL") or "").strip()
         password = os.environ.get("SENDER_PASSWORD") or ""
 
-        print("EMAIL ENV CHECK")
-        print("SENDER_EMAIL:", os.environ.get("SENDER_EMAIL"))
-        print("SENDER_PASSWORD EXISTS:", bool(os.environ.get("SENDER_PASSWORD")))
-
         if not from_email or not password:
-            print("⚠️ خطأ: بيانات البريد SENDER_EMAIL/SENDER_PASSWORD غير مضبوطة (متغيرات البيئة).")
-            print("EMAIL DIAG: failure stage = env/config (missing sender or password after load)")
+            logger.warning("mail_service: sender credentials are not configured")
             return False
 
         msg = EmailMessage()
@@ -42,33 +40,27 @@ class MailService:
             to_addrs = [recipients]
 
         try:
-            print("CONNECTING SMTP (587 STARTTLS)...")
+            logger.info("mail_service: connecting to SMTP")
             with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as smtp:
-                print("CONNECTED")
                 smtp.ehlo()
                 smtp.starttls()
                 smtp.ehlo()
-                print("LOGGING IN...")
                 smtp.login(from_email, password)
-                print("LOGIN SUCCESS")
-                print("SENDING EMAIL...")
                 smtp.send_message(msg, to_addrs=to_addrs)
-                print("EMAIL SENT")
-            print(f"✅ تم إرسال الإيميل بنجاح من {from_email} إلى: {to_addrs}")
+            logger.info("mail_service: email sent successfully to %s recipient(s)", len(to_addrs))
             return True
         except Exception as e:
             err = str(e)
-            print("EMAIL ERROR:", err)
+            logger.error("mail_service: SMTP send failed: %s", err)
             el = err.lower()
             if "timed out" in el or "timeout" in el or "unreachable" in el or "network" in el:
-                print("EMAIL DIAG HINT: possible network/firewall (Render blocking SMTP outbound?)")
+                logger.warning("mail_service: possible network/firewall issue while sending email")
             if (
                 "authentication" in el
                 or "535" in err
                 or "534" in err
                 or "username and password not accepted" in el
             ):
-                print("EMAIL DIAG HINT: possible auth — use Gmail App Password, check SENDER_EMAIL")
+                logger.warning("mail_service: possible SMTP authentication issue")
             traceback.print_exc()
-            print(f"❌ فشل إرسال الإيميل (SMTP): {e}")
             return False

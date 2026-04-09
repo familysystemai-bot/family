@@ -287,3 +287,39 @@ def build_return_policy_complaint_precheck_summary(addressing: str = "") -> str:
         " إذا ما انطبق عليك الوضع أو حسيت إن ما تم الالتزام، قُل **نعم** أو **سجّل الشكوى** وأكمل لك."
     )
     return mid
+
+
+def policies_text_for_ai_context(max_chars: int = 3500) -> str:
+    """
+    ملخص نصي من `return_policy` للمنسّق والنماذج (استبدال/استرجاع/شروط/أصناف خاصة).
+    يُقرأ من نفس الهيكل الذي تُبنى منه ردود الشات — لا يُخترع من النموذج.
+    """
+    p = return_policy
+    lines: List[str] = [
+        f"الاستبدال خلال {int(p.get('exchange_days') or 0)} يوم تقويمي.",
+        f"الاسترجاع خلال {int(p.get('return_days') or 0)} يوم تقويمي.",
+        f"عروض/عروض موسمية غالباً {int(p.get('offers_days') or 0)} يوم حسب شرط العرض.",
+        "نفس الفرع مطلوب للاستبدال/الاسترجاع: "
+        + ("نعم" if p.get("same_branch_required") else "حسب تعليمات الفرع"),
+    ]
+    conds = [str(c).strip() for c in (p.get("conditions") or []) if str(c).strip()]
+    if conds:
+        lines.append("شروط عامة: " + "؛ ".join(conds))
+    pm = dict(p.get("payment_method_rules") or {})
+    if pm:
+        lines.append(
+            "قواعد طريقة الدفع: "
+            + "؛ ".join(f"{k}: {v}" for k, v in pm.items() if (v or "").strip())
+        )
+    sp = [str(x).strip() for x in (p.get("special_items_24h") or []) if str(x).strip()]
+    if sp:
+        lines.append(
+            "أصناف غالباً لها مهلة أقصر (مثلاً 24 ساعة): " + "، ".join(sp[:12])
+        )
+    nr = [str(x).strip() for x in (p.get("non_returnable") or []) if str(x).strip()]
+    if nr:
+        lines.append("غير قابل للاسترجاع غالباً: " + "، ".join(nr[:12]))
+    text = "\n".join(lines)
+    if max_chars and len(text) > max_chars:
+        return text[: max_chars - 1] + "…"
+    return text

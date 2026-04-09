@@ -1,8 +1,16 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import secrets
 import sqlite3
+import string
 from typing import Any, Dict, List, Optional
+
+_TICKET_ALPHABET = string.ascii_uppercase + string.digits
+
+
+def _generate_complaint_ticket_code() -> str:
+    return "TKT-" + "".join(secrets.choice(_TICKET_ALPHABET) for _ in range(8))
 
 
 class ComplaintRepositoryMixin:
@@ -14,50 +22,68 @@ class ComplaintRepositoryMixin:
         branch_id=None,
         employee_name=None,
         department=None,
-        status="open",
+        status="pending",
         complaint_type="unspecified",
         message=None,
         branch_name=None,
         customer_name=None,
         customer_phone=None,
         customer_email=None,
+        complaint_ai_classification=None,
+        ticket_code=None,
     ):
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
             ct = (complaint_type or "unspecified").strip() or "unspecified"
-            st = (status or "open").strip() or "open"
+            st = (status or "pending").strip() or "pending"
             msg = (message if message is not None else issue) or ""
             bn = (branch_name or "").strip() or None
             cn = (customer_name or "").strip() or None
             cp = (customer_phone or "").strip() or None
             ce = (customer_email or "").strip() or None
-            cursor.execute(
-                """
-                INSERT INTO complaints (
-                    user_id, branch_id, employee_name, department,
-                    issue, status, complaint_type, message, branch_name,
-                    customer_name, customer_phone, customer_email
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    user_id,
-                    branch_id,
-                    employee_name,
-                    department,
-                    issue,
-                    st,
-                    ct,
-                    msg,
-                    bn,
-                    cn,
-                    cp,
-                    ce,
-                ),
-            )
-            conn.commit()
-            return cursor.lastrowid
+            ai_c = (complaint_ai_classification or "").strip() or None
+            tc = (ticket_code or "").strip().upper() or None
+            for _attempt in range(32):
+                code = tc or _generate_complaint_ticket_code()
+                try:
+                    cursor.execute(
+                        """
+                        INSERT INTO complaints (
+                            user_id, branch_id, employee_name, department,
+                            issue, status, complaint_type, message, branch_name,
+                            customer_name, customer_phone, customer_email,
+                            complaint_ai_classification, ticket_code
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            user_id,
+                            branch_id,
+                            employee_name,
+                            department,
+                            issue,
+                            st,
+                            ct,
+                            msg,
+                            bn,
+                            cn,
+                            cp,
+                            ce,
+                            ai_c,
+                            code,
+                        ),
+                    )
+                    conn.commit()
+                    return cursor.lastrowid
+                except sqlite3.IntegrityError:
+                    conn.rollback()
+                    if tc:
+                        print(f"❌ add_complaint: ticket_code مكرر {tc}")
+                        return None
+                    continue
+            print("❌ add_complaint: تعذر توليد رقم تذكرة فريد")
+            return None
         except Exception as e:
             print(f"❌ add_complaint DB error: {e}")
             import traceback
@@ -108,7 +134,7 @@ class ComplaintRepositoryMixin:
                 """
                 SELECT id, issue, branch_id, user_id, created_at, status, complaint_type,
                        message, branch_name, customer_name, customer_phone, customer_email,
-                       resolved_at
+                       resolved_at, ticket_code, resolution_notes
                 FROM complaints WHERE id = ?
                 """,
                 (complaint_id,),
@@ -117,6 +143,33 @@ class ComplaintRepositoryMixin:
             return dict(row) if row else None
         except Exception as e:
             print(f"❌ get_complaint_row: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def get_complaint_by_ticket_code(self, ticket_code: str) -> Optional[Dict[str, Any]]:
+        raw = (ticket_code or "").strip().upper().replace(" ", "")
+        if not raw:
+            return None
+        if not raw.startswith("TKT-"):
+            if len(raw) == 8 and raw.isalnum():
+                raw = "TKT-" + raw
+            else:
+                return None
+        conn = self._get_connection()
+        try:
+            row = conn.execute(
+                """
+                SELECT id, issue, branch_id, user_id, created_at, status, complaint_type,
+                       message, branch_name, customer_name, customer_phone, customer_email,
+                       resolved_at, ticket_code, resolution_notes
+                FROM complaints WHERE UPPER(TRIM(COALESCE(ticket_code,''))) = ?
+                """,
+                (raw,),
+            ).fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            print(f"❌ get_complaint_by_ticket_code: {e}")
             return None
         finally:
             conn.close()
@@ -166,18 +219,23 @@ class ComplaintRepositoryMixin:
         finally:
             conn.close()
 
-    def resolve_complaint(self, complaint_id: int) -> bool:
-        """تعليم الشكوى كمحلولة مع طابع وقت التحديد."""
+    def resolve_complaint(
+        self, complaint_id: int, resolution_notes: Optional[str] = None
+    ) -> bool:
+        """تعليم الشكوى كمحلولة مع طابع وقت التحديد وملاحظات اختيارية."""
+        notes = (resolution_notes or "").strip()
         conn = self._get_connection()
         try:
             cur = conn.execute(
                 """
                 UPDATE complaints
-                SET status = 'resolved', resolved_at = datetime('now')
+                SET status = 'resolved',
+                    resolved_at = datetime('now'),
+                    resolution_notes = ?
                 WHERE id = ?
                   AND LOWER(TRIM(COALESCE(status,''))) != 'resolved'
                 """,
-                (complaint_id,),
+                (notes, complaint_id),
             )
             conn.commit()
             return cur.rowcount > 0

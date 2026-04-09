@@ -66,7 +66,7 @@
     }
 
     var navHost = panel || aside;
-    navHost.querySelectorAll("a").forEach(function (link) {
+    navHost.querySelectorAll('a, [data-bs-toggle="offcanvas"]').forEach(function (link) {
       link.addEventListener("click", function () {
         if (isMobileDrawer()) closeSidebar();
       });

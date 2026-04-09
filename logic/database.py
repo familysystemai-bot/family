@@ -1,7 +1,9 @@
-import sqlite3
 import json
+import secrets
+import sqlite3
+import string
 
-from config import DATABASE_PATH, ensure_data_dir
+from config import DATABASE_PATH, DEFAULT_BRANCH_PASSWORD, ensure_data_dir
 from typing import Optional, List, Dict, Any, Tuple
 
 # أعمدة clients المسموح تحديثها ديناميكياً (منع حقن SQL)
@@ -13,6 +15,7 @@ ALLOWED_CLIENT_FIELDS = frozenset({
 from logic.branch_repository import BranchRepositoryMixin
 from logic.complaint_repository import ComplaintRepositoryMixin
 from logic.category_repository import CategoryRepositoryMixin
+from logic.company_info_repository import CompanyInfoRepositoryMixin
 from logic.customer_repository import CustomerRepositoryMixin
 from logic.product_repository import ProductRepositoryMixin
 
@@ -23,6 +26,7 @@ class DatabaseManager(
     CategoryRepositoryMixin,
     ProductRepositoryMixin,
     CustomerRepositoryMixin,
+    CompanyInfoRepositoryMixin,
 ):
     def __init__(self, db_path=None):
         ensure_data_dir()
@@ -179,7 +183,7 @@ class DatabaseManager(
                 customer_name TEXT DEFAULT '',
                 customer_phone TEXT DEFAULT '',
                 customer_email TEXT DEFAULT '',
-                status TEXT DEFAULT 'open',
+                status TEXT DEFAULT 'pending',
                 created_at TEXT DEFAULT (datetime('now')),
                 resolved_at TEXT,
                 complaint_type TEXT DEFAULT 'unspecified',
@@ -284,6 +288,37 @@ class DatabaseManager(
                 FOREIGN KEY (branch_id) REFERENCES branches (id)
             )
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS customer_merge_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_customer_id INTEGER NOT NULL,
+                target_customer_id INTEGER NOT NULL,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS analytics_daily_chat (
+                day TEXT PRIMARY KEY,
+                request_count INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS company_info (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key TEXT NOT NULL UNIQUE,
+                value TEXT DEFAULT ''
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS company_branch_services (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                branch_id INTEGER NOT NULL,
+                service_title TEXT NOT NULL DEFAULT '',
+                details TEXT NOT NULL DEFAULT '',
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE
+            )
+        """)
 
         for alter in (
             "ALTER TABLE clients ADD COLUMN complaint_draft TEXT DEFAULT ''",
@@ -304,6 +339,11 @@ class DatabaseManager(
             "ALTER TABLE campaigns ADD COLUMN scheduled_at TEXT",
             "ALTER TABLE campaigns ADD COLUMN sent_at TEXT",
             "ALTER TABLE customers ADD COLUMN declined_marketing_prompt INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE customers ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE customers ADD COLUMN merged_into_id INTEGER",
+            "ALTER TABLE complaints ADD COLUMN complaint_ai_classification TEXT DEFAULT ''",
+            "ALTER TABLE complaints ADD COLUMN ticket_code TEXT",
+            "ALTER TABLE complaints ADD COLUMN resolution_notes TEXT DEFAULT ''",
         ):
             try:
                 cursor.execute(alter)
@@ -328,9 +368,50 @@ class DatabaseManager(
                 """
             )
             cursor.execute(
-                "UPDATE complaints SET status = 'open' "
-                "WHERE status IS NULL OR TRIM(status) = '' OR LOWER(TRIM(status)) = 'pending'"
+                "UPDATE complaints SET status = 'pending' "
+                "WHERE status IS NULL OR TRIM(status) = '' "
+                "OR LOWER(TRIM(status)) = 'open'"
             )
+        except sqlite3.OperationalError:
+            pass
+
+        try:
+            cursor.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_complaints_ticket_code
+                ON complaints(ticket_code)
+                WHERE ticket_code IS NOT NULL AND TRIM(ticket_code) != ''
+                """
+            )
+        except sqlite3.OperationalError:
+            pass
+
+        _ticket_alphabet = string.ascii_uppercase + string.digits
+
+        def _gen_complaint_ticket() -> str:
+            return "TKT-" + "".join(
+                secrets.choice(_ticket_alphabet) for _ in range(8)
+            )
+
+        try:
+            need = cursor.execute(
+                """
+                SELECT id FROM complaints
+                WHERE ticket_code IS NULL OR TRIM(COALESCE(ticket_code, '')) = ''
+                """
+            ).fetchall()
+            for row in need:
+                tid = int(row["id"])
+                for _attempt in range(24):
+                    code = _gen_complaint_ticket()
+                    try:
+                        cursor.execute(
+                            "UPDATE complaints SET ticket_code = ? WHERE id = ?",
+                            (code, tid),
+                        )
+                        break
+                    except sqlite3.IntegrityError:
+                        continue
         except sqlite3.OperationalError:
             pass
 
@@ -338,12 +419,16 @@ class DatabaseManager(
         cursor.execute("SELECT COUNT(*) FROM branches")
         branch_count = int(cursor.fetchone()[0])
         if branch_count == 0:
+            if not (DEFAULT_BRANCH_PASSWORD or "").strip():
+                raise RuntimeError(
+                    "DEFAULT_BRANCH_PASSWORD must be set to initialize an empty branches table."
+                )
             branches_list = [
-                ("jeddah_admin", "1234", "فرع جدة"),
-                ("makkah_admin", "1234", "فرع مكة"),
-                ("madina_admin", "1234", "فرع المدينة"),
-                ("khamis_admin", "1234", "فرع خميس مشيط"),
-                ("qilwah_admin", "1234", "فرع قلوة"),
+                ("jeddah_admin", DEFAULT_BRANCH_PASSWORD.strip(), "فرع جدة"),
+                ("makkah_admin", DEFAULT_BRANCH_PASSWORD.strip(), "فرع مكة"),
+                ("madina_admin", DEFAULT_BRANCH_PASSWORD.strip(), "فرع المدينة"),
+                ("khamis_admin", DEFAULT_BRANCH_PASSWORD.strip(), "فرع خميس مشيط"),
+                ("qilwah_admin", DEFAULT_BRANCH_PASSWORD.strip(), "فرع قلوة"),
             ]
             cursor.executemany(
                 "INSERT OR IGNORE INTO branches (username, password, city_name) VALUES (?, ?, ?)",
@@ -488,6 +573,151 @@ class DatabaseManager(
             return [dict(row) for row in cursor.fetchall()]
         finally:
             conn.close()
+
+    def get_trend_analytics_snapshot(
+        self,
+        branch_scope: Optional[int] = None,
+        *,
+        limit: int = 12,
+    ) -> Dict[str, Any]:
+        """
+        تجميع trend_data للوحات التحليلات: منتجات، نيات، ساعات (feature_type = hour).
+        branch_scope: عند تحديده (مستخدم فرع) يُقتصر على صفوف يطابق فيها معرّف الفرع في feature_value.
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute(
+                "SELECT feature_type, feature_value, count FROM trend_data"
+            )
+            rows = [dict(r) for r in cursor.fetchall()]
+        finally:
+            conn.close()
+
+        def parse_parts(fv: str) -> Tuple[int, str]:
+            if not fv:
+                return 0, ""
+            parts = fv.split("\x1f", 1)
+            bid_s = parts[0].strip()
+            try:
+                bid = int(bid_s) if bid_s != "" else 0
+            except ValueError:
+                bid = 0
+            label = parts[1] if len(parts) > 1 else fv
+            return bid, label
+
+        def row_matches(bid: int) -> bool:
+            if branch_scope is None:
+                return True
+            return bid == int(branch_scope)
+
+        products: List[Dict[str, Any]] = []
+        intents: List[Dict[str, Any]] = []
+        hours_acc: Dict[int, int] = {}
+
+        for r in rows:
+            ft = (r.get("feature_type") or "").strip()
+            fv = r.get("feature_value") or ""
+            cnt = int(r.get("count") or 0)
+            bid, label = parse_parts(fv)
+            if not row_matches(bid):
+                continue
+            if ft == "product":
+                products.append(
+                    {"branch_id": bid, "name": label, "count": cnt}
+                )
+            elif ft == "intent":
+                intents.append(
+                    {"branch_id": bid, "name": label, "count": cnt}
+                )
+            elif ft == "hour":
+                try:
+                    h = int(label)
+                except (TypeError, ValueError):
+                    continue
+                if 0 <= h <= 23:
+                    hours_acc[h] = hours_acc.get(h, 0) + cnt
+
+        products.sort(key=lambda x: (-int(x["count"]), x["name"]))
+        intents.sort(key=lambda x: (-int(x["count"]), x["name"]))
+
+        hours_list = [
+            {"hour": h, "count": hours_acc.get(h, 0)} for h in range(24)
+        ]
+        peak_hour = max(range(24), key=lambda hh: hours_acc.get(hh, 0)) if hours_acc else None
+
+        return {
+            "branch_scope": branch_scope,
+            "products": products[:limit],
+            "intents": intents[:limit],
+            "hours": hours_list,
+            "peak_hour": peak_hour,
+            "totals": {
+                "product_rows": len(products),
+                "intent_rows": len(intents),
+                "hour_events": sum(hours_acc.values()),
+            },
+        }
+
+    def increment_daily_chat_count(self) -> bool:
+        """يزيد عداد تفاعلات الشات لليوم الحالي (يُستدعى مع تسجيل trend_data)."""
+        from datetime import date
+
+        d = date.today().isoformat()
+        conn = self._get_connection()
+        try:
+            conn.execute(
+                """
+                INSERT INTO analytics_daily_chat (day, request_count) VALUES (?, 1)
+                ON CONFLICT(day) DO UPDATE SET request_count = request_count + 1
+                """,
+                (d,),
+            )
+            conn.commit()
+            return True
+        except sqlite3.Error:
+            return False
+        finally:
+            conn.close()
+
+    def get_daily_chat_series(self, days: int = 30) -> Dict[str, Any]:
+        """
+        سلسلة يومية لعدد «طلبات/تفاعلات» الشات المسجّلة (مرتبطة بتسجيل التحليلات).
+        """
+        from datetime import date, timedelta
+
+        days = max(7, min(int(days), 90))
+        end = date.today()
+        start = end - timedelta(days=days - 1)
+        conn = self._get_connection()
+        try:
+            cur = conn.execute(
+                """
+                SELECT day, request_count FROM analytics_daily_chat
+                WHERE day >= ? AND day <= ?
+                ORDER BY day
+                """,
+                (start.isoformat(), end.isoformat()),
+            )
+            db_map = {str(r["day"]): int(r["request_count"]) for r in cur.fetchall()}
+        finally:
+            conn.close()
+
+        labels: List[str] = []
+        values: List[int] = []
+        d = start
+        while d <= end:
+            ds = d.isoformat()
+            labels.append(ds[5:])
+            values.append(db_map.get(ds, 0))
+            d += timedelta(days=1)
+
+        return {
+            "labels": labels,
+            "values": values,
+            "days": days,
+            "total_in_range": sum(values),
+        }
+
     def set_system_setting(self, key, value):
         conn = self._get_connection()
         try:

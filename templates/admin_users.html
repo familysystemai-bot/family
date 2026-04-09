@@ -42,6 +42,31 @@
             object-position: right center;
             filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.08));
         }
+        .password-status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.35rem 0.7rem;
+            border-radius: 999px;
+            font-size: 0.82rem;
+            font-weight: 700;
+            background: rgba(21, 128, 61, 0.1);
+            color: #166534;
+        }
+        .password-status-badge.is-empty {
+            background: rgba(180, 83, 9, 0.12);
+            color: #9a3412;
+        }
+        .user-update-form .form-control {
+            min-width: 0;
+        }
+        .user-update-form .form-text {
+            font-size: 0.78rem;
+        }
+        .pw-toggle-btn {
+            min-width: 76px;
+            font-weight: 700;
+        }
     </style>
 </head>
 <body class="dash-body">
@@ -92,14 +117,17 @@
             </div>
 
             <div class="stat-card">
+                <p class="text-muted small mb-3">
+                    كلمات المرور لم تعد تُعرض من قاعدة البيانات. يمكنك تعيين كلمة مرور جديدة، أو ترك الحقل فارغاً للإبقاء على الحالية.
+                </p>
                 <div class="table-responsive">
                     <table class="table table-hover align-middle">
                         <thead class="table-light">
                             <tr>
                                 <th>الفرع</th>
-                                <th>Username</th>
-                                <th>Password</th>
-                                <th style="width:360px;">تعديل</th>
+                                <th>اسم المستخدم</th>
+                                <th>حالة كلمة المرور</th>
+                                <th style="min-width:420px;">تحديث بيانات الدخول</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -107,12 +135,30 @@
                             <tr>
                                 <td class="fw-bold">{{ u['city_name'] }}</td>
                                 <td>{{ u['username'] }}</td>
-                                <td>{{ u['password'] }}</td>
                                 <td>
-                                    <form action="/admin/update_user/{{ u['id'] }}" method="POST" class="d-flex gap-2">
-                                        <input type="text" name="username" class="form-control" value="{{ u['username'] }}" placeholder="username" required>
-                                        <input type="text" name="password" class="form-control" value="{{ u['password'] }}" placeholder="password" required>
-                                        <button type="submit" class="btn btn-gold">حفظ</button>
+                                    <span class="password-status-badge{% if not u['has_password'] %} is-empty{% endif %}">
+                                        {% if u['has_password'] %}
+                                        محمية
+                                        {% else %}
+                                        غير مضبوطة
+                                        {% endif %}
+                                    </span>
+                                </td>
+                                <td>
+                                    <form action="/admin/update_user/{{ u['id'] }}" method="POST" class="row g-2 align-items-start user-update-form">
+                                        <div class="col-md-4">
+                                            <input type="text" name="username" class="form-control" value="{{ u['username'] }}" placeholder="اسم المستخدم" required>
+                                        </div>
+                                        <div class="col-md-5">
+                                            <div class="input-group">
+                                                <input type="password" name="password" class="form-control js-password-field" placeholder="كلمة مرور جديدة" autocomplete="new-password">
+                                                <button type="button" class="btn btn-outline-secondary pw-toggle-btn js-toggle-password" aria-label="إظهار كلمة المرور">إظهار</button>
+                                            </div>
+                                            <div class="form-text">اترك الحقل فارغاً إذا كنت تريد الإبقاء على كلمة المرور الحالية.</div>
+                                        </div>
+                                        <div class="col-md-3 d-grid">
+                                            <button type="submit" class="btn btn-gold">حفظ</button>
+                                        </div>
                                     </form>
                                 </td>
                             </tr>
@@ -127,5 +173,18 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="{{ url_for('static', filename='js/dashboard-layout.js') }}" defer></script>
+<script>
+document.querySelectorAll('.js-toggle-password').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var group = btn.closest('.input-group');
+        var input = group ? group.querySelector('.js-password-field') : null;
+        if (!input) return;
+        var showing = input.type === 'text';
+        input.type = showing ? 'password' : 'text';
+        btn.textContent = showing ? 'إظهار' : 'إخفاء';
+        btn.setAttribute('aria-label', showing ? 'إظهار كلمة المرور' : 'إخفاء كلمة المرور');
+    });
+});
+</script>
 </body>
 </html>

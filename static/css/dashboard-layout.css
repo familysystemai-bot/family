@@ -4,16 +4,90 @@
  */
 @import url("site-brand.css");
 
+/* ——— ثيم الشريط الجانبي: أخضر داكن + نص وأيقونات فاتحة (لوحات الفرع/الإدارة) ——— */
+.dash-layout {
+  overflow-x: clip;
+  max-width: 100%;
+  --dash-sidebar-green-top: #0f5132;
+  --dash-sidebar-green-mid: #0a3020;
+  --dash-sidebar-green-deep: #062a1c;
+  --dash-sidebar-fg: rgba(255, 255, 255, 0.94);
+  --dash-sidebar-fg-muted: rgba(255, 255, 255, 0.78);
+  --dash-sidebar-edge: rgba(255, 255, 255, 0.2);
+  --dash-sidebar-hover-bg: rgba(255, 255, 255, 0.12);
+  --dash-sidebar-active-bg: rgba(201, 162, 39, 0.28);
+  --dash-z-backdrop: 1040;
+  --dash-z-sidebar: 1050;
+  --dash-z-menu-btn: 1060;
+}
+
+.dash-layout aside.sidebar.dash-sidebar-col {
+  background: transparent;
+  border-left: none;
+  box-shadow: none;
+}
+
+.dash-layout .sidebar.dash-sidebar-col .dash-sidebar-panel {
+  background: linear-gradient(
+    180deg,
+    var(--dash-sidebar-green-top) 0%,
+    var(--dash-sidebar-green-mid) 52%,
+    var(--dash-sidebar-green-deep) 100%
+  );
+  border-left: 1px solid var(--dash-sidebar-edge);
+  color: var(--dash-sidebar-fg);
+  box-shadow: 2px 0 18px rgba(0, 0, 0, 0.12);
+}
+
+.dash-layout .sidebar .logo-box {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.dash-layout .sidebar .logo-box h5 {
+  color: #fff !important;
+}
+
+.dash-layout .sidebar .nav-link {
+  color: var(--dash-sidebar-fg) !important;
+  border: 1px solid transparent;
+}
+
+.dash-layout .sidebar .nav-link:hover,
+.dash-layout .sidebar .nav-link.active {
+  background: var(--dash-sidebar-hover-bg) !important;
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.dash-layout .sidebar .nav-link.active {
+  background: var(--dash-sidebar-active-bg) !important;
+}
+
+.dash-layout .sidebar .nav-link.text-danger {
+  color: #ffb4b4 !important;
+}
+
+.dash-layout .sidebar .nav-link.text-danger:hover {
+  background: rgba(220, 53, 69, 0.25) !important;
+  color: #fff !important;
+}
+
+.dash-layout .sidebar hr {
+  border-color: rgba(255, 255, 255, 0.18);
+  opacity: 1;
+}
+
+.dash-layout .sidebar .badge {
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: #fff !important;
+  font-weight: 600;
+}
+
 /* منع أي تمرير أفقي على مستوى الصفحة */
 body.dash-body,
 html.dash-html {
   overflow-x: hidden;
   max-width: 100vw;
-}
-
-.dash-layout {
-  overflow-x: clip;
-  max-width: 100%;
 }
 
 .dash-row {
@@ -24,7 +98,8 @@ html.dash-html {
   min-width: 0;
   flex: 1 1 auto;
   position: relative;
-  z-index: 0;
+  z-index: 1;
+  background-color: inherit;
 }
 
 /* زر القائمة — يظهر على الجوال فقط (≤768px)، مخفي على التابلت وسطح المكتب */
@@ -33,9 +108,9 @@ html.dash-html {
   align-items: center;
   justify-content: center;
   position: fixed;
-  z-index: 1002;
-  inset-inline-end: 0.75rem;
-  top: 0.75rem;
+  z-index: var(--dash-z-menu-btn, 1060);
+  inset-inline-end: max(0.75rem, env(safe-area-inset-end, 0px));
+  top: max(0.75rem, env(safe-area-inset-top, 0px));
   width: 3rem;
   height: 3rem;
   padding: 0;
@@ -133,8 +208,14 @@ body.fd-dashboard .dash-menu-btn:focus-visible {
   }
 
   .sidebar.dash-sidebar-col .dash-sidebar-panel {
-    background: var(--sidebar-bg, #f5f5dc);
-    border-left: 2px solid var(--accent-gold, #b8860b);
+    background: linear-gradient(
+      180deg,
+      var(--dash-sidebar-green-top, #0f5132) 0%,
+      var(--dash-sidebar-green-mid, #0a3020) 52%,
+      var(--dash-sidebar-green-deep, #062a1c) 100%
+    );
+    border-left: 1px solid var(--dash-sidebar-edge, rgba(255, 255, 255, 0.2));
+    color: var(--dash-sidebar-fg, rgba(255, 255, 255, 0.94));
   }
 
   .dash-main {
@@ -174,21 +255,24 @@ body.fd-dashboard .dash-menu-btn:focus-visible {
     border: none !important;
   }
 
-  /* طبقة التعتيم: تحت الشريط مباشرة، تُفتح بـ .active فقط */
+  /* طبقة التعتيم: تحت الشريط وتحت زر القائمة — لا تغطي الزر */
   .dash-layout .dash-backdrop.sidebar-overlay,
   .dash-layout .sidebar-overlay {
     display: none;
     position: fixed;
     top: 0;
     left: 0;
+    right: 0;
+    bottom: 0;
     width: 100%;
     height: 100%;
-    height: 100dvh;
+    min-height: 100dvh;
     margin: 0;
     padding: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
     border: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 1000;
+    background: rgba(0, 0, 0, 0.52);
+    z-index: var(--dash-z-backdrop, 1040);
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
     touch-action: none;
@@ -199,28 +283,30 @@ body.fd-dashboard .dash-menu-btn:focus-visible {
     display: block;
   }
 
-  /* الشريط الجانبي على مستوى aside — أعلى من الطبقة */
-  /* يجب أن يغلب قواعد .dash-sidebar-col أعلاه (width:0 !important) وإلا يبقى العرض 0 والدرج غير مرئي */
+  /* الشريط الجانبي — فوق التعتيم وتحت زر القائمة؛ inset منطقي لـ RTL/LTR */
   .dash-layout aside.dash-sidebar-col {
     position: fixed;
     top: 0;
-    right: -100%;
-    width: 80% !important;
+    bottom: 0;
+    inset-inline-end: -100%;
+    inset-inline-start: auto;
+    width: min(320px, 86vw) !important;
     max-width: min(320px, 92vw) !important;
     flex: none !important;
     height: 100%;
-    height: 100dvh;
-    z-index: 1001;
-    transition: right 0.3s ease;
+    max-height: 100dvh;
+    z-index: var(--dash-z-sidebar, 1050);
+    transition: inset-inline-end 0.32s ease, box-shadow 0.32s ease, transform 0.32s ease;
     overflow: hidden;
     visibility: visible;
-    background: var(--sidebar-bg, #fff);
+    background: transparent;
     pointer-events: auto;
+    will-change: inset-inline-end;
   }
 
   .dash-layout aside.dash-sidebar-col.open {
-    right: 0;
-    box-shadow: -8px 0 28px rgba(0, 0, 0, 0.2);
+    inset-inline-end: 0;
+    box-shadow: -12px 0 36px rgba(0, 0, 0, 0.28);
   }
 
   .dash-sidebar-panel {
@@ -243,8 +329,14 @@ body.fd-dashboard .dash-menu-btn:focus-visible {
   }
 
   .sidebar.dash-sidebar-col .dash-sidebar-panel {
-    background: var(--sidebar-bg, #f5f5dc);
-    border-left: 2px solid var(--accent-gold, #b8860b);
+    background: linear-gradient(
+      180deg,
+      var(--dash-sidebar-green-top, #0f5132) 0%,
+      var(--dash-sidebar-green-mid, #0a3020) 52%,
+      var(--dash-sidebar-green-deep, #062a1c) 100%
+    );
+    border-left: 1px solid var(--dash-sidebar-edge, rgba(255, 255, 255, 0.2));
+    color: var(--dash-sidebar-fg, rgba(255, 255, 255, 0.94));
   }
 
   .fd-dashboard .dash-layout aside.fd-sidebar.dash-sidebar-col {
@@ -260,7 +352,9 @@ body.fd-dashboard .dash-menu-btn:focus-visible {
     flex: 1 1 100% !important;
     max-width: 100% !important;
     width: 100% !important;
-    z-index: 0;
+    z-index: 1;
+    position: relative;
+    isolation: isolate;
   }
 
   body.dash-body.dash-nav-open,

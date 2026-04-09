@@ -147,9 +147,11 @@
                         <thead class="table-light">
                             <tr>
                                 <th>#</th>
+                                <th>التذكرة</th>
                                 <th>اسم العميل</th>
                                 <th>الفرع</th>
                                 <th>نص الشكوى</th>
+                                <th>تصنيف الذكاء الاصطناعي</th>
                                 <th>التاريخ</th>
                                 <th>الحالة</th>
                                 <th style="min-width:120px;">إجراء</th>
@@ -162,6 +164,7 @@
                             {% set msg_text = (c.message or c.issue or '') %}
                             <tr>
                                 <td class="fw-bold">{{ c.id }}</td>
+                                <td class="text-nowrap"><code>{{ (c.ticket_code or '—') }}</code></td>
                                 <td>
                                     {{ (c.customer_name or '—') }}
                                     {% if c.customer_phone %}<div class="small text-muted">{{ c.customer_phone }}</div>{% endif %}
@@ -169,20 +172,23 @@
                                 </td>
                                 <td>{{ (c.branch_name or '—') }}</td>
                                 <td class="issue-cell">{{ msg_text }}</td>
+                                <td class="small">{{ (c.complaint_ai_classification or '—') }}</td>
                                 <td class="small text-nowrap">{{ c.created_at or '—' }}</td>
                                 <td>
                                     {% if is_resolved %}
                                     <span class="badge rounded-pill badge-resolved">تم الحل</span>
                                     {% if c.resolved_at %}<div class="small text-muted mt-1">{{ c.resolved_at }}</div>{% endif %}
+                                    {% if c.resolution_notes %}<div class="small mt-1">{{ c.resolution_notes }}</div>{% endif %}
                                     {% else %}
-                                    <span class="badge rounded-pill badge-open">مفتوحة</span>
+                                    <span class="badge rounded-pill badge-open">قيد المعالجة</span>
                                     {% endif %}
                                 </td>
                                 <td>
                                     {% if not is_resolved %}
-                                    <form action="{{ url_for('admin_resolve_complaint', complaint_id=c.id) }}" method="post" class="d-inline">
+                                    <form action="{{ url_for('admin_resolve_complaint', complaint_id=c.id) }}" method="post" class="d-flex flex-column gap-1" style="min-width: 200px;">
                                         <input type="hidden" name="filter_branch" value="{{ filter_branch }}">
                                         <input type="hidden" name="filter_status" value="{{ filter_status }}">
+                                        <textarea name="resolution_notes" class="form-control form-control-sm" rows="2" placeholder="ملاحظات الحل (اختياري)"></textarea>
                                         <button type="submit" class="btn btn-sm btn-gold">تم الحل</button>
                                     </form>
                                     {% else %}
@@ -192,7 +198,7 @@
                             </tr>
                             {% else %}
                             <tr>
-                                <td colspan="7" class="text-center text-muted py-4">لا توجد شكاوى مطابقة للفلتر.</td>
+                                <td colspan="9" class="text-center text-muted py-4">لا توجد شكاوى مطابقة للفلتر.</td>
                             </tr>
                             {% endfor %}
                         </tbody>

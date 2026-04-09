@@ -1,0 +1,197 @@
+{# تحليلات حية — تُفتح من الشريط الجانبي (Offcanvas) بدون إشغال مساحة الرئيسية #}
+<div class="offcanvas offcanvas-start live-analytics-offcanvas text-bg-light" tabindex="-1" id="liveAnalyticsOffcanvas" aria-labelledby="liveAnalyticsHeading" style="--bs-offcanvas-width: min(100%, 380px);">
+    <div class="offcanvas-header border-bottom py-2">
+        <h5 class="offcanvas-title fw-bold mb-0" id="liveAnalyticsHeading" style="color: var(--accent-gold, #b8860b); font-size: 1rem;">📊 التحليلات الحية</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="إغلاق"></button>
+    </div>
+    <div class="offcanvas-body py-3">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            <p class="small text-muted mb-0 flex-grow-1">من تفاعلات الشات (trend_data)</p>
+            <button type="button" class="btn btn-gold btn-sm shrink-0" id="liveAnalyticsRefreshBtn">تحديث</button>
+        </div>
+        <p class="small text-info mb-2 d-none" id="liveAnalyticsBranchHint" role="status">تقارير <strong>هذا الفرع</strong> فقط.</p>
+
+        <div class="vstack gap-2 mb-3">
+            <div class="border rounded-2 p-2 bg-white small">
+                <div class="text-muted" style="font-size: 0.75rem;">أكثر المنتجات طلباً</div>
+                <div class="fw-bold text-dark text-truncate" id="liveCardTopProduct">—</div>
+                <div class="text-secondary" style="font-size: 0.75rem;" id="liveCardTopProductSub"></div>
+            </div>
+            <div class="border rounded-2 p-2 bg-white small">
+                <div class="text-muted" style="font-size: 0.75rem;">أكثر الساعات ضغطاً</div>
+                <div class="fw-bold text-dark" id="liveCardPeakHour">—</div>
+                <div class="text-secondary" style="font-size: 0.75rem;" id="liveCardPeakHourSub"></div>
+            </div>
+            <div class="border rounded-2 p-2 bg-white small">
+                <div class="text-muted" style="font-size: 0.75rem;">أكثر النيات</div>
+                <div class="fw-bold text-dark text-truncate" id="liveCardTopIntent">—</div>
+                <div class="text-secondary" style="font-size: 0.75rem;" id="liveCardTopIntentSub"></div>
+            </div>
+        </div>
+
+        <div class="live-analytics-chart-wrap position-relative w-100 rounded border bg-white" style="height: 200px;">
+            <canvas id="liveAnalyticsBarChart" aria-label="مخطط التحليلات"></canvas>
+        </div>
+        <p class="small text-muted mt-2 mb-0" id="liveAnalyticsChartHint" style="font-size: 0.8rem;">افتح اللوحة لتحميل البيانات.</p>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+<script>
+(function () {
+    const url = {{ url_for('api_trend_analytics') | tojson }};
+    let chartInstance = null;
+    let loadedOnce = false;
+
+    function cssColorToRgba(css, alpha) {
+        var s = (css || '').trim();
+        if (!s) return 'rgba(184, 134, 11, ' + alpha + ')';
+        if (s[0] === '#' && s.length >= 7) {
+            var h = s.slice(1, 7);
+            var r = parseInt(h.slice(0, 2), 16);
+            var g = parseInt(h.slice(2, 4), 16);
+            var b = parseInt(h.slice(4, 6), 16);
+            return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+        }
+        var m = s.match(/rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+        if (m) return 'rgba(' + m[1] + ',' + m[2] + ',' + m[3] + ',' + alpha + ')';
+        return 'rgba(184, 134, 11, ' + alpha + ')';
+    }
+
+    async function loadLiveAnalytics() {
+        const btn = document.getElementById('liveAnalyticsRefreshBtn');
+        if (btn) { btn.disabled = true; }
+        try {
+            const r = await fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const ct = (r.headers.get('content-type') || '').toLowerCase();
+            if (ct.indexOf('application/json') === -1) throw new Error('not json');
+            const j = await r.json();
+
+            const branchHint = document.getElementById('liveAnalyticsBranchHint');
+            if (branchHint) branchHint.classList.toggle('d-none', j.branch_scope == null);
+
+            const products = Array.isArray(j.products) ? j.products : [];
+            const intents = Array.isArray(j.intents) ? j.intents : [];
+            const hours = Array.isArray(j.hours) ? j.hours : [];
+
+            const topP = products[0];
+            const elP = document.getElementById('liveCardTopProduct');
+            const subP = document.getElementById('liveCardTopProductSub');
+            if (elP) elP.textContent = topP ? (topP.name || '—') : 'لا بيانات بعد';
+            if (subP) subP.textContent = topP ? ('عدد: ' + topP.count) : '';
+
+            let peakH = null;
+            let peakC = 0;
+            hours.forEach(function (h) {
+                if (h && typeof h.count === 'number' && h.count > peakC) {
+                    peakC = h.count;
+                    peakH = h.hour;
+                }
+            });
+            const elH = document.getElementById('liveCardPeakHour');
+            const subH = document.getElementById('liveCardPeakHourSub');
+            if (elH) elH.textContent = (peakH !== null && peakC > 0) ? (String(peakH).padStart(2, '0') + ':00') : 'لا بيانات بعد';
+            if (subH) subH.textContent = (peakC > 0) ? ('الحدث: ' + peakC) : '';
+
+            const topI = intents[0];
+            const elI = document.getElementById('liveCardTopIntent');
+            const subI = document.getElementById('liveCardTopIntentSub');
+            if (elI) elI.textContent = topI ? (topI.name || '—') : 'لا بيانات بعد';
+            if (subI) subI.textContent = topI ? ('عدد: ' + topI.count) : '';
+
+            const ctx = document.getElementById('liveAnalyticsBarChart');
+            if (!ctx || typeof Chart === 'undefined') return;
+
+            var labels = [];
+            var values = [];
+            var labelLine = 'أعلى المنتجات حسب التسجيلات.';
+
+            if (products.length) {
+                var slice = products.slice(0, 8);
+                labels = slice.map(function (p) { return (p.name || '').slice(0, 36); });
+                values = slice.map(function (p) { return p.count; });
+            } else if (intents.length) {
+                var slice = intents.slice(0, 8);
+                labels = slice.map(function (p) { return (p.name || '').slice(0, 36); });
+                values = slice.map(function (p) { return p.count; });
+                labelLine = 'النيات (لا منتجات بعد).';
+            } else {
+                labels = ['لا بيانات'];
+                values = [0];
+                labelLine = j.branch_scope != null
+                    ? 'لا بيانات لشات هذا الفرع بعد.'
+                    : 'لا بيانات بعد.';
+            }
+
+            var hint = document.getElementById('liveAnalyticsChartHint');
+            if (hint) hint.textContent = labelLine;
+
+            if (chartInstance) {
+                chartInstance.destroy();
+                chartInstance = null;
+            }
+
+            var goldRaw = getComputedStyle(document.documentElement).getPropertyValue('--accent-gold').trim() || '#b8860b';
+            var fillGold = cssColorToRgba(goldRaw, 0.82);
+            var strokeGold = cssColorToRgba(goldRaw, 1);
+
+            var chartTitle = 'التحليلات';
+            if (products.length) chartTitle = 'المنتجات';
+            else if (intents.length) chartTitle = 'النيات';
+
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'عدد',
+                        data: values,
+                        backgroundColor: fillGold,
+                        borderColor: strokeGold,
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        title: { display: true, text: chartTitle, font: { size: 12 } }
+                    },
+                    scales: {
+                        x: { beginAtZero: true, ticks: { precision: 0, font: { size: 10 } } },
+                        y: { ticks: { autoSkip: true, font: { size: 10 } } }
+                    }
+                }
+            });
+            loadedOnce = true;
+        } catch (e) {
+            console.error('live analytics', e);
+            var elP2 = document.getElementById('liveCardTopProduct');
+            if (elP2) elP2.textContent = 'تعذر التحميل';
+        } finally {
+            if (btn) { btn.disabled = false; }
+        }
+    }
+
+    function bindOffcanvas() {
+        var oc = document.getElementById('liveAnalyticsOffcanvas');
+        if (!oc) return;
+        oc.addEventListener('shown.bs.offcanvas', function () {
+            requestAnimationFrame(function () {
+                loadLiveAnalytics();
+            });
+        });
+        var refresh = document.getElementById('liveAnalyticsRefreshBtn');
+        if (refresh) refresh.addEventListener('click', loadLiveAnalytics);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bindOffcanvas);
+    } else {
+        bindOffcanvas();
+    }
+})();
+</script>

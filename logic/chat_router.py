@@ -9,6 +9,7 @@ import copy
 import logging
 import os
 import uuid
+from datetime import datetime
 from typing import Any, Optional
 
 from flask import Response, current_app, jsonify, request, session
@@ -22,16 +23,22 @@ from logic.category_service import (
 )
 from logic.chat_handlers.complaint_handler import random_opening_apology
 from logic.complaint_service import (
-    complaint_ready_for_ai,
     _handle_complaint_policy_precheck_turn,
     _try_chat_active_complaint_turn,
     _try_complaint_rule_flow,
     _try_complaint_wizard,
+    maybe_clear_complaint_session_before_router,
+    try_complaint_ticket_status_lookup,
 )
 from logic import ai_fallback as ai_fb
 from logic.dialect_detector import detect_dialect
 from logic.dialect_responses import dialect_message
-from logic.intent_handler import get_intent_routing_decision, pre_route_intent_snapshot, user_wants_open_now
+from logic.intent_handler import (
+    decision_meets_global_rule_threshold,
+    get_intent_routing_decision,
+    pre_route_intent_snapshot,
+    user_wants_open_now,
+)
 from logic.product_query_parse import normalize_for_product_search
 from logic.product_service import (
     _build_products_response,
@@ -44,6 +51,7 @@ from site_config.company_policies import build_return_policy_chat_message
 from site_config.founder_attribution import founder_attribution_payload_if_asked
 
 import logic.chat_service as cs
+from logic import attachment_openai
 from logic import chat_context as chat_ctx
 from logic import customer_chat as cust_ch
 from logic.chat_handlers.time_handler import enhanced_location_reply_kind
@@ -60,9 +68,107 @@ logger = logging.getLogger(__name__)
 _PENDING_PRECALC_MISSING = object()
 
 
-def _silent_chat_response() -> Any:
-    """لا نص — الواجهة لا تعرض فقرة جديدة عندما يكون المحتوى فارغاً."""
-    return jsonify({"products": [], "message": "", "intent": "silent"})
+def _return_policy_reply_for_chat(display_name: str, message: str) -> str:
+    """سياسات من company_info كما هي؛ وإلا حزمة الحقول؛ وإلا site_config."""
+    db = cs.get_db()
+    ans = db.get_policy_answer_exact(message)
+    if ans is not None:
+        return ans
+    bundle = db.get_return_policy_bundle_text()
+    if bundle.strip():
+        return bundle.strip()
+    return build_return_policy_chat_message(display_name, message)
+
+
+def _collapse_consecutive_duplicate_lines(text: str) -> str:
+    """يزيل أسطراً متتطابقة داخل الفقرة (نفس الجملة مكررة على سطرين)."""
+    if not (text or "").strip():
+        return text or ""
+    out_chunks: list[str] = []
+    for para in text.split("\n\n"):
+        lines = para.split("\n")
+        cleaned: list[str] = []
+        prev_norm: Optional[str] = None
+        for line in lines:
+            n = line.strip()
+            if n and n == prev_norm:
+                continue
+            cleaned.append(line)
+            prev_norm = n if n else prev_norm
+        out_chunks.append("\n".join(cleaned))
+    return "\n\n".join(out_chunks)
+
+
+def _dedupe_repeated_blocks_in_message(msg: str) -> str:
+    """
+    يزيل فقرات مكررة أو فقرة تُسبقها فقرة أطول بنفس البداية (دمج قواعد + AI).
+    """
+    raw = (msg or "").strip()
+    if not raw:
+        return ""
+    raw = _collapse_consecutive_duplicate_lines(raw)
+    parts = [p.strip() for p in raw.split("\n\n") if p.strip()]
+    if len(parts) < 2:
+        return raw
+    n = len(parts)
+    keep = [True] * n
+    for i in range(n):
+        if not keep[i]:
+            continue
+        pi = parts[i]
+        for j in range(n):
+            if i == j:
+                continue
+            pj = parts[j]
+            if pi == pj and i < j:
+                keep[j] = False
+                continue
+            # فقرة أطول تبدأ بنفس فقارة قصيرة ثم سطر جديد — نحذف الأقصر فقط (لا نخلط كلمة بجملة)
+            if len(pj) > len(pi) and pj.startswith(pi):
+                suf = pj[len(pi) :]
+                if suf.startswith("\n"):
+                    keep[i] = False
+                    break
+    out = [p for i, p in enumerate(parts) if keep[i]]
+    deduped: list[str] = []
+    for p in out:
+        if deduped and p == deduped[-1]:
+            continue
+        deduped.append(p)
+    return "\n\n".join(deduped)
+
+
+def _merge_text_avoid_redundant_overlap(base_msg: str, ai_msg: str) -> str:
+    """يدمج نص القواعد مع AI دون تكرار جملة/فقرة موجودة بالكامل في الأساس."""
+    b = (base_msg or "").strip()
+    a = (ai_msg or "").strip()
+    if not a:
+        return b
+    if not b:
+        return a
+    if a.startswith(b) or (len(b) >= 8 and b in a):
+        return a
+    if b.startswith(a) or (len(a) >= 8 and a in b):
+        return b
+    b_norm = " ".join(b.split())
+    a_norm = " ".join(a.split())
+    if a_norm.startswith(b_norm) or (len(b_norm) >= 8 and b_norm in a_norm):
+        return a
+    bp = [p.strip() for p in b.split("\n\n") if p.strip()]
+    ap = [p.strip() for p in a.split("\n\n") if p.strip()]
+    novel: list[str] = []
+    for p in ap:
+        if p in bp:
+            continue
+        if any(p.startswith(q) and len(p) > len(q) for q in bp):
+            novel.append(p)
+            continue
+        if any(q.startswith(p) and len(q) > len(p) for q in bp):
+            continue
+        novel.append(p)
+    if not novel:
+        return b
+    return b + "\n\n" + "\n\n".join(novel)
 
 
 def _scrub_disallowed_bot_phrases(text: str) -> str:
@@ -122,7 +228,7 @@ def _maybe_scrub_json_response(resp: Any) -> Any:
 
 
 def _deduplicate_bot_outgoing(resp: Any) -> Any:
-    """إن تطابق نص الرد مع آخر رد بوت، نُرجع استجابة صامتة بدل التكرار."""
+    """يمنع إرسال نفس النص حرفياً مرتين متتاليتين قدر الإمكان."""
     from flask import Response
 
     if not isinstance(resp, Response):
@@ -130,14 +236,66 @@ def _deduplicate_bot_outgoing(resp: Any) -> Any:
     data = resp.get_json(silent=True)
     if not isinstance(data, dict):
         return resp
-    msg = (data.get("message") or "").strip()
-    if not msg:
+    raw_msg = (data.get("message") or "").strip()
+    if not raw_msg:
         return resp
-    last = (session.get("last_bot_message") or "").strip()
-    if last and msg == last:
-        return jsonify({"products": [], "message": "", "intent": "silent"})
+    msg = _dedupe_repeated_blocks_in_message(raw_msg)
+    raw_fol = (data.get("followup_message") or "").strip()
+    fol = _dedupe_repeated_blocks_in_message(raw_fol) if raw_fol else ""
+    if msg != raw_msg or (raw_fol and fol != raw_fol):
+        data = dict(data)
+        data["message"] = msg
+        if raw_fol:
+            data["followup_message"] = fol
+        resp = jsonify(data)
+    last_msg = (session.get("last_bot_message") or "").strip()
+    if last_msg and msg == last_msg:
+        d = session.get("chat_dialect") or "default"
+        intent = str(data.get("intent") or "").strip()
+        if intent in ("complaint", "complaint_rule", "complaint_wizard", "complaint_policy_precheck"):
+            varied = "تم، أكمل بالخطوة التالية أو اكتب إضافتك باختصار."
+        else:
+            varied = dialect_message(d, "unknown_fallback", name=cs._display_name()).strip()
+        if not varied or varied == msg:
+            if intent in ("product", "recommendation", "section"):
+                varied = "إذا حاب أكمل معك بدقة أكثر، عطِني اسم المنتج أو المقاس أو اللون."
+            elif intent in ("location", "branch_phone"):
+                varied = "إذا تبغى نفس الخدمة لكن لفرع مختلف، اكتب اسم المدينة أو الفرع."
+            elif intent in ("complaint", "complaint_rule", "complaint_wizard", "complaint_policy_precheck"):
+                varied = "تم، أكمل بالخطوة التالية أو اكتب إضافتك باختصار."
+            else:
+                varied = "وضح لي طلبك أكثر شوي عشان ما أكرر عليك نفس الرد."
+        out = dict(data)
+        out["message"] = varied
+        session["last_bot_message"] = varied[:4000]
+        return jsonify(out)
     session["last_bot_message"] = msg[:4000]
     return resp
+
+
+def _apply_response_shaping_to_response(raw_resp: Any, user_message: str) -> Any:
+    """
+    يقصّر الرد ويزيل ذكر الفروع/أصناف بعيدة عند الحاجة — بعد التسويق وقبل منع التكرار.
+    """
+    if isinstance(raw_resp, tuple) and len(raw_resp) > 0:
+        inner = _apply_response_shaping_to_response(raw_resp[0], user_message)
+        return (inner,) + raw_resp[1:] if len(raw_resp) > 1 else (inner,)
+    if not isinstance(raw_resp, Response):
+        return raw_resp
+    data = raw_resp.get_json(silent=True)
+    if not isinstance(data, dict):
+        return raw_resp
+    intent = str(data.get("intent") or "").strip()
+    if intent in ai_fb.BOT_RESPONSE_SHAPING_SKIP_INTENTS:
+        return raw_resp
+    new_data = dict(data)
+    for key in ("message", "followup_message"):
+        val = new_data.get(key)
+        if isinstance(val, str) and val.strip():
+            new_data[key] = ai_fb.apply_bot_response_shaping(
+                val, user_message=user_message, intent=intent
+            )
+    return jsonify(new_data)
 
 
 def _finalize_chat_outputs(raw_resp: Any, message: str) -> Any:
@@ -147,7 +305,102 @@ def _finalize_chat_outputs(raw_resp: Any, message: str) -> Any:
     step1 = _maybe_enrich_json_response(raw_resp)
     step2 = _maybe_scrub_json_response(step1)
     step3 = cust_ch.attach_marketing_followup_if_needed(step2)
-    return _deduplicate_bot_outgoing(step3)
+    step4 = _apply_response_shaping_to_response(step3, message)
+    return _deduplicate_bot_outgoing(step4)
+
+
+def _trend_feature_value(branch_id: Optional[int], entity_name: str) -> str:
+    """قيمة فريدة لـ trend_data: فرع + اسم الكيان (جدول feature_type / feature_value)."""
+    b = 0 if branch_id is None else int(branch_id)
+    n = (entity_name or "").strip().replace("\x1f", " ")[:600]
+    if not n:
+        n = "_"
+    return f"{b}\x1f{n}"
+
+
+def _resolve_branch_id_for_trends(db: Any) -> Optional[int]:
+    """فرع من سياق الشات أو ملف العميل عند الحاجة."""
+    for key in ("chat_last_branch", "chat_selected_branch"):
+        bn = session.get(key)
+        if isinstance(bn, str) and bn.strip():
+            bid = db.get_branch_id_by_city_name(bn.strip())
+            if bid is not None:
+                return int(bid)
+    cid = session.get("customer_id")
+    if cid is not None:
+        try:
+            row = db.get_customer_by_id(int(cid))
+            if row and row.get("branch_id") is not None:
+                return int(row["branch_id"])
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
+def _record_chat_trend_analytics(db: Any, response: Any) -> None:
+    """
+    يحدّث trend_data بعد رد ناجح: نوع intent ونوع product (feature_type).
+    feature_value يضم branch_id وentity_name للتمييز الدقيق.
+    """
+    try:
+        status = 200
+        resp = response
+        if isinstance(response, tuple) and len(response) >= 1:
+            resp = response[0]
+            if len(response) > 1 and isinstance(response[1], int):
+                status = int(response[1])
+        if status >= 400:
+            return
+        if not hasattr(resp, "get_json"):
+            return
+        data = resp.get_json(silent=True)
+        if not isinstance(data, dict):
+            return
+        intent = str(data.get("intent") or "").strip() or "unknown"
+        if intent == "account_session_sync":
+            return
+
+        branch_ctx = _resolve_branch_id_for_trends(db)
+        db.upsert_trend("intent", _trend_feature_value(branch_ctx, intent))
+        db.increment_daily_chat_count()
+
+        br_h = branch_ctx if branch_ctx is not None else 0
+        db.upsert_trend("hour", _trend_feature_value(br_h, f"{datetime.now().hour:02d}"))
+
+        products = data.get("products")
+        if not isinstance(products, list) or not products:
+            return
+        seen: set[tuple[Optional[int], str]] = set()
+        for p in products:
+            if not isinstance(p, dict):
+                continue
+            pid = p.get("id")
+            pname = (p.get("name") or p.get("product_name") or "").strip()
+            if not pname and pid is not None:
+                pname = f"product:{pid}"
+            branch_id: Optional[int] = None
+            if pid is not None:
+                try:
+                    detail = db.get_product_detail(int(pid))
+                    if detail and detail.get("branch_id") is not None:
+                        branch_id = int(detail["branch_id"])
+                except (TypeError, ValueError):
+                    pass
+            if branch_id is None:
+                branch_id = branch_ctx
+            key = (branch_id, pname)
+            if key in seen:
+                continue
+            seen.add(key)
+            db.upsert_trend("product", _trend_feature_value(branch_id, pname))
+    except Exception:
+        logger.debug("chat trend analytics failed", exc_info=True)
+
+
+def _finalize_chat_outputs_with_trends(db: Any, raw_resp: Any, message: str) -> Any:
+    out = _finalize_chat_outputs(raw_resp, message)
+    _record_chat_trend_analytics(db, out)
+    return out
 
 
 def _response_to_dict(resp: Any) -> Optional[dict[str, Any]]:
@@ -164,29 +417,59 @@ def _response_to_dict(resp: Any) -> Optional[dict[str, Any]]:
 
 def _merge_ai_over_rule(ai_d: Optional[dict], rule_d: Optional[dict]) -> dict[str, Any]:
     """
-    دمج رد القواعد مع رد المنسّق: أولوية النص والمنتجات للذكاء الاصطناعي عند وجوده،
-    مع الإبقاء على حقول مساعدة من القواعد (فروع، أقسام، شكوى).
+    هجين: نص القواعد + إثراء المنسّق عند وجودهما؛ المنتجات تُفضَّل من القواعد عند وجودها (مطابقة DB).
     """
     base = copy.deepcopy(rule_d) if isinstance(rule_d, dict) else {}
     ai = ai_d if isinstance(ai_d, dict) else {}
     out: dict[str, Any] = dict(base) if base else {}
     ai_msg = (ai.get("message") or "").strip()
-    if ai_msg:
+    base_msg = (out.get("message") or "").strip()
+    if ai_msg and base_msg:
+        out["message"] = _merge_text_avoid_redundant_overlap(base_msg, ai_msg)
+    elif ai_msg:
         out["message"] = ai["message"]
-    elif "message" not in out:
+    elif base_msg:
+        out["message"] = out.get("message", "")
+    else:
         out["message"] = ""
-    prods = ai.get("products")
-    if isinstance(prods, list) and len(prods) > 0:
-        out["products"] = prods
-    elif "products" not in out:
+
+    rule_prods = base.get("products") if isinstance(base.get("products"), list) else []
+    ai_prods = ai.get("products") if isinstance(ai.get("products"), list) else []
+    if rule_prods and len(rule_prods) > 0:
+        out["products"] = rule_prods
+    elif ai_prods and len(ai_prods) > 0:
+        out["products"] = ai_prods
+    else:
         out["products"] = []
+
+    ri = str(base.get("intent") or "").strip()
     ai_intent = (ai.get("intent") or "").strip()
-    if ai_intent and ai_intent != "silent":
+    if ri in (
+        "complaint_rule",
+        "complaint_wizard",
+        "location",
+        "branch_phone",
+        "return_policy",
+        "attachment",
+        "collect_name",
+        "product",
+        "section",
+        "recommendation",
+        "greeting",
+        "thanks",
+        "goodbye",
+    ):
+        out["intent"] = ri or "general"
+    elif ai_intent and ai_intent != "silent":
         out["intent"] = ai["intent"]
-    elif "intent" not in out:
+    elif "intent" not in out or not out.get("intent"):
         out["intent"] = "general"
+
     fol = (ai.get("followup_message") or "").strip()
-    if fol:
+    base_fol = (base.get("followup_message") or "").strip()
+    if fol and base_fol:
+        out["followup_message"] = f"{base_fol}\n\n{fol}"
+    elif fol:
         out["followup_message"] = ai["followup_message"]
     for k in (
         "branches",
@@ -216,7 +499,7 @@ def _merge_complaint_ai_append(
     base_msg = (out.get("message") or "").strip()
     ai_msg = (ai_d.get("message") or "").strip()
     if ai_msg and base_msg:
-        out["message"] = f"{base_msg}\n\n{ai_msg}"
+        out["message"] = _merge_text_avoid_redundant_overlap(base_msg, ai_msg)
     out["intent"] = out.get("intent") or "complaint_rule"
     return out
 
@@ -238,46 +521,17 @@ def _is_weak_location_rule_payload(d: dict) -> bool:
     return False
 
 
-def _classify_rule_strength(rule_d: Optional[dict], message: str) -> str:
-    """
-    strong: شكوى، فرع/موقع محدد، منتجات، سياسة، مرفق، وقت/هاتف مع فرع.
-    weak: ترحيب، شكر، قسم، سؤال عام، موقع بدون فرع، منتج بلا نتائج.
-    """
-    if not rule_d:
-        return "none"
-    intent = str(rule_d.get("intent") or "")
-    if intent == "complaint_rule":
-        # جمع فرع/تفاصيل: لا دمج AI؛ بعد اكتمالها يُسمح بدمج المنسّق لإثراء السؤال
-        if session.get("complaint_block_ai_merge"):
-            return "strong"
-        return "weak"
-    if intent in (
-        "complaint_wizard",
-        "complaint",
-        "return_policy",
-        "attachment",
-        "collect_name",
-    ):
-        return "strong"
-    if intent == "branch_phone":
-        msg = (rule_d.get("message") or "")
-        if "أي فرع" in msg or "أي مدينة" in msg:
-            return "weak"
-        return "strong"
-    if intent == "location":
-        return "weak" if _is_weak_location_rule_payload(rule_d) else "strong"
-    prods = rule_d.get("products") or []
+def _map_rule_intent_to_scored_intent(rule_d: Optional[dict]) -> Optional[str]:
+    if not isinstance(rule_d, dict):
+        return None
+    intent = str(rule_d.get("intent") or "").strip()
     if intent in ("product", "recommendation", "section"):
-        if isinstance(prods, list) and len(prods) > 0:
-            return "strong"
-        return "weak"
-    if intent in ("greeting", "thanks", "goodbye", "general"):
-        return "weak"
-    if intent in ("silent", "no_products"):
-        return "weak"
-    return "weak"
-
-
+        return "product"
+    if intent in ("location", "branch_phone", "location_pick"):
+        return "branch"
+    if intent in ("complaint", "complaint_rule", "complaint_wizard", "return_policy"):
+        return "complaint"
+    return None
 def _intent_snapshot_unclear(decision: dict) -> bool:
     r = decision.get("route") or ""
     if r in ("needs_openai", "complex", "ambiguous", "weak"):
@@ -288,14 +542,17 @@ def _intent_snapshot_unclear(decision: dict) -> bool:
 def _rule_payload_needs_orchestrator(
     rule_d: Optional[dict], decision: dict, message: str
 ) -> bool:
-    """متى نستدعي المنسّق بعد القواعد: ضعيف، بلا منتجات رغم طلب تسوّق، موقع غامض، أو لا رد قواعد."""
+    """متى نرسل للمنسّق بعد القواعد: لا رد، ثقة دون العتبة، أو ناتج ناقص/غامض."""
     if not rule_d:
         return True
     intent = str(rule_d.get("intent") or "")
     if intent == "silent":
         return True
-    st = _classify_rule_strength(rule_d, message)
-    if st == "weak":
+    if decision.get("route") == "score_direct":
+        return False
+    if not decision_meets_global_rule_threshold(
+        decision, _map_rule_intent_to_scored_intent(rule_d)
+    ):
         return True
     prods = rule_d.get("products") or []
     si = decision.get("score_intent") or ""
@@ -305,9 +562,40 @@ def _rule_payload_needs_orchestrator(
         return True
     if intent == "location" and _is_weak_location_rule_payload(rule_d):
         return True
-    if _intent_snapshot_unclear(decision) and st != "strong":
+    if _intent_snapshot_unclear(decision):
         return True
     return False
+
+
+def _build_rule_findings_context(rule_d: Optional[dict]) -> dict[str, Any]:
+    """ملخص قصير لما عرفته القواعد لتمريره للمنسّق عند الحاجة فقط."""
+    if not isinstance(rule_d, dict):
+        return {}
+    out: dict[str, Any] = {}
+    intent = str(rule_d.get("intent") or "").strip()
+    if intent:
+        out["rule_intent"] = intent
+    msg = (rule_d.get("message") or "").strip()
+    if msg:
+        out["rule_message_preview"] = msg[:600]
+    prods = rule_d.get("products") if isinstance(rule_d.get("products"), list) else []
+    if prods:
+        names = [
+            str(p.get("name") or "").strip()
+            for p in prods[:6]
+            if isinstance(p, dict) and str(p.get("name") or "").strip()
+        ]
+        if names:
+            out["rule_product_names"] = names
+        out["rule_products_count"] = len(prods)
+    brs = rule_d.get("branches") if isinstance(rule_d.get("branches"), list) else []
+    if brs:
+        out["rule_branch_options"] = [
+            str(b.get("name") or b).strip()
+            for b in brs[:8]
+            if str(b.get("name") if isinstance(b, dict) else b or "").strip()
+        ]
+    return out
 
 
 def _router_intent_branch_rules_only(
@@ -364,24 +652,41 @@ def _route_main_chat_with_rules_and_ai(
 
     rule_resp = pending if pending is not None else intent_rules
     rule_d = _response_to_dict(rule_resp)
-    need_ai = _rule_payload_needs_orchestrator(rule_d, decision, message)
-    if session.get("complaint_active"):
-        need_ai = complaint_ready_for_ai()
-
-    ai_resp = None
-    if need_ai:
-        ai_resp = _execute_ai_orchestrator(
-            message, branch_list, intent_decision=decision
+    # حوار شكوى منظم: رد واحد من القواعد فقط — بدون دمج منسّق (يمنع التكرار والاختلاط).
+    if (
+        rule_resp is not None
+        and isinstance(rule_d, dict)
+        and str(rule_d.get("intent") or "").startswith("complaint")
+        and (
+            session.get("complaint_data")
+            or session.get("complaint_wizard")
+            or session.get("complaint_policy_precheck")
         )
+    ):
+        return rule_resp
+    if not session.get("complaint_active") and decision.get("route") == "score_direct" and rule_resp is not None:
+        return rule_resp
+    if isinstance(rule_d, dict):
+        needs_orchestrator = _rule_payload_needs_orchestrator(rule_d, decision, message)
+        if not session.get("complaint_active") and not needs_orchestrator:
+            return rule_resp
+    else:
+        needs_orchestrator = True
+    ai_resp = _execute_ai_orchestrator(
+        message,
+        branch_list,
+        intent_decision=decision,
+        rule_findings=_build_rule_findings_context(rule_d),
+    )
 
     ai_d = _response_to_dict(ai_resp)
     rd = rule_d if isinstance(rule_d, dict) else {}
     intent_r = str(rd.get("intent") or "")
     use_complaint_append = (
         intent_r == "complaint_rule"
-        and complaint_ready_for_ai()
         and isinstance(ai_d, dict)
         and (ai_d.get("message") or "").strip()
+        and not session.get("complaint_data")
     )
     if use_complaint_append:
         merged = _merge_complaint_ai_append(rd, ai_d)
@@ -399,7 +704,16 @@ def _route_main_chat_with_rules_and_ai(
                     "intent": "complaint_rule",
                 }
             )
-        return _silent_chat_response()
+        d = session.get("chat_dialect") or "default"
+        return jsonify(
+            {
+                "products": [],
+                "message": dialect_message(
+                    d, "unknown_fallback", name=cs._display_name()
+                ),
+                "intent": "general",
+            }
+        )
     return jsonify(merged)
 
 
@@ -570,25 +884,31 @@ def _try_rule_based_branch_location_phone(message: str, branch_list: list) -> Op
 
 
 def _execute_ai_orchestrator(
-    message: str, branch_list: list, intent_decision: Optional[dict] = None
+    message: str,
+    branch_list: list,
+    intent_decision: Optional[dict] = None,
+    rule_findings: Optional[dict[str, Any]] = None,
 ) -> Any:
-    print("ENTER AI ORCHESTRATOR")
     db = cs.get_db()
+    # database_context يشمل company_info (سياسات/خدمات من لوحة الإدارة) عبر build_orchestrator_context
     context = ai_fb.build_orchestrator_context(
-        db, message, session.get("chat_dialect"), intent_decision=intent_decision
+        db,
+        message,
+        session.get("chat_dialect"),
+        intent_decision=intent_decision,
+        rule_findings=rule_findings,
     )
-    print("ROUTING TO AI")
     plan = ai_fb.run_chat_orchestrator_openai(message, context)
-    if plan:
+    if logger.isEnabledFor(logging.DEBUG):
         try:
             import json as _json
 
-            _ps = _json.dumps(plan, ensure_ascii=False)
+            logger.debug(
+                "orchestrator plan: %s",
+                _json.dumps(plan, ensure_ascii=False)[:2000],
+            )
         except Exception:
-            _ps = str(plan)
-        print("PLAN:", _ps[:4000] + ("..." if len(_ps) > 4000 else ""))
-    if not plan:
-        return _silent_chat_response()
+            logger.debug("orchestrator plan: %r", plan)
 
     action = str(plan.get("action") or "").strip().lower()
     filters = plan.get("filters") if isinstance(plan.get("filters"), dict) else {}
@@ -607,7 +927,7 @@ def _execute_ai_orchestrator(
 
     if action == "complaint":
         session["chat_pending_action"] = None
-        br = cs.resolve_branch_from_message(message) or chat_ctx.get_last_branch()
+        br = cs.resolve_branch_from_message(message)
         if br:
             chat_ctx.remember_branch_by_name(br)
         needs_b = bool(plan.get("needs_branch", True)) and not br
@@ -660,7 +980,7 @@ def _execute_ai_orchestrator(
         return jsonify(
             {
                 "products": [],
-                "message": build_return_policy_chat_message(cs._display_name(), message),
+                "message": _return_policy_reply_for_chat(cs._display_name(), message),
                 "intent": "return_policy",
             }
         )
@@ -697,7 +1017,10 @@ def _execute_ai_orchestrator(
         session["chat_pending_action"] = None
         msg_out = ai_msg
         if not msg_out:
-            return _silent_chat_response()
+            d = session.get("chat_dialect") or "default"
+            msg_out = dialect_message(
+                d, "unknown_fallback", name=cs._display_name()
+            )
         if needs_branch:
             msg_out = (msg_out + "\n\n" + cs._branch_selection_prompt()).strip()
         return jsonify(
@@ -727,12 +1050,18 @@ def _execute_ai_orchestrator(
             msg_parts.append(cs._branch_selection_prompt())
         final_msg = "\n\n".join(p for p in msg_parts if p).strip()
         if not final_msg:
-            return _silent_chat_response()
+            d = session.get("chat_dialect") or "default"
+            final_msg = dialect_message(
+                d, "unknown_fallback", name=cs._display_name()
+            )
         final_msg = ai_fb.contextualize_no_product_message(
             final_msg, message, uctx, cats
         )
         if not (final_msg or "").strip():
-            return _silent_chat_response()
+            d = session.get("chat_dialect") or "default"
+            final_msg = dialect_message(
+                d, "unknown_fallback", name=cs._display_name()
+            )
         return jsonify({"products": [], "message": final_msg, "intent": "general"})
 
     if action == "product_search":
@@ -776,19 +1105,34 @@ def _execute_ai_orchestrator(
             msg_parts.append(cs._branch_selection_prompt())
         final_msg = "\n\n".join(msg_parts).strip()
         if not final_msg:
-            return _silent_chat_response()
+            d = session.get("chat_dialect") or "default"
+            final_msg = dialect_message(
+                d, "unknown_fallback", name=cs._display_name()
+            )
         final_msg = ai_fb.contextualize_no_product_message(
             final_msg, message, uctx, cats
         )
         if not (final_msg or "").strip():
-            return _silent_chat_response()
+            d = session.get("chat_dialect") or "default"
+            final_msg = dialect_message(
+                d, "unknown_fallback", name=cs._display_name()
+            )
         return jsonify({"products": [], "message": final_msg, "intent": "general"})
 
-    return _silent_chat_response()
+    d = session.get("chat_dialect") or "default"
+    return jsonify(
+        {
+            "products": [],
+            "message": dialect_message(
+                d, "unknown_fallback", name=cs._display_name()
+            ),
+            "intent": "general",
+        }
+    )
 
 
 def _router_early_exits(data: dict) -> Optional[Any]:
-    """account_session_sync، مرفق، مؤسس، جمع الاسم."""
+    """account_session_sync، مؤسس، جمع الاسم، سلام… (المُرفقات تُعالَج قبل dispatch)."""
     if data.get("account_session_sync"):
         proposed = (data.get("user_name") or "").strip()
         if proposed and len(proposed) >= 2 and is_acceptable_display_name(proposed):
@@ -799,26 +1143,6 @@ def _router_early_exits(data: dict) -> Optional[Any]:
         if uc:
             session["user_contact"] = uc[:320]
         return jsonify({"ok": True, "intent": "account_session_sync"})
-
-    up = request.files.get("file")
-    if up and up.filename and cs.allowed_file(up.filename):
-        ext = up.filename.rsplit(".", 1)[1].lower()
-        unique_name = f"{uuid.uuid4().hex}.{ext}"
-        up.save(os.path.join(current_app.config["UPLOAD_FOLDER"], unique_name))
-        proposed = (request.form.get("user_name") or "").strip()
-        account_logged_in = (request.form.get("account_logged_in") or "").lower() in (
-            "1",
-            "true",
-            "yes",
-        )
-        cs._apply_session_display_name(proposed, account_logged_in=account_logged_in)
-        is_image = ext in {"png", "jpg", "jpeg", "gif", "webp"}
-        msg = (
-            f"تم استلام الصورة يا {cs._display_name()}، صفّ لي طلبك أو استفسارك بالنص لأساعدك بشكل أدق."
-            if is_image
-            else f"تم استلام التسجيل الصوتي يا {cs._display_name()}، اكتب لي طلبك بالنص وسأساعدك."
-        )
-        return jsonify({"products": [], "message": msg, "intent": "attachment"})
 
     message = (data.get("message") or "").strip()
     proposed = (data.get("user_name") or "").strip()
@@ -876,6 +1200,27 @@ def _router_early_exits(data: dict) -> Optional[Any]:
 
 def _router_pending_and_services(message: str, branch_list: list) -> Optional[Any]:
     """فرع معلّق، شكوى، منتج، أقسام — بالترتيب الأصلي."""
+    ticket_lookup = try_complaint_ticket_status_lookup(message)
+    if ticket_lookup is not None:
+        return ticket_lookup
+    maybe_clear_complaint_session_before_router(message)
+    if session.get("complaint_active"):
+        policy_precheck_r = _handle_complaint_policy_precheck_turn(message, branch_list)
+        if policy_precheck_r is not None:
+            return policy_precheck_r
+
+        rule_complaint_r = _try_complaint_rule_flow(message, branch_list)
+        if rule_complaint_r is not None:
+            return rule_complaint_r
+
+        wiz_resp = _try_complaint_wizard(message, branch_list)
+        if wiz_resp is not None:
+            return wiz_resp
+
+        active_followup = _try_chat_active_complaint_turn(message, branch_list)
+        if active_followup is not None:
+            return active_followup
+
     time_fu = _try_time_or_phone_followup(message, branch_list)
     if time_fu is not None:
         return time_fu
@@ -967,7 +1312,7 @@ def _dispatch_rule_based_intent(message: str, branch_list: list, decision: dict)
         return jsonify(
             {
                 "products": [],
-                "message": build_return_policy_chat_message(dn, message),
+                "message": _return_policy_reply_for_chat(dn, message),
                 "intent": "return_policy",
             }
         )
@@ -1011,7 +1356,7 @@ def _dispatch_score_direct_intent(message: str, branch_list: list, decision: dic
             out["message"] = ai_fb.enrich_product_recommendation_message(
                 message, uctx, out.get("message") or "", titles
             )
-            print("AI SKIPPED: score_direct product + DB hit")
+            logger.debug("score_direct: product DB hit from rules-only path")
             return jsonify(out)
         return None
 
@@ -1025,7 +1370,7 @@ def _dispatch_score_direct_intent(message: str, branch_list: list, decision: dic
                 chat_ctx.remember_branch_by_name(bn)
                 session["chat_current_intent"] = "branch_phone"
                 session["chat_pending_action"] = None
-                print("AI SKIPPED: score_direct branch phone")
+                logger.debug("score_direct: branch phone from rules-only path")
                 return jsonify(branch_phone_payload(bn))
         bn = _resolve_branch_for_location(message)
         if bn:
@@ -1033,11 +1378,11 @@ def _dispatch_score_direct_intent(message: str, branch_list: list, decision: dic
             session["chat_selected_branch"] = bn
             chat_ctx.remember_branch_by_name(bn)
             session["chat_current_intent"] = "location"
-            print("AI SKIPPED: score_direct branch location")
+            logger.debug("score_direct: branch location from rules-only path")
             return jsonify(_branch_location_json(bn, message))
         session["chat_pending_action"] = cs._CHAT_PENDING_BRANCH
         session["chat_current_intent"] = "location"
-        print("AI SKIPPED: score_direct branch — ask which branch")
+        logger.debug("score_direct: ask branch from rules-only path")
         return jsonify(
             {
                 "products": [],
@@ -1064,10 +1409,52 @@ def _router_intent_branch(
 def dispatch_chat_query():
     """مسار /chat_query — تحليل نية أولي ثم نفس الترتيب المعتاد."""
     data = request.get_json(silent=True) or {}
-    message = (data.get("message") or "").strip()
+    if request.form:
+        for key in ("user_name", "user_contact", "message"):
+            if key in request.form:
+                data[key] = request.form.get(key)
+        if "account_logged_in" in request.form:
+            data["account_logged_in"] = request.form.get("account_logged_in")
 
-    if message and session.get("chat_last_incoming_message") == message:
-        return _silent_chat_response()
+    up = request.files.get("file")
+    if up and up.filename and cs.allowed_file(up.filename):
+        ext = up.filename.rsplit(".", 1)[1].lower()
+        unique_name = f"{uuid.uuid4().hex}.{ext}"
+        save_dir = current_app.config["UPLOAD_FOLDER"]
+        os.makedirs(save_dir, exist_ok=True)
+        path = os.path.join(save_dir, unique_name)
+        up.save(path)
+        proposed = (request.form.get("user_name") or data.get("user_name") or "").strip()
+        account_logged_in = (request.form.get("account_logged_in") or "").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        cs._apply_session_display_name(proposed, account_logged_in=account_logged_in)
+
+        derived = None
+        try:
+            derived = attachment_openai.text_from_saved_file(path, ext)
+        except Exception:
+            logger.exception("attachment OpenAI processing failed")
+
+        if (derived or "").strip():
+            data["message"] = derived.strip()
+        else:
+            db = cs.get_db()
+            is_image = ext in {"png", "jpg", "jpeg", "gif", "webp"}
+            msg = (
+                f"تم استلام الصورة يا {cs._display_name()}، صفّ لي طلبك أو استفسارك بالنص لأساعدك بشكل أدق."
+                if is_image
+                else f"تم استلام التسجيل الصوتي يا {cs._display_name()}، اكتب لي طلبك بالنص وسأساعدك."
+            )
+            return _finalize_chat_outputs_with_trends(
+                db,
+                jsonify({"products": [], "message": msg, "intent": "attachment"}),
+                "",
+            )
+
+    message = (data.get("message") or "").strip()
 
     session["chat_dialect"] = detect_dialect(message)
     session["chat_intent_snapshot"] = pre_route_intent_snapshot(
@@ -1079,8 +1466,8 @@ def dispatch_chat_query():
 
     mc = cust_ch.try_marketing_consent_reply(message, db)
     if mc is not None:
-        print("AI SKIPPED: marketing consent / consent reply path")
-        return _finalize_chat_outputs(mc, message)
+        logger.debug("marketing consent / consent reply path (no main router)")
+        return _finalize_chat_outputs_with_trends(db, mc, message)
 
     cust_ch.sync_customer_from_session(db, message)
 
@@ -1088,10 +1475,10 @@ def dispatch_chat_query():
         early = _router_early_exits(data)
         if early is not None:
             if data.get("account_session_sync"):
-                print("AI SKIPPED: early exit (account_session_sync)")
+                logger.debug("early exit: account_session_sync")
                 return early
-            print("AI SKIPPED: early exit (greeting/attachment/name/salam/...)")
-            return _finalize_chat_outputs(early, message)
+            logger.debug("early exit: greeting/attachment/name/salam/…")
+            return _finalize_chat_outputs_with_trends(db, early, message)
 
         _maybe_reset_product_section_context(message)
 
@@ -1099,7 +1486,8 @@ def dispatch_chat_query():
         branch_list = [{"name": b["city_name"]} for b in branches]
 
         mid = _router_pending_and_services(message, branch_list)
-        return _finalize_chat_outputs(
+        return _finalize_chat_outputs_with_trends(
+            db,
             _router_intent_branch(message, branch_list, pending_precalc=mid),
             message,
         )

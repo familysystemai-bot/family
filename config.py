@@ -24,13 +24,38 @@ if os.getenv("RENDER") is None:
 
     load_dotenv(_ENV_PATH)
 
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        return float(str(raw).strip().replace(",", "."))
+    except ValueError:
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        return int(str(raw).strip())
+    except ValueError:
+        return default
+
 # ——— قاعدة البيانات ———
 DATA_DIR = BASE_DIR / "data"
 DATABASE_FILENAME = os.getenv("DATABASE_FILENAME", "family_system.db")
 DATABASE_PATH = str(DATA_DIR / DATABASE_FILENAME)
 
 # ——— Flask ———
-SECRET_KEY = os.getenv("SECRET_KEY", "default_secret_key_123_change_me")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "SECRET_KEY must be set in the environment (e.g. .env or your host dashboard). "
+        "Use a long random value; never commit real secrets."
+    )
 STATIC_FOLDER = "static"
 UPLOAD_FOLDER_NAME = "uploads"
 UPLOAD_FOLDER = str(BASE_DIR / STATIC_FOLDER / UPLOAD_FOLDER_NAME)
@@ -41,11 +66,21 @@ ALLOWED_EXTENSIONS = frozenset(
 
 # ——— تسجيل الدخول (لوحة الإدارة) ———
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "kazm")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "2255")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+if not ADMIN_PASSWORD:
+    raise RuntimeError(
+        "ADMIN_PASSWORD must be set in the environment. Refusing to start with a weak default."
+    )
 
 # ——— حساب المؤسس (لا يُخزَّن في قاعدة البيانات) ———
 FOUNDER_USERNAME = os.getenv("FOUNDER_USERNAME", "kazm")
-FOUNDER_PASSWORD = os.getenv("FOUNDER_PASSWORD", "2255")
+FOUNDER_PASSWORD = os.getenv("FOUNDER_PASSWORD")
+if not FOUNDER_PASSWORD:
+    raise RuntimeError(
+        "FOUNDER_PASSWORD must be set in the environment. Refusing to start with a weak default."
+    )
+
+DEFAULT_BRANCH_PASSWORD = os.getenv("DEFAULT_BRANCH_PASSWORD")
 
 # ——— معلومات المؤسس (تُعرض في المحادثة فقط عند السؤال الصريح عنها) ———
 FOUNDER_PUBLIC_FULL_NAME = os.getenv("FOUNDER_PUBLIC_FULL_NAME", "كاظم نجيب المطحني")
@@ -81,6 +116,14 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if OPENAI_API_KEY is not None:
     OPENAI_API_KEY = OPENAI_API_KEY.strip() or None
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+# مرفقات الشات (Whisper + رؤية): يُعطّل بـ OPENAI_ATTACHMENTS=false
+OPENAI_ATTACHMENTS_ENABLED = os.getenv(
+    "OPENAI_ATTACHMENTS", "true"
+).strip().lower() in ("1", "true", "yes")
+OPENAI_WHISPER_MODEL = os.getenv("OPENAI_WHISPER_MODEL", "whisper-1")
+OPENAI_VISION_MODEL = os.getenv("OPENAI_VISION_MODEL", "gpt-4o-mini")
+# تشخيص منسّق الشات (طباعات/سجلات تفصيلية) — لا يُفعّل من مسار الطلب
+OPENAI_ORCH_DEBUG = os.getenv("OPENAI_ORCH_DEBUG", "").strip().lower() in ("1", "true", "yes")
 # تحليل استعلام البحث قبل SQLite (استخراج فقط) — يُعطّل بـ OPENAI_PRESEARCH=false
 # تصنيف مسار unknown عبر OpenAI — يُعطّل بـ OPENAI_INTENT_CLASSIFIER=false
 # منسّق الشات (قرار JSON: action + filters) — يُعطّل بـ OPENAI_CHAT_ORCHESTRATOR=false
@@ -94,6 +137,20 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").strip().lower()
 LLM_MODEL = os.getenv("LLM_MODEL", OLLAMA_MODEL)
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
 LLM_REQUEST_TIMEOUT = int(os.getenv("LLM_REQUEST_TIMEOUT", "90"))
+
+# ——— عتبات القرار للشات (مركزية) ———
+INTENT_SCORE_THRESHOLD_DIRECT = _env_float("CHAT_INTENT_SCORE_THRESHOLD", 60.0)
+INTENT_SCORE_MARGIN_AMBIGUOUS = _env_float("CHAT_INTENT_SCORE_MARGIN", 12.0)
+INTENT_SECOND_SCORE_AMBIGUOUS_FLOOR = _env_float(
+    "CHAT_INTENT_SECOND_SCORE_FLOOR", 35.0
+)
+GLOBAL_RULE_THRESHOLD = _env_float("CHAT_GLOBAL_RULE_THRESHOLD", 50.0)
+
+COMPLAINT_MIN_DETAIL = _env_int("CHAT_COMPLAINT_MIN_DETAIL", 22)
+COMPLAINT_SCORE_THRESHOLD = _env_int("CHAT_COMPLAINT_SCORE_THRESHOLD", 2)
+COMPLAINT_SCORE_PRIMARY_WEIGHT = _env_int("CHAT_COMPLAINT_SCORE_PRIMARY_WEIGHT", 2)
+COMPLAINT_SCORE_NEGATIVE_WEIGHT = _env_int("CHAT_COMPLAINT_SCORE_NEGATIVE_WEIGHT", 1)
+COMPLAINT_SCORE_BRANCH_WEIGHT = _env_int("CHAT_COMPLAINT_SCORE_BRANCH_WEIGHT", 1)
 
 # ——— تشغيل السيرفر ———
 FLASK_HOST = os.getenv("FLASK_HOST", "0.0.0.0")

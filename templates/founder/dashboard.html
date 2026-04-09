@@ -16,46 +16,121 @@
 
 <div class="row g-3 mb-4">
     <div class="col-md-4">
-        <div class="fd-card fd-stat">
+        <div class="fd-card fd-stat fd-stat--hero">
             <div class="fd-stat-label">الفروع</div>
             <div class="fd-stat-value">{{ n_branches }}</div>
         </div>
     </div>
     <div class="col-md-4">
-        <div class="fd-card fd-stat">
+        <div class="fd-card fd-stat fd-stat--hero">
             <div class="fd-stat-label">المنتجات</div>
             <div class="fd-stat-value">{{ n_products }}</div>
         </div>
     </div>
     <div class="col-md-4">
-        <div class="fd-card fd-stat">
+        <div class="fd-card fd-stat fd-stat--hero">
             <div class="fd-stat-label">الشكاوى</div>
             <div class="fd-stat-value">{{ n_complaints }}</div>
         </div>
     </div>
 </div>
 
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="fd-card fd-chart-card">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                <h2 class="fd-card-title mb-0">تفاعلات الشات اليومية</h2>
+                <button type="button" class="btn fd-btn fd-btn--soft btn-sm" id="fdRefreshDailyChart">تحديث الرسم</button>
+            </div>
+            <p class="small text-muted mb-3 mb-md-4">يُحسب عدد تفاعلات الشات المسجّلة يومياً مع تحليلات <code>trend_data</code>.</p>
+            <div class="fd-chart-wrap">
+                <canvas id="fdDailyLineChart" aria-label="رسم تفاعلات يومية"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="row g-3">
     <div class="col-md-6">
-        <div class="fd-card h-100">
+        <div class="fd-card h-100 fd-card--shortcuts">
             <h2 class="fd-card-title">اختصارات</h2>
             <div class="d-grid gap-2">
-                <a class="btn fd-btn" href="{{ url_for('founder_branches') }}">إدارة الفروع</a>
-                <a class="btn btn-outline-success" href="{{ url_for('founder_products') }}">جميع المنتجات</a>
-                <a class="btn btn-outline-success" href="{{ url_for('founder_add_product') }}">إضافة منتج لأي فرع</a>
-                <a class="btn btn-outline-light" href="{{ url_for('founder_accounts') }}">كلمات المرور</a>
-                <a class="btn btn-outline-warning" href="{{ url_for('campaigns.founder_campaigns') }}">📢 الحملات الإعلانية</a>
+                <a class="btn fd-btn fd-btn--wide" href="{{ url_for('founder_branches') }}">🏢 إدارة الفروع</a>
+                <a class="btn fd-btn fd-btn--outline" href="{{ url_for('founder_products') }}">📦 جميع المنتجات</a>
+                <a class="btn fd-btn fd-btn--outline" href="{{ url_for('founder_add_product') }}">➕ إضافة منتج لأي فرع</a>
+                <a class="btn fd-btn fd-btn--outline" href="{{ url_for('founder_accounts') }}">🔐 كلمات المرور</a>
+                <a class="btn fd-btn fd-btn--accent" href="{{ url_for('campaigns.founder_campaigns') }}">📢 الحملات الإعلانية</a>
             </div>
         </div>
     </div>
     <div class="col-md-6">
-        <div class="fd-card h-100">
+        <div class="fd-card h-100 fd-card--shortcuts">
             <h2 class="fd-card-title">إدارة عامة</h2>
             <p class="text-muted small mb-3">المستخدمون والشكاوى متاحة من القائمة الجانبية.</p>
             <div class="d-flex flex-wrap gap-2">
-                <a class="btn btn-sm btn-outline-light" href="{{ url_for('admin_users') }}">مستخدمو الفروع</a>
-                <a class="btn btn-sm btn-outline-light" href="{{ url_for('admin_complaints') }}">الشكاوى</a>
-                <a class="btn btn-sm btn-outline-warning" href="{{ url_for('campaigns.founder_campaigns') }}">حملات</a>
+                <a class="btn fd-btn fd-btn--outline btn-sm" href="{{ url_for('admin_users') }}">👤 مستخدمو الفروع</a>
+                <a class="btn fd-btn fd-btn--outline btn-sm" href="{{ url_for('admin_complaints') }}">📋 الشكاوى</a>
+                <a class="btn fd-btn fd-btn--accent btn-sm" href="{{ url_for('campaigns.founder_campaigns') }}">📢 حملات</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="fd-card">
+            <h2 class="fd-card-title">متابعة الشكاوى</h2>
+            <p class="small text-muted mb-3">عرض أحدث الشكاوى غير المحلولة. عند التحديد كـ «تم الحل» تُحفظ ملاحظاتك ويستطيع العميل الاطلاع عليها عند الاستعلام برقم التذكرة في الشات.</p>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>التذكرة</th>
+                            <th>العميل / الفرع</th>
+                            <th>نص مختصر</th>
+                            <th>الحالة</th>
+                            <th style="min-width: 220px;">إجراء</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in complaints_preview %}
+                        {% set st = (c.status or '')|lower %}
+                        {% set is_resolved = st == 'resolved' %}
+                        <tr>
+                            <td class="text-nowrap fw-bold"><code>{{ (c.ticket_code or '—') }}</code></td>
+                            <td>
+                                <div>{{ (c.customer_name or '—') }}</div>
+                                <div class="small text-muted">{{ (c.branch_name or '—') }}</div>
+                            </td>
+                            <td class="small" style="max-width: 280px;">{{ ((c.message or c.issue or '')[:180]) }}{% if (c.message or c.issue or '')|length > 180 %}…{% endif %}</td>
+                            <td>
+                                {% if is_resolved %}
+                                <span class="badge text-bg-success">تم الحل</span>
+                                {% else %}
+                                <span class="badge text-bg-warning text-dark">قيد المعالجة</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if not is_resolved %}
+                                <form action="{{ url_for('founder_resolve_complaint', complaint_id=c.id) }}" method="post" class="d-flex flex-column gap-2">
+                                    <textarea name="resolution_notes" class="form-control form-control-sm" rows="2" placeholder="ملاحظات الحل (تظهر للعميل)"></textarea>
+                                    <button type="submit" class="btn fd-btn fd-btn--accent btn-sm">تم الحل (Resolved)</button>
+                                </form>
+                                {% else %}
+                                <span class="small text-muted">{{ (c.resolution_notes or '—') }}</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-4">لا توجد شكاوى معروضة حالياً.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-2">
+                <a class="btn fd-btn fd-btn--outline btn-sm" href="{{ url_for('admin_complaints') }}">عرض كل الشكاوى والفلترة</a>
             </div>
         </div>
     </div>
@@ -113,4 +188,80 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+<script>
+(function () {
+  const url = {{ url_for('api_daily_chat_line') | tojson }};
+  let chart = null;
+
+  function renderChart(payload) {
+    const canvas = document.getElementById('fdDailyLineChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    const labels = payload.labels || [];
+    const values = payload.values || [];
+    if (chart) chart.destroy();
+    chart = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'عدد التفاعلات',
+          data: values,
+          borderColor: '#059669',
+          backgroundColor: 'rgba(16, 185, 129, 0.12)',
+          borderWidth: 2,
+          fill: true,
+          tension: 0.35,
+          pointRadius: 3,
+          pointBackgroundColor: '#047857',
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          title: { display: false }
+        },
+        scales: {
+          x: {
+            grid: { color: 'rgba(0,0,0,0.06)' },
+            ticks: { maxRotation: 45, minRotation: 0 }
+          },
+          y: {
+            beginAtZero: true,
+            ticks: { precision: 0 },
+            grid: { color: 'rgba(0,0,0,0.06)' }
+          }
+        }
+      }
+    });
+  }
+
+  async function loadChart() {
+    const btn = document.getElementById('fdRefreshDailyChart');
+    if (btn) btn.disabled = true;
+    try {
+      const r = await fetch(url + '?days=30', { credentials: 'same-origin' });
+      if (!r.ok) return;
+      const j = await r.json();
+      renderChart(j);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  document.getElementById('fdRefreshDailyChart') && document.getElementById('fdRefreshDailyChart').addEventListener('click', loadChart);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadChart);
+  } else {
+    loadChart();
+  }
+})();
+</script>
 {% endblock %}

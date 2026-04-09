@@ -1,0 +1,88 @@
+{# company_info_scope: "admin" | "branch" — خدمات الفروع فقط (الدوام/الموقع من صفحة بيانات الفرع) #}
+{% set is_admin = (company_info_scope == 'admin') %}
+<div class="stat-card mt-4 mb-4">
+    <h5 class="mb-2 fw-bold">{% if is_admin %}خدمات الفروع (للشات){% else %}خدمات فرعك{% endif %}</h5>
+    <p class="small text-muted mb-3">
+        أدخل <strong>اسم الخدمة</strong> و<strong>تفاصيل مختصرة</strong> تظهر في سياق الذكاء الاصطناعي.
+        الدوام والموقع ووسائل التواصل تُحدَّث من <strong>معلومات الفرع</strong> وليست هنا.
+    </p>
+    <form method="post" action="{{ url_for('admin_company_info') }}">
+        {% for branch in branches %}
+        <div class="border rounded p-3 mb-3 bg-light company-branch-block">
+            <div class="fw-bold mb-2">{{ branch.city_name }}</div>
+            <div class="company-services-list" data-branch-id="{{ branch.id }}">
+                {% set svcs = branch_services_by_id.get(branch.id) or [] %}
+                {% if svcs %}
+                    {% for svc in svcs %}
+                    <div class="company-service-row row g-2 align-items-end mb-2">
+                        <div class="col-12 col-md-4">
+                            <label class="small text-muted mb-0">الخدمة</label>
+                            <input type="text" name="b{{ branch.id }}_title[]" class="form-control form-control-sm" value="{{ svc.service_title }}" placeholder="مثال: توصيل" autocomplete="off">
+                        </div>
+                        <div class="col-12 col-md-7">
+                            <label class="small text-muted mb-0">التفاصيل</label>
+                            <textarea name="b{{ branch.id }}_details[]" class="form-control form-control-sm" rows="2" placeholder="تفاصيل مختصرة">{{ svc.details }}</textarea>
+                        </div>
+                        <div class="col-12 col-md-1 d-flex justify-content-md-center pb-1">
+                            <button type="button" class="btn btn-outline-danger btn-sm company-service-remove" title="حذف الصف">🗑</button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="company-service-row row g-2 align-items-end mb-2">
+                        <div class="col-12 col-md-4">
+                            <label class="small text-muted mb-0">الخدمة</label>
+                            <input type="text" name="b{{ branch.id }}_title[]" class="form-control form-control-sm" placeholder="مثال: توصيل" autocomplete="off">
+                        </div>
+                        <div class="col-12 col-md-7">
+                            <label class="small text-muted mb-0">التفاصيل</label>
+                            <textarea name="b{{ branch.id }}_details[]" class="form-control form-control-sm" rows="2" placeholder="تفاصيل مختصرة"></textarea>
+                        </div>
+                        <div class="col-12 col-md-1 d-flex justify-content-md-center pb-1">
+                            <button type="button" class="btn btn-outline-danger btn-sm company-service-remove" title="حذف الصف">🗑</button>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+            <button type="button" class="btn btn-outline-secondary btn-sm mt-1 company-service-add" data-branch-id="{{ branch.id }}">+ إضافة خدمة</button>
+        </div>
+        {% else %}
+        <p class="text-muted small mb-0">لا يوجد فرع مرتبط بهذا الحساب — أضف فرعاً من الإدارة أولاً.</p>
+        {% endfor %}
+        {% if branches %}
+        <button type="submit" class="btn btn-gold mt-2">{% if is_admin %}حفظ خدمات الفروع{% else %}حفظ خدمات الفرع{% endif %}</button>
+        {% endif %}
+    </form>
+</div>
+<script>
+(function () {
+    function bindRow(row) {
+        var rm = row.querySelector('.company-service-remove');
+        if (!rm) return;
+        rm.addEventListener('click', function () {
+            var list = row.closest('.company-services-list');
+            if (!list) return;
+            var rows = list.querySelectorAll('.company-service-row');
+            if (rows.length <= 1) {
+                row.querySelectorAll('input, textarea').forEach(function (el) { el.value = ''; });
+                return;
+            }
+            row.remove();
+        });
+    }
+    document.querySelectorAll('.company-service-row').forEach(bindRow);
+    document.querySelectorAll('.company-service-add').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var bid = btn.getAttribute('data-branch-id');
+            var list = document.querySelector('.company-services-list[data-branch-id="' + bid + '"]');
+            if (!list) return;
+            var first = list.querySelector('.company-service-row');
+            if (!first) return;
+            var row = first.cloneNode(true);
+            row.querySelectorAll('input, textarea').forEach(function (el) { el.value = ''; });
+            list.appendChild(row);
+            bindRow(row);
+        });
+    });
+})();
+</script>

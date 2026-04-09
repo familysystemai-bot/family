@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sqlite3
 from typing import Any, Dict, List, Optional, Tuple
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from logic.branch_helpers import (
     _branch_dedupe_key,
@@ -13,6 +14,52 @@ from logic.branch_helpers import (
 
 class BranchRepositoryMixin:
     """Mixin: يُدمج في DatabaseManager — يستخدم self._get_connection() فقط."""
+    @staticmethod
+    def _branch_password_is_hashed(value: Optional[str]) -> bool:
+        s = (value or "").strip()
+        return s.startswith("pbkdf2:") or s.startswith("scrypt:")
+
+    @staticmethod
+    def _hash_branch_password(raw_password: str) -> str:
+        pw = (raw_password or "").strip()
+        if not pw:
+            raise ValueError("empty branch password")
+        return generate_password_hash(pw)
+
+    @classmethod
+    def _branch_password_matches(cls, stored_password: Optional[str], plain_password: str) -> bool:
+        stored = (stored_password or "").strip()
+        plain = plain_password or ""
+        if not stored or not plain:
+            return False
+        if cls._branch_password_is_hashed(stored):
+            return check_password_hash(stored, plain)
+        return stored == plain
+
+    def check_branch_login_with_status(self, username, password) -> tuple[Optional[Dict[str, Any]], str]:
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute(
+                "SELECT id, city_name, password FROM branches WHERE username = ?",
+                ((username or "").strip(),),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None, "user_not_found"
+            branch = dict(row)
+            stored_password = branch.get("password")
+            if not self._branch_password_matches(stored_password, password):
+                return None, "password_mismatch"
+            if stored_password and not self._branch_password_is_hashed(stored_password):
+                conn.execute(
+                    "UPDATE branches SET password = ? WHERE id = ?",
+                    (self._hash_branch_password(password), branch["id"]),
+                )
+                conn.commit()
+            return {"id": branch["id"], "city_name": branch["city_name"]}, "ok"
+        finally:
+            conn.close()
+
     def get_branch_info(self, branch_id: int) -> Optional[Dict[str, Any]]:
         conn = self._get_connection()
         try:
@@ -36,16 +83,8 @@ class BranchRepositoryMixin:
             conn.close()
 
     def check_branch_login(self, username, password):
-        conn = self._get_connection()
-        try:
-            cursor = conn.execute(
-                "SELECT id, city_name FROM branches WHERE username = ? AND password = ?",
-                (username, password),
-            )
-            row = cursor.fetchone()
-            return dict(row) if row else None
-        finally:
-            conn.close()
+        branch, _status = self.check_branch_login_with_status(username, password)
+        return branch
 
     def get_all_branches(self):
         conn = self._get_connection()
@@ -90,7 +129,8 @@ class BranchRepositoryMixin:
     def create_new_branch(self, username, password, city_name):
         city_clean = _normalize_branch_city_label(city_name or "")
         un = (username or "").strip()
-        if not un or not city_clean:
+        pw = (password or "").strip()
+        if not un or not city_clean or not pw:
             return False
         conn = self._get_connection()
         try:
@@ -99,7 +139,7 @@ class BranchRepositoryMixin:
                 return False
             cursor.execute(
                 "INSERT INTO branches (username, password, city_name) VALUES (?, ?, ?)",
-                (un, password, city_clean),
+                (un, self._hash_branch_password(pw), city_clean),
             )
             conn.commit()
             return True
@@ -111,10 +151,16 @@ class BranchRepositoryMixin:
             conn.close()
 
     def update_branch_password(self, b_id, new_password):
+        pw = (new_password or "").strip()
+        if not pw:
+            return False
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("UPDATE branches SET password = ? WHERE id = ?", (new_password, b_id))
+            cursor.execute(
+                "UPDATE branches SET password = ? WHERE id = ?",
+                (self._hash_branch_password(pw), b_id),
+            )
             conn.commit()
             return True
         except Exception: 
@@ -586,28 +632,67 @@ class BranchRepositoryMixin:
     def get_branch_users(self) -> List[Dict[str, Any]]:
         conn = self._get_connection()
         try:
-            cursor = conn.execute("SELECT id, city_name, username, password FROM branches ORDER BY id")
+            cursor = conn.execute(
+                """
+                SELECT
+                    id,
+                    city_name,
+                    username,
+                    CASE WHEN TRIM(COALESCE(password, '')) != '' THEN 1 ELSE 0 END AS has_password
+                FROM branches
+                ORDER BY id
+                """
+            )
             return [dict(row) for row in cursor.fetchall()]
         finally:
             conn.close()
 
-    def update_branch_user(self, branch_id: int, username: str, password: str) -> bool:
+    def update_branch_user(self, branch_id: int, username: str, password: Optional[str]) -> bool:
         username = (username or "").strip()
         password = (password or "").strip()
-        if not username or not password:
+        if not username:
             return False
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
+            params: List[Any] = [username]
+            set_parts = ["username = ?"]
+            if password:
+                set_parts.append("password = ?")
+                params.append(self._hash_branch_password(password))
+            params.append(branch_id)
             cursor.execute(
-                "UPDATE branches SET username = ?, password = ? WHERE id = ?",
-                (username, password, branch_id),
+                f"UPDATE branches SET {', '.join(set_parts)} WHERE id = ?",
+                tuple(params),
             )
             conn.commit()
             return cursor.rowcount > 0
         except Exception:
             conn.rollback()
             return False
+        finally:
+            conn.close()
+
+    def migrate_branch_passwords_to_hashes(self) -> int:
+        conn = self._get_connection()
+        try:
+            rows = conn.execute("SELECT id, password FROM branches").fetchall()
+            updates: List[Tuple[str, int]] = []
+            for row in rows:
+                stored = (row["password"] or "").strip()
+                if stored and not self._branch_password_is_hashed(stored):
+                    updates.append((self._hash_branch_password(stored), int(row["id"])))
+            if not updates:
+                return 0
+            conn.executemany(
+                "UPDATE branches SET password = ? WHERE id = ?",
+                updates,
+            )
+            conn.commit()
+            return len(updates)
+        except Exception:
+            conn.rollback()
+            return 0
         finally:
             conn.close()
 
