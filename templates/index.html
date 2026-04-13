@@ -625,9 +625,47 @@
                 } else {
                     appendBotChatPayload(data);
                 }
+                // ── ابدأ polling إذا كان الرد استفساراً للفرع ──
+                if (data && data.intent === 'inquiry_confirm') {
+                    startInquiryPolling();
+                }
             } catch (error) {
                 appendBotMessageText('عذراً، حدث خطأ في الاتصال بالسيرفر.');
             }
+        }
+
+        // ── Polling: تحقق إذا ردّ الفرع على استفسار العميل ──
+        let _inquiryPollTimer = null;
+        let _inquiryPollCount = 0;
+
+        function startInquiryPolling() {
+            stopInquiryPolling();
+            _inquiryPollCount = 0;
+            _inquiryPollTimer = setInterval(checkInquiryReply, 30000); // كل 30 ثانية
+        }
+
+        function stopInquiryPolling() {
+            if (_inquiryPollTimer) {
+                clearInterval(_inquiryPollTimer);
+                _inquiryPollTimer = null;
+            }
+        }
+
+        async function checkInquiryReply() {
+            _inquiryPollCount++;
+            if (_inquiryPollCount > 120) { // توقف بعد ساعة تقريباً
+                stopInquiryPolling();
+                return;
+            }
+            try {
+                const res = await fetch('/api/inquiry-status', { credentials: 'same-origin' });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.replied) {
+                    stopInquiryPolling();
+                    appendBotChatPayload(data);
+                }
+            } catch (_) { /* تجاهل أخطاء الشبكة */ }
         }
     </script>
 </body>

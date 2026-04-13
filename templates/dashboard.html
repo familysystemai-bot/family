@@ -74,6 +74,28 @@
                     </a>
                     <a class="nav-link" href="#liveAnalyticsOffcanvas" data-bs-toggle="offcanvas" data-bs-target="#liveAnalyticsOffcanvas" aria-controls="liveAnalyticsOffcanvas">📊 التحليلات الحية</a>
                     <hr class="mx-3">
+
+                    <!-- ── إعدادات الفرع (بريد + جوال) ── -->
+                    <div class="px-3 pb-3">
+                        <small class="fw-bold d-block mb-2" style="color:var(--accent-gold); font-size:.8rem;">⚙️ بيانات التواصل</small>
+                        <form action="/branch/settings/contact" method="POST">
+                            <div class="mb-2">
+                                <label class="form-label" style="font-size:.75rem; color:#555;">📧 البريد الإلكتروني</label>
+                                <input type="email" name="branch_email" class="form-control form-control-sm"
+                                       value="{{ branch_info.complaint_email or '' }}"
+                                       placeholder="email@example.com">
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label" style="font-size:.75rem; color:#555;">📱 رقم الجوال</label>
+                                <input type="tel" name="branch_phone" class="form-control form-control-sm"
+                                       value="{{ branch_info.phone or '' }}"
+                                       placeholder="05xxxxxxxx">
+                            </div>
+                            <button type="submit" class="btn btn-sm w-100" style="background:var(--accent-gold);color:#fff;font-weight:600;">حفظ البيانات</button>
+                        </form>
+                    </div>
+
+                    <hr class="mx-3">
                     <a class="nav-link text-danger" href="/logout">🚪 تسجيل الخروج</a>
                 </nav>
                 </div>

@@ -1539,9 +1539,13 @@ def try_product_search_with_inquiry(
 ) -> dict:
     """
     يبحث عن المنتج أولاً.
-    إذا لم يجد → يتحقق إذا القسم موجود عندنا (قواعد، بدون AI).
-    إذا القسم موجود → ينشئ استفساراً للفرع ويعيد رسالة مناسبة.
-    إذا لا → يعيد NO_PRODUCTS_PAYLOAD كالمعتاد.
+    إذا لم يجد + القسم موجود عندنا → يسأل العميل: تبغى أتأكد من الفرع أو كل الفروع؟
+    إذا القسم غير موجود → يعيد NO_PRODUCTS_PAYLOAD.
+
+    التدفق الصحيح:
+    1. هذه الدالة تحفظ pending_inquiry في الجلسة وتعيد سؤالاً للعميل.
+    2. chat_router يلتقط رد العميل عبر _try_resolve_pending_inquiry.
+    3. عند التأكيد → ينشئ الاستفسار ويرسل البريد.
 
     ملاحظة: هذه الدالة تعيد dict فقط (لا jsonify).
     """
@@ -1551,14 +1555,8 @@ def try_product_search_with_inquiry(
     if result.get("intent") != "no_products":
         return result
 
-    # ── المنتج غير موجود في قاعدة البيانات ──
-    # نحاول استنتاج الفئة ونُنشئ استفساراً للفرع
     try:
         from logic.category_classifier import infer_category_from_text
-        from logic.branch_inquiry_service import (
-            create_product_inquiry,
-            build_inquiry_response_for_customer,
-        )
 
         cs_obj = _cs()
         db = cs_obj.get_db()
@@ -1575,45 +1573,41 @@ def try_product_search_with_inquiry(
         if not category:
             return result  # لا يوجد قسم مطابق → رد افتراضي
 
-        # قسم موجود عندنا → نُنشئ استفساراً
         branch_name = (
             session.get("chat_selected_branch")
             or session.get("chat_last_branch")
             or ""
         )
         customer_name = (session.get("user_name") or "").strip()
-        dialect = session.get("chat_dialect") or "default"
-        session_id = (
-            session.get("user_id")
-            or session.get("sid")
-            or session.get("_sid")
-            or "anon"
-        )
+        name_part = f" يا {customer_name}" if customer_name else ""
 
-        inquiry_id = create_product_inquiry(
-            db=db,
-            session_id=session_id,
-            inquiry_text=message,
-            category_hint=category,
-            branch_name=branch_name,
-            customer_name=customer_name,
-            send_email=bool(branch_name),  # نُرسل البريد فقط إذا الفرع معلوم
-        )
+        # ── احفظ الاستفسار في الجلسة ولا تُنشئه تلقائياً ──
+        # سنسأل العميل أولاً، وننشئ الاستفسار بعد تأكيده
+        session["pending_inquiry"] = {
+            "text": message,
+            "category": category,
+            "branch_name": branch_name,
+            "image_path": session.get("_pending_image_path", ""),
+        }
 
-        if not inquiry_id:
-            return result  # فشل الإنشاء → رد افتراضي
+        # بناء سؤال التأكيد
+        if branch_name:
+            q = (
+                f"عندنا قسم {category}{name_part} ✅\n"
+                f"ما لقيت المنتج المحدد حالياً — تبغى أتأكد لك من فرع {branch_name}، "
+                f"أو أشوف في كل الفروع؟"
+            )
+        else:
+            q = (
+                f"عندنا قسم {category}{name_part} ✅\n"
+                f"ما لقيت المنتج المحدد حالياً — تبغى أشوف لك في كل الفروع؟"
+            )
 
-        # احفظ رقم الاستفسار في الجلسة ليتمكن العميل من متابعته
-        session["last_inquiry_id"] = inquiry_id
-
-        return build_inquiry_response_for_customer(
-            inquiry_id=inquiry_id,
-            category_name=category,
-            product_query=message,
-            branch_name=branch_name,
-            dialect=dialect,
-            customer_name=customer_name,
-        )
+        return {
+            "products": [],
+            "message": q,
+            "intent": "inquiry_confirm",
+        }
 
     except Exception:
         import logging

@@ -1510,8 +1510,132 @@ def _router_early_exits(data: dict) -> Optional[Any]:
     return None
 
 
+def _try_resolve_pending_inquiry(message: str) -> Optional[Any]:
+    """
+    يعالج رد العميل على سؤال 'تبغى أتأكد من الفرع أو كل الفروع؟'.
+    يُستدعى في بداية _router_pending_and_services.
+    """
+    pending = session.get("pending_inquiry")
+    if not pending:
+        return None
+
+    msg_lower = message.strip()
+
+    # ── كلمات النفي ──
+    _no_words = ("لا", "لأ", "لا شكرا", "لا شكراً", "ما أبغى", "ما ابغى", "بس شكرا", "ما يهم", "اترك")
+    _yes_words = ("ايوه", "اه", "آه", "نعم", "شوف", "اشوف", "أشوف", "تأكد", "تاكد",
+                  "ابغى", "أبغى", "يلا", "زين", "ماشي", "حسناً", "حسنا", "موافق", "وكيل", "عيل", "يعطيك")
+    _all_words = ("كل الفروع", "كل الفرع", "جميع الفروع", "الكل", "كلهم", "كل فرع", "عند الكل")
+
+    is_no = any(w in msg_lower for w in _no_words) and not any(w in msg_lower for w in _yes_words + _all_words)
+    is_all = any(w in msg_lower for w in _all_words)
+    is_yes = any(w in msg_lower for w in _yes_words)
+
+    if is_no:
+        session.pop("pending_inquiry", None)
+        dn = cs._display_name()
+        return jsonify({
+            "products": [],
+            "message": f"حسناً يا {dn}، أي وقت تحتاج مساعدة أنا هنا 😊",
+            "intent": "inquiry_cancelled",
+        })
+
+    if not is_all and not is_yes:
+        # لا يوجد إجابة واضحة — اسأل مجدداً
+        return None
+
+    # ── إنشاء الاستفسار ──
+    try:
+        from logic.branch_inquiry_service import (
+            create_product_inquiry,
+            create_inquiries_for_all_branches,
+            build_inquiry_response_for_customer,
+        )
+
+        inq_data = session.pop("pending_inquiry")
+        db = cs.get_db()
+        dialect = session.get("chat_dialect") or "default"
+        customer_name = (session.get("user_name") or "").strip()
+        customer_contact = (
+            session.get("user_contact")
+            or session.get("user")
+            or ""
+        ).strip()
+        session_id = (
+            session.get("user_id")
+            or session.get("sid")
+            or session.get("_sid")
+            or "anon"
+        )
+
+        inquiry_text = inq_data.get("text", "")
+        category = inq_data.get("category", "")
+        branch_name = inq_data.get("branch_name", "")
+        image_path = inq_data.get("image_path", "")
+
+        if is_all:
+            inquiry_id = create_inquiries_for_all_branches(
+                db=db,
+                session_id=session_id,
+                inquiry_text=inquiry_text,
+                category_hint=category,
+                customer_name=customer_name,
+                customer_contact=customer_contact,
+                customer_image_path=image_path,
+            )
+            branch_name = "كل الفروع"
+        else:
+            # حاول تحديد الفرع من الرسالة الحالية، وإلا استخدم المحفوظ
+            mentioned = cs.resolve_branch_from_message(message)
+            if mentioned:
+                branch_name = mentioned
+            inquiry_id = create_product_inquiry(
+                db=db,
+                session_id=session_id,
+                inquiry_text=inquiry_text,
+                category_hint=category,
+                branch_name=branch_name,
+                customer_name=customer_name,
+                customer_contact=customer_contact,
+                customer_image_path=image_path,
+                send_email=True,
+            )
+
+        if not inquiry_id:
+            return jsonify({
+                "products": [],
+                "message": "حدث خطأ أثناء إرسال الاستفسار، حاول مرة ثانية.",
+                "intent": "error",
+            })
+
+        session["last_inquiry_id"] = inquiry_id
+        session.pop("_pending_image_path", None)  # نظّف الصورة المعلّقة
+
+        return jsonify(
+            build_inquiry_response_for_customer(
+                inquiry_id=inquiry_id,
+                category_name=category,
+                product_query=inquiry_text,
+                branch_name=branch_name,
+                dialect=dialect,
+                customer_name=customer_name,
+            )
+        )
+
+    except Exception:
+        logger.exception("_try_resolve_pending_inquiry: failed to create inquiry")
+        session.pop("pending_inquiry", None)
+        return None
+
+
 def _router_pending_and_services(message: str, branch_list: list) -> Optional[Any]:
     """فرع معلّق، شكوى، منتج، أقسام — بالترتيب الأصلي."""
+
+    # ── معالجة تأكيد الاستفسار (يجب أن يكون أولاً) ──
+    pending_inq = _try_resolve_pending_inquiry(message)
+    if pending_inq is not None:
+        return pending_inq
+
     ticket_lookup = try_complaint_ticket_status_lookup(message)
     if ticket_lookup is not None:
         return ticket_lookup

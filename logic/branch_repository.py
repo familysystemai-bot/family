@@ -118,10 +118,12 @@ class BranchRepositoryMixin:
     def get_branch_by_id(self, b_id):
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT id, city_name, username FROM branches WHERE id = ?", (b_id,))
+        cursor.execute(
+            "SELECT id, city_name, username, complaint_email, phone FROM branches WHERE id = ?",
+            (b_id,),
+        )
         row = cursor.fetchone()
         conn.close()
-        # تحويل لقاموس عشان يشتغل مع app.py
         if row:
             return dict(row)
         return None

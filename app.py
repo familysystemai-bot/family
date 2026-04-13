@@ -388,6 +388,9 @@ def dashboard():
         except Exception:
             branch_inquiries = []
 
+    # معلومات الفرع (بريد + جوال) لعرضها في الإعدادات
+    branch_info = db.get_branch_by_id(bid_int) if bid_int is not None else {}
+
     return render_template(
         "dashboard.html",
         main_categories=branch_cats,
@@ -397,6 +400,7 @@ def dashboard():
         branch_complaints=branch_complaints,
         branch_inquiries=branch_inquiries,
         pending_inquiries_count=pending_inquiries_count,
+        branch_info=branch_info or {},
     )
 
 @app.route('/logout')
@@ -1496,11 +1500,74 @@ def branch_reply_inquiry(inquiry_id: int):
     )
 
     if ok:
+        # ── إشعار العميل بالبريد إذا كان لديه بريد مسجّل ──
+        try:
+            inquiry = db.get_inquiry_by_id(inquiry_id)
+            if inquiry:
+                inquiry["branch_reply"] = reply_text
+                inquiry["branch_price"] = branch_price
+                inquiry["branch_image_path"] = branch_image_path
+                from logic.branch_inquiry_service import notify_customer_of_reply
+                notify_customer_of_reply(inquiry)
+        except Exception:
+            pass  # الإشعار غير إلزامي
+
         flash("✅ تم إرسال الرد للعميل بنجاح.", "success")
     else:
         flash("حدث خطأ أثناء حفظ الرد.", "danger")
 
     return redirect(request.referrer or url_for("dashboard"))
+
+
+@app.route("/api/inquiry-status")
+def api_inquiry_status():
+    """
+    يتحقق إذا وصل رد من الفرع على آخر استفسار في الجلسة.
+    يُستخدم من الشات بالـ polling كل 30 ثانية.
+    """
+    inq_id = session.get("last_inquiry_id")
+    if not inq_id:
+        return jsonify({"replied": False})
+    try:
+        inquiry = db.get_inquiry_by_id(int(inq_id))
+        if not inquiry or inquiry.get("status") != "answered":
+            return jsonify({"replied": False})
+
+        # بناء رسالة الرد
+        from logic.branch_inquiry_service import get_inquiry_reply_message
+        dialect = session.get("chat_dialect") or "default"
+        payload = get_inquiry_reply_message(inquiry, dialect)
+        # امسح من الجلسة حتى لا يُظهر مرة ثانية
+        session.pop("last_inquiry_id", None)
+        return jsonify({"replied": True, **payload})
+    except Exception:
+        return jsonify({"replied": False})
+
+
+@app.route("/branch/settings/contact", methods=["POST"])
+def branch_update_contact():
+    """يحدّث بريد الفرع ورقم جواله من الداشبورد."""
+    if not _staff_session_ok():
+        return redirect(url_for("login"))
+    bid = _session_branch_id_int()
+    if bid is None:
+        flash("غير مصرح.", "danger")
+        return redirect(url_for("dashboard"))
+
+    branch_email = (request.form.get("branch_email") or "").strip()
+    branch_phone = (request.form.get("branch_phone") or "").strip()
+
+    ok = db.update_branch_fields(
+        branch_id=bid,
+        complaint_email=branch_email or None,
+        phone=branch_phone or None,
+    )
+    if ok:
+        flash("✅ تم حفظ بيانات الفرع.", "success")
+    else:
+        flash("حدث خطأ أثناء الحفظ.", "danger")
+
+    return redirect(url_for("dashboard"))
 
 
 @app.route("/admin/complaints/<int:complaint_id>/resolve", methods=["POST"])
