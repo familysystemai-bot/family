@@ -653,7 +653,7 @@
 
         async function checkInquiryReply() {
             _inquiryPollCount++;
-            if (_inquiryPollCount > 120) { // توقف بعد ساعة تقريباً
+            if (_inquiryPollCount > 120) {
                 stopInquiryPolling();
                 return;
             }
@@ -663,7 +663,19 @@
                 const data = await res.json();
                 if (data.replied) {
                     stopInquiryPolling();
-                    appendBotChatPayload(data);
+                    // ── عرض سياق الاستفسار الأصلي (WhatsApp-style) ──
+                    if (data.inquiry_text) {
+                        appendBotHTML(
+                            '<div style="background:rgba(255,255,255,0.08);border-right:3px solid rgba(255,255,255,0.3);padding:6px 10px;border-radius:6px;font-size:.8rem;color:rgba(255,255,255,.7);margin-bottom:4px;">' +
+                            '↩ رداً على: ' + escHtml(data.inquiry_text) +
+                            '</div>'
+                        );
+                    }
+                    // ── عرض نص الرد ──
+                    if (data.message) appendBotMessageText(String(data.message).trim());
+                    // ── عرض صورة الفرع إن وُجدت ──
+                    const hasProds = Array.isArray(data.products) && data.products.length > 0;
+                    if (hasProds) appendBotHTML(renderProducts(data.products));
                 }
             } catch (_) { /* تجاهل أخطاء الشبكة */ }
         }

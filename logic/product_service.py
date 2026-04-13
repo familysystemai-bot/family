@@ -1582,9 +1582,10 @@ def try_product_search_with_inquiry(
         name_part = f" يا {customer_name}" if customer_name else ""
 
         # ── احفظ الاستفسار في الجلسة ولا تُنشئه تلقائياً ──
-        # سنسأل العميل أولاً، وننشئ الاستفسار بعد تأكيده
+        # استخدم النص الأصلي للعميل (hint_source_message) لا الاستعلام المُحسَّن
+        original_text = (hint_source_message or message).strip()
         session["pending_inquiry"] = {
-            "text": message,
+            "text": original_text,
             "category": category,
             "branch_name": branch_name,
             "image_path": session.get("_pending_image_path", ""),

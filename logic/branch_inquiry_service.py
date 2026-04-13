@@ -157,7 +157,7 @@ def build_inquiry_response_for_customer(
     """
     from logic.category_classifier import get_category_response_message
 
-    name_part = f" يا {customer_name}" if customer_name else ""
+    name_prefix = f"يا {customer_name}، " if customer_name else ""
     msg = get_category_response_message(
         product_query=product_query,
         category_name=category_name,
@@ -167,7 +167,7 @@ def build_inquiry_response_for_customer(
 
     return {
         "products": [],
-        "message": f"{name_part}{msg}".strip(),
+        "message": f"{name_prefix}{msg}".strip(),
         "intent": "branch_inquiry",
         "inquiry_id": inquiry_id,
     }
@@ -256,27 +256,34 @@ def get_inquiry_reply_message(
 ) -> dict:
     """
     يبني استجابة JSON برد الفرع ليُرسل للعميل.
+    يتضمن: نص الرد، السعر، الصورة (إن وُجدت)، ونص الاستفسار الأصلي.
     """
     branch_reply = (inquiry.get("branch_reply") or "").strip()
     branch_price = (inquiry.get("branch_price") or "").strip()
     branch_image = (inquiry.get("branch_image_path") or "").strip()
+    inquiry_text = (inquiry.get("inquiry_text") or "").strip()
 
-    price_part = f"\n💰 السعر: {branch_price}" if branch_price else ""
+    price_part = f"\n💰 السعر: {branch_price} ريال" if branch_price else ""
+    msg = f"رد الفرع:\n{branch_reply}{price_part}"
 
-    templates = {
-        "masri": f"الفرع رد عليك:\n\n{branch_reply}{price_part}",
-        "jordani": f"رد الفرع:\n\n{branch_reply}{price_part}",
-        "default": f"رد الفرع:\n\n{branch_reply}{price_part}",
-    }
-    msg = templates.get(dialect) or templates["default"]
-
+    # ── الصورة: نبنيها بالصيغة التي يفهمها renderProducts في index.html ──
     products = []
     if branch_image:
-        from logic.product_service import _chat_image_url  # type: ignore
         try:
+            from logic.product_service import _chat_image_url  # type: ignore
             img_url = _chat_image_url(branch_image)
             if img_url:
-                products = [{"image": img_url, "name": "من الفرع", "price": branch_price}]
+                price_label = f"{branch_price} ريال" if branch_price else ""
+                products = [{
+                    "images": [img_url],
+                    "img1": img_url,
+                    "name": "صورة من الفرع",
+                    "price": price_label,
+                    "chat_text": branch_reply,
+                    "quantity": None,
+                    "sizes": [],
+                    "colors": [],
+                }]
         except Exception:
             pass
 
@@ -284,4 +291,5 @@ def get_inquiry_reply_message(
         "products": products,
         "message": msg,
         "intent": "branch_inquiry_reply",
+        "inquiry_text": inquiry_text,  # للعرض كـ "رد على" في الشات
     }
