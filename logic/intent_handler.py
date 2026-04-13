@@ -248,7 +248,8 @@ def score_message_intents(
             t, has_known_branch=bool(branch_name)
         )
         scores["complaint"] += complaint_score_to_intent_score(complaint_score)
-        scores["complaint"] += max(W.product_request, W.branch_location_phrase)
+        if complaint_score > 0:
+            scores["complaint"] += max(W.product_request, W.branch_location_phrase)
         if has_primary_complaint_signal(t):
             for k in kw.COMPLAINT_KEYWORDS:
                 if k in t:
@@ -261,7 +262,7 @@ def score_message_intents(
                         break
         if has_negative_complaint_tone(t):
             detected["complaint"].append("negative_tone")
-        if branch_name:
+        if branch_name and complaint_score > 0:
             detected["complaint"].append(f"branch:{branch_name}")
 
     # إزالة تكرار في القوائم
@@ -305,6 +306,24 @@ def _continuation_message_looks_like_product_query(raw: str, t: str) -> bool:
     if tl in kw.ACK_GENERAL or (len(tl) <= 4 and tl in kw.ACK_GENERAL):
         return False
     return True
+
+
+def message_signals_category_browse_correction(message: str) -> bool:
+    """
+    العميل يصحّح بعد تفسير خاطئ للقسم — نمسح السياق ونعيد التوجيه.
+    """
+    t = normalize_message_for_branch_search((message or "").strip())
+    if not t:
+        return False
+    if any(s in t for s in kw.CATEGORY_BROWSE_CORRECTION_STRONG):
+        return True
+    if len(t) < 10:
+        return False
+    if any(w in t for w in kw.CATEGORY_BROWSE_CORRECTION_WEAK) and any(
+        x in t for x in ("قسم", "أقسام", "الأقسام", "المجمع", "مفروشات", "منتج")
+    ):
+        return True
+    return False
 
 
 def _legacy_early_intent_fixed(
@@ -353,6 +372,36 @@ def get_intent_routing_decision(
     t = normalize_message_for_branch_search(raw)
     tl = t.lower()
     snap = score_message_intents(raw, resolve_branch)
+
+    from logic.category_service import (
+        message_asks_clothing_departments_overview,
+        message_asks_full_category_catalog,
+    )
+
+    if message_asks_full_category_catalog(raw):
+        return {
+            "route": "rule_based",
+            "legacy_intent": "section",
+            "score_intent": None,
+            "scores": snap["scores"],
+            "detected_keywords": snap["detected_keywords"],
+            "possible_intents": snap["possible_intents"],
+            "top_score": snap["top_score"],
+            "needs_clarification": False,
+            "score_snapshot": snap,
+        }
+    if message_asks_clothing_departments_overview(raw):
+        return {
+            "route": "rule_based",
+            "legacy_intent": "section",
+            "score_intent": None,
+            "scores": snap["scores"],
+            "detected_keywords": snap["detected_keywords"],
+            "possible_intents": snap["possible_intents"],
+            "top_score": snap["top_score"],
+            "needs_clarification": False,
+            "score_snapshot": snap,
+        }
 
     early = _legacy_early_intent_fixed(t, tl, resolve_branch)
     if early is not None:

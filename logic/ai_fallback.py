@@ -142,7 +142,8 @@ _ORCHESTRATOR_SYSTEM = """أنت موظف خدمة عملاء حقيقي في م
 
 database_context.company_info (سياسات وخدمات رسمية):
 - المصدر الوحيد للإجابة عند سؤال العميل عن: التوصيل، الشحن، الاسترجاع، الدفع، الدوام، معلومات عامة عن الفروع، أو «خدمات» فرع معيّن — إن وُجدت في الحقول أو في branch_services.
-- لا تخترع شروطاً أو مدداً أو طرق دفع؛ إذا كان الحقل فارغاً أو لا يغطي السؤال: قل جملة واحدة فقط: «حالياً ما عندي تفاصيل، ممكن أوضح لك لاحقاً».
+- لا تخترع شروطاً أو مدداً أو طرق دفع؛ إذا كان الحقل فارغاً أو لا يغطي السؤال: قل «حالياً ما عندنا توصيل، تواصل مع الفرع مباشرة للاستفسار» — ثم اضبط action على general_response لا category_suggestion.
+- عند سؤال التوصيل: لا تقترح أقسام أو منتجات أبداً — action يجب أن يكون general_response فقط.
 - أجب باختصار شديد؛ لا تكرر سياسات كاملة إلا إذا طلب العميل صراحة تلخيصاً.
 
 يمكنك أحياناً صيغاً قصيرة مثل: «ممكن يناسبك…»، «جرّب…» — بلا مبالغة.
@@ -178,8 +179,12 @@ database_context.extracted_user_context: سياق مستخرج قواعدياً 
 
 أولوية الإجراء (إلزامية):
 - إذا كان واضحاً أن العميل يتسوّق (يبغى/أبغى/عرض/سعر/متوفر/هدية/ملابس/مقاس/لون…): action يجب أن يكون product_search وليس general_response.
-- category_suggestion فقط عندما لا يمكن استنتاج بحث منتج معقول، أو بعد افتراض أن البحث لن يجد شيئاً — ولا تقترح أقساماً خارج العينة أو خارج سياق الرسالة (مثلاً لا تقترح مفروشات إذا طلب ملابس).
-- general_response: ترحيب صافٍ، شكر، أو استفسار لا علاقة له بالتسوق.
+- إذا سأل العميل عن التوصيل أو الشحن أو يوصلون أو توصلون أو يصلهم: action يجب أن يكون general_response فقط — ممنوع category_suggestion أو product_search.
+- إذا سأل عن سياسات (استرجاع/دفع/دوام): action يجب أن يكون general_response.
+- إذا كانت رسالة العميل مجرد "نعم" أو "ايوه" أو موافقة قصيرة بعد سؤال من البوت: action يجب general_response مع سؤال توضيحي — لا تبحث عن منتج.
+- category_suggestion فقط عندما لا يمكن استنتاج بحث منتج معقول، أو بعد افتراض أن البحث لن يجد شيئاً — ولا تقترح أقساماً خارج العينة أو خارج سياق الرسالة.
+- general_response: ترحيب صافٍ، شكر، سؤال عن خدمة، أو استفسار لا علاقة له بالتسوق.
+- ممنوع تماماً: قول "ما عندنا X" إذا كان النظام قال في رسالة سابقة "عندنا X" — تناقض يُسيء للتجربة.
 
 الجنس (filters.gender):
 - إذا قال العميل إن المنتج له (لي، لنفسي، أنا…) وليس هناك دليل أنثوي صريح → غالباً male.
@@ -1286,7 +1291,7 @@ def _company_info_policy_reference_block(
     return text
 
 
-def run_chat_orchestrator_openai(message: str, context: Dict[str, Any]) -> Dict[str, Any]:
+def run_chat_orchestrator_openai(message: str, context: Dict[str, Any], history: list = None) -> Dict[str, Any]:
     """
     محرك القرار الرئيسي: يعيد خطة JSON (action + filters + message).
     عند تعطيل المفتاح أو الخطأ يُعاد دائماً خطة general_response ودية (لا None).
@@ -1343,6 +1348,7 @@ def run_chat_orchestrator_openai(message: str, context: Dict[str, Any]) -> Dict[
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": system_content},
+                *(history or []),
                 {"role": "user", "content": user_text},
             ],
         )
@@ -1476,7 +1482,7 @@ def build_fallback_db_data(db: Any, message: str) -> Dict[str, Any]:
     return out
 
 
-def generate_ai_response(message: str, db_data: Dict[str, Any]) -> Optional[str]:
+def generate_ai_response(message: str, db_data: Dict[str, Any], history: list = None) -> Optional[str]:
     """
     يستدعي OpenAI مرة واحدة ويعيد نص الرد أو None عند التعذر.
     """
@@ -1507,6 +1513,7 @@ def generate_ai_response(message: str, db_data: Dict[str, Any]) -> Optional[str]
             temperature=0.35,
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
+                *(history or []),
                 {
                     "role": "user",
                     "content": user_text,
@@ -1533,6 +1540,7 @@ BOT_RESPONSE_SHAPING_SKIP_INTENTS = frozenset(
         "return_policy",
         "location",
         "branch_phone",
+        "delivery_local",
         "attachment",
         "error",
         "account_session_sync",

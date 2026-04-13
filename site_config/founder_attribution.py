@@ -76,7 +76,7 @@ def message_asks_for_creator_info(message: str) -> bool:
 
 def build_founder_attribution_message(display_name: str) -> str:
     """نص احترافي وموجز؛ يُستخدم فقط بعد التحقق من message_asks_for_creator_info."""
-    name = (display_name or "").strip() or "حضرتك"
+    name = (display_name or "").strip() or "أخوي"
     founder = (FOUNDER_PUBLIC_FULL_NAME or "").strip()
     phone = (FOUNDER_PUBLIC_PHONE or "").strip()
     return (

@@ -66,6 +66,28 @@ _NEXT_PRODUCT_TRIGGER_PHRASES = (
     "ابغي لون",
     "لون ثاني",
     "لون غير",
+    "موديل ثاني",
+    "موديل غير",
+    "غير موديل",
+)
+
+# كلمات تعني "أشوف المنتجات" أو "استعراض"
+_BROWSE_PRODUCT_PHRASES = (
+    "أشوف الموديلات",
+    "اشوف الموديلات",
+    "شوف الموديلات",
+    "الموديلات",
+    "موديلات",
+    "أشوف المنتجات",
+    "اشوف المنتجات",
+    "المنتجات المتاحة",
+    "وش عندكم",
+    "وش موجود",
+    "وش متوفر",
+    "ايش عندكم",
+    "عرض المنتجات",
+    "أشوف العروض",
+    "اشوف العروض",
 )
 
 
@@ -78,6 +100,14 @@ def _looks_like_next_product_request(message: str) -> bool:
         if p in tn or p in t:
             return True
     return False
+
+
+def _looks_like_browse_request(message: str) -> bool:
+    """الرسالة تعني "أبغى أشوف المنتجات/الموديلات" بدون بحث محدد."""
+    t = (message or "").strip()
+    if not t:
+        return False
+    return any(p in t for p in _BROWSE_PRODUCT_PHRASES)
 
 
 def _apply_step_by_step_slice(
@@ -1065,10 +1095,32 @@ def _distinct_branch_city_labels(out_products: list) -> list:
     return ordered
 
 
+def _browse_context_label(last_section: str, user_message: str) -> str:
+    ls = (last_section or "").strip()
+    t = (user_message or "").strip()
+    if "نسائي" in t or "نساء" in t:
+        return f"{ls} للنساء"
+    if "رجالي" in t or "رجال" in t:
+        return f"{ls} للرجال"
+    return ls
+
+
 def _product_list_intro_message(_display_name, out_products: list, has_more: bool) -> str:
     """مقدمة قصيرة — بدون سرد فروع؛ المنتجات تظهر في البطاقات."""
+    names = [
+        str(p.get("name") or "").strip()
+        for p in (out_products or [])
+        if (p.get("name") or "").strip()
+    ]
     d = session.get("chat_dialect") or "default"
-    intro = dialect_message(d, "product_available_ack", name=_display_name())
+    if not names:
+        intro = dialect_message(d, "product_available_ack", name=_display_name())
+    elif len(names) == 1:
+        intro = f"عندنا {names[0]}"
+    elif len(names) == 2:
+        intro = f"عندنا {names[0]} و{names[1]}"
+    else:
+        intro = f"عندنا {names[0]} و{names[1]} وغيرها"
     if has_more:
         intro += "\n" + dialect_message(d, "product_found_soft_more")
     return intro
@@ -1081,10 +1133,37 @@ def _build_products_response(message: str, hint_source_message: Optional[str] = 
     يعرض حتى منتجين لكل رد؛ الباقي يُعرض عند طلب «غيره».
     hint_source_message: نص المستخدم الأصلي (لتلميحات النوع وفلترة الأسماء) عندما يختلف نص البحث عنه.
     """
+    raw_message = (message or "").strip()
+
+    # طلب استعراض عام "الموديلات / عرض المنتجات" → ابحث في آخر قسم أو ابحث عاماً
+    if _looks_like_browse_request(raw_message):
+        last = session.get("last_section") or ""
+        cs_obj = _cs()
+        get_db_obj = cs_obj.get_db
+        _dn = cs_obj._display_name
+        rows_b = []
+        if last:
+            rows_b = get_db_obj().search_products_in_section(last, last, limit=20)
+        if not rows_b:
+            rows_b = get_db_obj().search_products("", limit=20) if not last else []
+        if rows_b:
+            out_b = []
+            for p in rows_b[:4]:
+                pid_b = int(p["product_id"])
+                vv_b = get_db_obj().get_product_variants(pid_b) or []
+                out_b.append(_product_dict_for_chat(p, pid_b, vv_b, show_branch_in_chat=False))
+            if out_b:
+                session["last_products"] = [int(x["id"]) for x in out_b]
+                session["pending_product_intent"] = True
+                _save_chat_last_product_snapshot(out_b[0], get_db_obj().get_product_variants(int(out_b[0]["id"])) or [])
+                shown_b = _apply_step_by_step_slice(out_b, "product")
+                lbl = (last or "المنتجات").strip()
+                return {"products": shown_b, "intent": "product", "message": f"هذا اللي عندنا في {lbl}:"}
+
     hint_src = normalize_for_product_search(
         (hint_source_message if hint_source_message is not None else message) or ""
     )
-    message = normalize_for_product_search((message or "").strip())
+    message = normalize_for_product_search(raw_message)
     infer_src = hint_src if hint_source_message is not None else message
     cs = _cs()
     get_db = cs.get_db
@@ -1305,8 +1384,7 @@ def _recommendation_response():
         _chat_ctx.on_product_list_shown(shown, "recommendation")
     except Exception:
         pass
-    d = session.get("chat_dialect") or "default"
-    rec_msg = dialect_message(d, "product_search_intro", name=_display_name())
+    rec_msg = "هذا كمان من عندنا 👇"
     return jsonify(
         {
             "products": shown,
@@ -1318,6 +1396,16 @@ def _recommendation_response():
 
 def _try_last_section_product_followup(message: str):
     """بعد نجاح استعلام قسم: رد يُفسَّر كبحث منتج داخل آخر قسم (last_section)."""
+    from logic.category_service import (
+        message_asks_clothing_departments_overview,
+        message_asks_full_category_catalog,
+    )
+
+    if message_asks_full_category_catalog(message):
+        return None
+    if message_asks_clothing_departments_overview(message):
+        return None
+
     cs = _cs()
     get_db = cs.get_db
     _display_name = cs._display_name
@@ -1333,6 +1421,17 @@ def _try_last_section_product_followup(message: str):
     if any(k in t for k in _sec_kw):
         return None
     if not _section_followup_has_meaningful_term(t):
+        # لو الرسالة مجرد "نعم" أو موافقة → اسأل عن المنتج المحدد
+        stripped = _section_followup_non_filler_text(t)
+        if not stripped or t in _SECTION_FOLLOWUP_FILLER:
+            cs = _cs()
+            _display_name = cs._display_name
+            ls = (last or "").strip() or "هذا القسم"
+            return jsonify({
+                "products": [],
+                "message": f"حلو، وش تبغى بالضبط من {ls}؟ مثل: لون، مقاس، أو نوع معين.",
+                "intent": "product_clarify",
+            })
         return jsonify(NO_PRODUCTS_PAYLOAD)
     t = normalize_for_product_search(t)
     constraints = _parse_product_query_constraints(t)
@@ -1355,7 +1454,16 @@ def _try_last_section_product_followup(message: str):
     if not rows:
         session.pop("remaining_products", None)
         session.pop("remaining_products_intent", None)
-        return jsonify(NO_PRODUCTS_PAYLOAD)
+        ls = (last or "").strip() or "هذا القسم"
+        session["chat_pending_branch_phone_offer"] = True
+        return jsonify(
+            {
+                "products": [],
+                "message": f"ما لقيت هذا المنتج بالضبط في قسم {ls}.",
+                "followup_message": "تبي أرسل لك رقم الفرع تسأل مباشرة؟",
+                "intent": "product",
+            }
+        )
     out_products = []
     for p in rows:
         product_id = int(p["product_id"])
@@ -1386,7 +1494,16 @@ def _try_last_section_product_followup(message: str):
     if not out_products:
         session.pop("remaining_products", None)
         session.pop("remaining_products_intent", None)
-        return jsonify(NO_PRODUCTS_PAYLOAD)
+        ls = (last or "").strip() or "هذا القسم"
+        session["chat_pending_branch_phone_offer"] = True
+        return jsonify(
+            {
+                "products": [],
+                "message": f"ما لقيت هذا المنتج بالضبط في قسم {ls}.",
+                "followup_message": "تبي أرسل لك رقم الفرع تسأل مباشرة؟",
+                "intent": "product",
+            }
+        )
     session["last_products"] = [int(p["id"]) for p in out_products]
     session["pending_product_intent"] = True
     _save_chat_last_product_snapshot(
@@ -1401,8 +1518,8 @@ def _try_last_section_product_followup(message: str):
         _chat_ctx.on_product_list_shown(shown, "product")
     except Exception:
         pass
-    d = session.get("chat_dialect") or "default"
-    msg = dialect_message(d, "product_search_intro", name=_display_name())
+    lbl = _browse_context_label(last, message)
+    msg = f"هذا اللي عندي حالياً في {lbl}:"
     return jsonify(
         {
             "products": shown,
@@ -1410,3 +1527,95 @@ def _try_last_section_product_followup(message: str):
             "message": msg,
         }
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# دالة عامة: بحث مع نظام الاستفسار عند عدم وجود المنتج
+# ─────────────────────────────────────────────────────────────────────────────
+
+def try_product_search_with_inquiry(
+    message: str,
+    hint_source_message: Optional[str] = None,
+) -> dict:
+    """
+    يبحث عن المنتج أولاً.
+    إذا لم يجد → يتحقق إذا القسم موجود عندنا (قواعد، بدون AI).
+    إذا القسم موجود → ينشئ استفساراً للفرع ويعيد رسالة مناسبة.
+    إذا لا → يعيد NO_PRODUCTS_PAYLOAD كالمعتاد.
+
+    ملاحظة: هذه الدالة تعيد dict فقط (لا jsonify).
+    """
+    result = _build_products_response(message, hint_source_message)
+
+    # إذا وُجدت منتجات → أعد النتيجة مباشرة
+    if result.get("intent") != "no_products":
+        return result
+
+    # ── المنتج غير موجود في قاعدة البيانات ──
+    # نحاول استنتاج الفئة ونُنشئ استفساراً للفرع
+    try:
+        from logic.category_classifier import infer_category_from_text
+        from logic.branch_inquiry_service import (
+            create_product_inquiry,
+            build_inquiry_response_for_customer,
+        )
+
+        cs_obj = _cs()
+        db = cs_obj.get_db()
+
+        # جلب أسماء الأقسام الفعلية من قاعدة البيانات
+        db_cats: list[dict] = []
+        try:
+            raw_cats = db.get_main_categories() or []
+            db_cats = [{"name": c.get("name", "")} for c in raw_cats if c.get("name")]
+        except Exception:
+            db_cats = []
+
+        category = infer_category_from_text(message, db_cats)
+        if not category:
+            return result  # لا يوجد قسم مطابق → رد افتراضي
+
+        # قسم موجود عندنا → نُنشئ استفساراً
+        branch_name = (
+            session.get("chat_selected_branch")
+            or session.get("chat_last_branch")
+            or ""
+        )
+        customer_name = (session.get("user_name") or "").strip()
+        dialect = session.get("chat_dialect") or "default"
+        session_id = (
+            session.get("user_id")
+            or session.get("sid")
+            or session.get("_sid")
+            or "anon"
+        )
+
+        inquiry_id = create_product_inquiry(
+            db=db,
+            session_id=session_id,
+            inquiry_text=message,
+            category_hint=category,
+            branch_name=branch_name,
+            customer_name=customer_name,
+            send_email=bool(branch_name),  # نُرسل البريد فقط إذا الفرع معلوم
+        )
+
+        if not inquiry_id:
+            return result  # فشل الإنشاء → رد افتراضي
+
+        # احفظ رقم الاستفسار في الجلسة ليتمكن العميل من متابعته
+        session["last_inquiry_id"] = inquiry_id
+
+        return build_inquiry_response_for_customer(
+            inquiry_id=inquiry_id,
+            category_name=category,
+            product_query=message,
+            branch_name=branch_name,
+            dialect=dialect,
+            customer_name=customer_name,
+        )
+
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("try_product_search_with_inquiry: failed")
+        return result

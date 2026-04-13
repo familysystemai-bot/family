@@ -110,8 +110,8 @@ def _ensure_chat_user_session():
 
 def _display_name():
     if _chat_context.has_declined_name():
-        return "حضرتك"
-    return (session.get("user_name") or "").strip() or "حضرتك"
+        return "أخوي"
+    return (session.get("user_name") or "").strip() or "أخوي"
 
 
 def _apply_session_display_name(proposed: str, *, account_logged_in: bool) -> None:

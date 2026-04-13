@@ -129,7 +129,7 @@ OPENAI_ORCH_DEBUG = os.getenv("OPENAI_ORCH_DEBUG", "").strip().lower() in ("1", 
 # منسّق الشات (قرار JSON: action + filters) — يُعطّل بـ OPENAI_CHAT_ORCHESTRATOR=false
 # تشخيص stdout على Render: OPENAI_ORCH_DEBUG=true (يطبع OPENAI_API_KEY / OPENAI_CHAT_ORCHESTRATOR / MODEL / …)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
 
 # طبقة LLM كمحلل فقط (بدون ردود للمستخدم) داخل /chat_query
 LLM_ENABLED = os.getenv("LLM_ENABLED", "false").lower() in ("1", "true", "yes")
