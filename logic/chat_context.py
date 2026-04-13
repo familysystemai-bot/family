@@ -139,22 +139,12 @@ def mark_name_declined() -> None:
 
 
 def enrich_service_message(payload: dict) -> dict:
-    """يُلحق طلب الاسم الاختياري بعد أول رد خدمة فعلي."""
+    """
+    كانت تُلحق طلب الاسم الاختياري — تم إلغاء الطلب لأنه مزعج.
+    الاسم يُؤخذ من الجلسة إذا سجّل العميل دخوله.
+    """
     if not isinstance(payload, dict):
         return payload
-    intent = payload.get("intent")
-    if intent not in ("product", "location", "section", "recommendation"):
-        return payload
-    if has_declined_name() or (session.get("user_name") or "").strip():
-        bump_service_turn()
-        return payload
-    turns = get_service_turns()
-    if turns == 0:
-        from logic.chat_rules import NAME_PROMPT_AFTER_SERVICE
-
-        msg = (payload.get("message") or "").rstrip()
-        payload["message"] = f"{msg}\n\n{NAME_PROMPT_AFTER_SERVICE}".strip()
-        session[KEY_AWAIT_OPTIONAL_NAME] = True
     bump_service_turn()
     return payload
 

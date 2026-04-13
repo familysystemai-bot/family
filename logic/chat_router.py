@@ -1303,6 +1303,26 @@ def _execute_ai_orchestrator(
     if action == "general_response":
         session["chat_current_intent"] = "general"
         session["chat_pending_action"] = None
+
+        # ── كشف مبكر: إذا رسالة AI تحتوي طلباً للتوضيح + العميل يسأل عن منتج ──
+        # في هذه الحالة نجري البحث + الاستفسار بدل إرجاع "وضّح لي"
+        _clarif_phrases = ("وضّح", "وضح", "اكتب لي أكثر", "وضح لي", "أوضح", "اشرح لي", "أخبرني أكثر")
+        _product_hints = (
+            "ابغى", "أبغى", "عندكم", "عندكم", "بحث", "فستان", "فساتين", "ملابس", "حذاء",
+            "احذية", "أحذية", "حقيبة", "ساعة", "عباية", "عبايات", "لانجري", "داخلية", "داخليه",
+            "شنطة", "شنط", "قميص", "بنطال", "تيشيرت", "جاكيت", "معطف", "كنزة", "اكسسوار",
+        )
+        _is_clarif = any(p in (ai_msg or "") for p in _clarif_phrases)
+        _has_product = any(p in message for p in _product_hints)
+        if _is_clarif and _has_product:
+            prod_inq = try_product_search_with_inquiry(message)
+            if prod_inq and prod_inq.get("products"):
+                session["chat_current_intent"] = "product"
+                chat_ctx.set_last_intent("product")
+                return jsonify(prod_inq)
+            if prod_inq and prod_inq.get("intent") in ("inquiry_confirm", "branch_inquiry"):
+                return jsonify(prod_inq)
+
         msg_out = ai_msg
         if not msg_out:
             d = session.get("chat_dialect") or "default"
@@ -1320,36 +1340,20 @@ def _execute_ai_orchestrator(
         )
 
     if action == "category_suggestion":
+        # جرّب البحث + الاستفسار أولاً — أفضل من عرض أقسام عشوائية
+        prod_inq = try_product_search_with_inquiry(message)
+        if prod_inq and prod_inq.get("products"):
+            session["chat_current_intent"] = "product"
+            session["chat_pending_action"] = None
+            chat_ctx.set_last_intent("product")
+            return jsonify(prod_inq)
+        if prod_inq and prod_inq.get("intent") in ("inquiry_confirm", "branch_inquiry"):
+            return jsonify(prod_inq)
+
+        # لا منتجات ولا قسم معروف → رد محايد فقط
         session["chat_current_intent"] = "general"
-        cats = filters.get("suggested_categories") or []
-        if not isinstance(cats, list):
-            cats = []
-        cats = [c for c in cats if isinstance(c, str) and c.strip()]
-        if not cats:
-            cats = ai_fb.pick_fallback_categories(
-                context,
-                ai_fb.merged_turn_text_for_shopping(message),
-                gender_f if gender_f in ("male", "female") else None,
-            )
-        msg_parts = [ai_msg] if ai_msg else []
-        if cats:
-            msg_parts.append("أقسام قد تناسبك: " + "، ".join(str(c) for c in cats[:8] if c))
-        if needs_branch:
-            msg_parts.append(cs._branch_selection_prompt())
-        final_msg = "\n\n".join(p for p in msg_parts if p).strip()
-        if not final_msg:
-            d = session.get("chat_dialect") or "default"
-            final_msg = dialect_message(
-                d, "unknown_fallback", name=cs._display_name()
-            )
-        final_msg = ai_fb.contextualize_no_product_message(
-            final_msg, message, uctx, cats
-        )
-        if not (final_msg or "").strip():
-            d = session.get("chat_dialect") or "default"
-            final_msg = dialect_message(
-                d, "unknown_fallback", name=cs._display_name()
-            )
+        dn = cs._display_name()
+        final_msg = ai_msg if ai_msg else f"وصفيها لي أكثر يا {dn} وأشوف وش عندنا."
         return jsonify({"products": [], "message": final_msg, "intent": "general"})
 
     if action == "product_search":
@@ -1375,38 +1379,14 @@ def _execute_ai_orchestrator(
             )
             return jsonify(out)
 
-        cats = filters.get("suggested_categories") or []
-        if not isinstance(cats, list):
-            cats = []
-        cats = [c for c in cats if isinstance(c, str) and c.strip()]
-        if not cats:
-            cats = ai_fb.pick_fallback_categories(
-                context,
-                ai_fb.merged_turn_text_for_shopping(message),
-                gender_f if gender_f in ("male", "female") else None,
-            )
-        msg_parts = []
-        if ai_msg:
-            msg_parts.append(ai_msg)
-        if cats:
-            msg_parts.append("ممكن تتفرّج على أقسام قريبة من طلبك: " + "، ".join(cats[:8]))
-        if needs_branch:
-            msg_parts.append(cs._branch_selection_prompt())
-        final_msg = "\n\n".join(msg_parts).strip()
-        if not final_msg:
-            d = session.get("chat_dialect") or "default"
-            final_msg = dialect_message(
-                d, "unknown_fallback", name=cs._display_name()
-            )
-        final_msg = ai_fb.contextualize_no_product_message(
-            final_msg, message, uctx, cats
-        )
-        if not (final_msg or "").strip():
-            d = session.get("chat_dialect") or "default"
-            final_msg = dialect_message(
-                d, "unknown_fallback", name=cs._display_name()
-            )
-        return jsonify({"products": [], "message": final_msg, "intent": "general"})
+        # إذا أعاد inquiry_confirm أو branch_inquiry → أعده مباشرة ولا تكمل
+        if prod and prod.get("intent") in ("inquiry_confirm", "branch_inquiry"):
+            return jsonify(prod)
+
+        # لا منتجات ولا استفسار → لا تعرض أقساماً عشوائية، فقط رد محايد
+        dn = cs._display_name()
+        no_prod_msg = ai_msg if ai_msg else f"ما لقيت هذا المنتج يا {dn}، جرّب تكتب وصفه بشكل مختلف أو أخبرني بالقسم اللي تبغاه."
+        return jsonify({"products": [], "message": no_prod_msg, "intent": "general"})
 
     d = session.get("chat_dialect") or "default"
     return jsonify(
@@ -1519,15 +1499,20 @@ def _try_resolve_pending_inquiry(message: str) -> Optional[Any]:
     if not pending:
         return None
 
+    import re as _re
     msg_lower = message.strip()
 
-    # ── كلمات النفي ──
-    _no_words = ("لا", "لأ", "لا شكرا", "لا شكراً", "ما أبغى", "ما ابغى", "بس شكرا", "ما يهم", "اترك")
     _yes_words = ("ايوه", "اه", "آه", "نعم", "شوف", "اشوف", "أشوف", "تأكد", "تاكد",
                   "ابغى", "أبغى", "يلا", "زين", "ماشي", "حسناً", "حسنا", "موافق", "وكيل", "عيل", "يعطيك")
     _all_words = ("كل الفروع", "كل الفرع", "جميع الفروع", "الكل", "كلهم", "كل فرع", "عند الكل")
 
-    is_no = any(w in msg_lower for w in _no_words) and not any(w in msg_lower for w in _yes_words + _all_words)
+    # ── كلمات النفي — كلمة كاملة فقط (لا تطابق "لا" داخل "لانجري" أو "لازم") ──
+    _no_patterns = [r'\bلا\b', r'\bلأ\b', "لا شكرا", "لا شكراً", "ما أبغى", "ما ابغى", "بس شكرا", "ما يهم", "اترك"]
+    is_no_detected = any(
+        (bool(_re.search(p, msg_lower)) if p.startswith(r'\b') else p in msg_lower)
+        for p in _no_patterns
+    )
+    is_no = is_no_detected and not any(w in msg_lower for w in _yes_words + _all_words)
     is_all = any(w in msg_lower for w in _all_words)
     is_yes = any(w in msg_lower for w in _yes_words)
 
