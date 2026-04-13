@@ -17,6 +17,11 @@ KEY_NAME_DECLINED = "chat_name_declined"
 KEY_SERVICE_TURNS = "chat_service_turns"
 KEY_NEXT_OPEN_ISO = "chat_last_next_open_iso"
 KEY_AWAIT_OPTIONAL_NAME = "chat_awaiting_optional_name"
+KEY_CONVERSATION_HISTORY = "chat_conversation_history"
+KEY_CURRENT_REQUEST = "chat_current_request"
+
+# ─── حد أقصى لعدد الرسائل المحفوظة في الجلسة ───
+_MAX_HISTORY_TURNS = 20
 
 
 def remember_branch_by_name(city_name: Optional[str]) -> None:
@@ -151,3 +156,61 @@ def enrich_service_message(payload: dict) -> dict:
 
 def has_declined_name() -> bool:
     return bool(session.get(KEY_NAME_DECLINED))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# سياق المحادثة: تاريخ الرسائل + الطلب الحالي
+# ─────────────────────────────────────────────────────────────────────────────
+
+def add_user_message(message: str, intent: str = "") -> None:
+    """يضيف رسالة العميل لتاريخ المحادثة في الجلسة."""
+    history: list = session.get(KEY_CONVERSATION_HISTORY) or []
+    history.append({"role": "user", "text": (message or "")[:500], "intent": intent})
+    if len(history) > _MAX_HISTORY_TURNS * 2:
+        history = history[-_MAX_HISTORY_TURNS * 2:]
+    session[KEY_CONVERSATION_HISTORY] = history
+
+
+def add_bot_message(message: str, intent: str = "") -> None:
+    """يضيف رد البوت لتاريخ المحادثة في الجلسة."""
+    history: list = session.get(KEY_CONVERSATION_HISTORY) or []
+    history.append({"role": "bot", "text": (message or "")[:500], "intent": intent})
+    if len(history) > _MAX_HISTORY_TURNS * 2:
+        history = history[-_MAX_HISTORY_TURNS * 2:]
+    session[KEY_CONVERSATION_HISTORY] = history
+
+
+def get_conversation_history() -> list:
+    """يعيد آخر رسائل المحادثة."""
+    return session.get(KEY_CONVERSATION_HISTORY) or []
+
+
+def get_conversation_summary(last_n: int = 6) -> str:
+    """
+    يبني ملخص نصي لآخر N رسائل لتمريرها للـ AI كسياق.
+    """
+    history = get_conversation_history()
+    if not history:
+        return ""
+    recent = history[-last_n:]
+    lines = []
+    for msg in recent:
+        role = "العميل" if msg.get("role") == "user" else "البوت"
+        text = (msg.get("text") or "").strip()
+        if text:
+            lines.append(f"{role}: {text[:200]}")
+    return "\n".join(lines)
+
+
+def set_current_request(request_text: str) -> None:
+    """يحفظ الطلب الحالي للعميل (للسياق عبر الرسائل)."""
+    session[KEY_CURRENT_REQUEST] = (request_text or "")[:500]
+
+
+def get_current_request() -> str:
+    """يعيد آخر طلب حالي محفوظ."""
+    return session.get(KEY_CURRENT_REQUEST) or ""
+
+
+def clear_current_request() -> None:
+    session.pop(KEY_CURRENT_REQUEST, None)

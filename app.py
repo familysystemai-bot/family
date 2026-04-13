@@ -1762,5 +1762,34 @@ def chat_query():
     return out
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# WhatsApp Cloud API Webhook
+# ─────────────────────────────────────────────────────────────────────────────
+_WA_VERIFY_TOKEN = os.environ.get("WA_VERIFY_TOKEN", "kazem_token_123")
+
+
+@app.route("/webhook/whatsapp", methods=["GET"])
+def whatsapp_webhook_verify():
+    """Meta sends a GET to verify ownership of the webhook URL."""
+    mode      = request.args.get("hub.mode", "")
+    token     = request.args.get("hub.verify_token", "")
+    challenge = request.args.get("hub.challenge", "")
+
+    if mode == "subscribe" and token == _WA_VERIFY_TOKEN:
+        logger.info("[WA-Webhook] Verification successful ✅")
+        return challenge, 200
+
+    logger.warning("[WA-Webhook] Verification failed ❌ — bad token or mode")
+    return "Forbidden", 403
+
+
+@app.route("/webhook/whatsapp", methods=["POST"])
+def whatsapp_webhook_receive():
+    """Receive incoming WhatsApp messages/events from Meta."""
+    body = request.get_json(silent=True) or {}
+    logger.info("[WA-Webhook] Incoming payload:\n%s", __import__("json").dumps(body, ensure_ascii=False, indent=2))
+    return jsonify({"status": "ok"}), 200
+
+
 if __name__ == '__main__':
     app.run(host=FLASK_HOST, port=FLASK_PORT, debug=FLASK_DEBUG)

@@ -626,7 +626,7 @@
                     appendBotChatPayload(data);
                 }
                 // ── ابدأ polling إذا كان الرد استفساراً للفرع ──
-                if (data && data.intent === 'inquiry_confirm') {
+                if (data && (data.intent === 'branch_inquiry' || data.inquiry_id)) {
                     startInquiryPolling();
                 }
             } catch (error) {

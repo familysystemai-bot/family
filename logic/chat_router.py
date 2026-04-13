@@ -52,6 +52,12 @@ from logic.product_service import (
     _try_next_remaining_product_response,
     _try_pending_product_intent_confirmation,
     _try_product_detail_reply,
+    try_product_search_with_inquiry,
+)
+from logic.branch_inquiry_service import (
+    create_product_inquiry,
+    create_inquiries_for_all_branches,
+    build_inquiry_response_for_customer,
 )
 from site_config.company_policies import build_return_policy_chat_message
 from site_config.founder_attribution import founder_attribution_payload_if_asked
@@ -306,6 +312,115 @@ def _try_resolve_pending_branch_phone_offer(message: str, branch_list: list) -> 
                 "intent": "branch_phone",
             }
         )
+    return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# معالج تأكيد الاستفسار: العميل يرد بنعم/لا بعد "تبغى أسأل الفروع؟"
+# ─────────────────────────────────────────────────────────────────────────────
+_YES_WORDS = {
+    "نعم", "ايه", "اي", "أي", "تمام", "يب", "موافق", "اوكي", "أوكي",
+    "ok", "yes", "yeah", "اكيد", "أكيد", "يلا", "ابغى", "أبغى", "ابغي",
+    "أبغي", "طيب", "حسناً", "حسنا", "ممكن", "بليز", "لو سمحت", "اسأل",
+    "تأكد", "تاكد", "كل الفروع", "بلا",
+}
+_NO_WORDS = {"لا", "لأ", "ما ابغى", "ما ابي", "مابي", "ماابغى", "لاشكرا", "لا شكرا", "cancel", "no"}
+
+
+def _try_resolve_pending_inquiry(message: str) -> Optional[Any]:
+    """
+    إذا كان عند العميل pending_inquiry (سُئل "تبغى أسأل الفروع؟")
+    ورد بنعم → ننشئ الاستفسار في DB ونرسل للفرع
+    ورد بلا → نلغي
+    """
+    pend = session.get("pending_inquiry")
+    if not pend or not isinstance(pend, dict):
+        return None
+
+    msg_lower = message.strip().lower()
+    # تطبيع بسيط
+    norm = msg_lower
+    for a, b in (("أ", "ا"), ("إ", "ا"), ("آ", "ا"), ("ى", "ي"), ("ة", "ه")):
+        norm = norm.replace(a, b)
+    norm_clean = norm.strip("؟.! \t\r\n")
+
+    import re
+    # هل قال لا؟ (word boundary لتجنب مشكلة "لانجري")
+    is_no = re.search(r'\bلا\b', norm_clean) or norm_clean in _NO_WORDS or any(w in norm_clean for w in _NO_WORDS)
+    # هل قال نعم؟
+    is_yes = norm_clean in _YES_WORDS or any(w in norm_clean for w in _YES_WORDS)
+
+    if is_no and not is_yes:
+        session.pop("pending_inquiry", None)
+        dn = cs._display_name()
+        return jsonify({
+            "products": [],
+            "message": f"تمام يا {dn}، إذا احتجت شيء ثاني أنا هنا 👌",
+            "intent": "general",
+        })
+
+    if is_yes or not is_no:
+        # أنشئ الاستفسار
+        db = cs.get_db()
+        inq_text = pend.get("text") or message
+        category = pend.get("category") or ""
+        branch_name = pend.get("branch_name") or ""
+        image_path = pend.get("image_path") or ""
+        customer_name = (session.get("user_name") or session.get("name") or "").strip()
+        customer_contact = (session.get("user_contact") or "").strip()
+        _session_id = (
+            session.get("user_id")
+            or session.get("sid")
+            or session.get("_sid")
+            or request.remote_addr
+            or "anon"
+        )
+
+        # إذا طلب "كل الفروع" → أرسل لكل الفروع
+        all_branches = "كل الفروع" in message or "جميع الفروع" in message or "كل" in norm_clean
+        if all_branches or not branch_name:
+            inquiry_id = create_inquiries_for_all_branches(
+                db=db,
+                session_id=_session_id,
+                inquiry_text=inq_text,
+                category_hint=category,
+                customer_name=customer_name,
+                customer_contact=customer_contact,
+                customer_image_path=image_path,
+            )
+        else:
+            inquiry_id = create_product_inquiry(
+                db=db,
+                session_id=_session_id,
+                inquiry_text=inq_text,
+                category_hint=category,
+                branch_name=branch_name,
+                customer_name=customer_name,
+                customer_contact=customer_contact,
+                customer_image_path=image_path,
+            )
+
+        # حفظ ID الاستفسار في الجلسة للبولينغ
+        session["last_inquiry_id"] = inquiry_id
+        session.pop("pending_inquiry", None)
+
+        if inquiry_id:
+            dn = cs._display_name()
+            d = session.get("chat_dialect") or "default"
+            branch_part = f" فرع {branch_name}" if branch_name and not all_branches else " الفروع"
+            return jsonify({
+                "products": [],
+                "message": f"تم يا {dn} ✅\nأرسلنا استفسارك لـ{branch_part}، بيردون عليك بأقرب وقت إن شاء الله 🙏",
+                "intent": "branch_inquiry",
+                "inquiry_id": inquiry_id,
+            })
+        else:
+            return jsonify({
+                "products": [],
+                "message": "حصل خطأ بسيط، جرب مرة ثانية لو سمحت 🙏",
+                "intent": "error",
+            })
+
     return None
 
 
@@ -570,7 +685,18 @@ def _finalize_chat_outputs(raw_resp: Any, message: str) -> Any:
     step2 = _maybe_scrub_json_response(step1)
     step3 = cust_ch.attach_marketing_followup_if_needed(step2)
     step4 = _apply_response_shaping_to_response(step3, message)
-    return _deduplicate_bot_outgoing(step4)
+    final = _deduplicate_bot_outgoing(step4)
+    # ── حفظ رد البوت في سياق المحادثة ──
+    try:
+        rd = _response_to_dict(final)
+        if rd:
+            bot_msg = (rd.get("message") or "").strip()
+            bot_intent = (rd.get("intent") or "").strip()
+            if bot_msg:
+                chat_ctx.add_bot_message(bot_msg, bot_intent)
+    except Exception:
+        pass
+    return final
 
 
 def _trend_feature_value(branch_id: Optional[int], entity_name: str) -> str:
@@ -1203,6 +1329,10 @@ def _execute_ai_orchestrator(
         _hist = _sess.get("_conv_history", []) if has_request_context() else []
     except Exception:
         _hist = []
+    # إضافة ملخص سياق المحادثة من الجلسة
+    conv_summary = chat_ctx.get_conversation_summary(last_n=6)
+    if conv_summary:
+        context = context + f"\n\n── سياق المحادثة السابقة ──\n{conv_summary}\n── نهاية السياق ──"
     plan = ai_fb.run_chat_orchestrator_openai(message, context, history=_hist)
     if logger.isEnabledFor(logging.DEBUG):
         try:
@@ -1592,6 +1722,10 @@ def _router_pending_and_services(message: str, branch_list: list) -> Optional[An
     pend_deliv = _try_resolve_pending_delivery_inquiry(message, branch_list)
     if pend_deliv is not None:
         return pend_deliv
+    # ── معالجة تأكيد استفسار الفروع (العميل رد نعم/لا) ──
+    pend_inq = _try_resolve_pending_inquiry(message)
+    if pend_inq is not None:
+        return pend_inq
     if session.get("complaint_active"):
         policy_precheck_r = _handle_complaint_policy_precheck_turn(message, branch_list)
         if policy_precheck_r is not None:
@@ -1907,6 +2041,9 @@ def dispatch_chat_query():
             )
         except Exception:
             logger.debug("save user chat message failed (non-critical)")
+        # ── حفظ الرسالة في سياق المحادثة بالجلسة ──
+        chat_ctx.add_user_message(message)
+        chat_ctx.set_current_request(message)
 
     session["chat_dialect"] = detect_dialect(message)
     session["chat_intent_snapshot"] = pre_route_intent_snapshot(

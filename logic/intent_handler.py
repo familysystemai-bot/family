@@ -292,7 +292,14 @@ def _session_in_active_product_flow() -> bool:
     ci = (session.get("chat_current_intent") or "").strip()
     if ci == "product":
         return True
-    return li in ("product", "recommendation", "section")
+    if li in ("product", "recommendation", "section"):
+        return True
+    # إذا عنده استفسار معلق أو منتجات باقية
+    if session.get("pending_inquiry") or session.get("remaining_products"):
+        return True
+    if session.get("pending_product_intent"):
+        return True
+    return False
 
 
 def _continuation_message_looks_like_product_query(raw: str, t: str) -> bool:

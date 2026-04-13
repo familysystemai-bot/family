@@ -1204,6 +1204,7 @@ def _build_products_response(message: str, hint_source_message: Optional[str] = 
         return dict(NO_PRODUCTS_PAYLOAD)
 
     out_products = []
+    fallback_products = []  # منتجات تطابق الاسم لكن ليس اللون/المقاس
     for p in rows:
         product_id = int(p["product_id"])
         variants = get_db().get_product_variants(product_id) or []
@@ -1223,12 +1224,21 @@ def _build_products_response(message: str, hint_source_message: Optional[str] = 
             constraints,
             extra_blob=extra_blob,
         ):
+            # احفظ كبديل — المنتج موجود لكن لونه/مقاسه مختلف
+            if len(fallback_products) < 2:
+                fallback_products.append(
+                    _product_dict_for_chat(p, product_id, variants, show_branch_in_chat=False)
+                )
             continue
         out_products.append(
             _product_dict_for_chat(p, product_id, variants, show_branch_in_chat=False)
         )
         if len(out_products) >= 2:
             break
+
+    # إذا فلتر اللون/المقاس شال كل المنتجات → اعرض البدائل بدل "ما لقيت"
+    if not out_products and fallback_products:
+        out_products = fallback_products
 
     if not out_products:
         session.pop("remaining_products", None)
