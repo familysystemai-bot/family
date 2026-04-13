@@ -20,6 +20,10 @@ from logic.category_service import (
     _looks_like_section_stock_question,
     _section_chat_response,
     _try_resolve_pending_section_choice,
+    message_asks_clothing_departments_overview,
+    message_asks_full_category_catalog,
+    section_all_main_categories_response,
+    section_clothing_main_categories_response,
 )
 from logic.chat_handlers.complaint_handler import random_opening_apology
 from logic.complaint_service import (
@@ -28,6 +32,7 @@ from logic.complaint_service import (
     _try_complaint_rule_flow,
     _try_complaint_wizard,
     maybe_clear_complaint_session_before_router,
+    rule_payload_is_complaint_submit_response,
     try_complaint_ticket_status_lookup,
 )
 from logic import ai_fallback as ai_fb
@@ -36,6 +41,7 @@ from logic.dialect_responses import dialect_message
 from logic.intent_handler import (
     decision_meets_global_rule_threshold,
     get_intent_routing_decision,
+    message_signals_category_browse_correction,
     pre_route_intent_snapshot,
     user_wants_open_now,
 )
@@ -46,6 +52,7 @@ from logic.product_service import (
     _try_next_remaining_product_response,
     _try_pending_product_intent_confirmation,
     _try_product_detail_reply,
+    try_product_search_with_inquiry,
 )
 from site_config.company_policies import build_return_policy_chat_message
 from site_config.founder_attribution import founder_attribution_payload_if_asked
@@ -57,15 +64,250 @@ from logic import customer_chat as cust_ch
 from logic.chat_handlers.time_handler import enhanced_location_reply_kind
 from logic.chat_rules import (
     SALAM_REPLY_FIRST,
+    build_logged_in_casual_greeting_reply,
+    build_logged_in_islamic_salam_reply,
     build_personalized_salam_followup,
     is_acceptable_display_name,
+    is_small_talk_wellbeing_message,
     looks_like_direct_request,
+    pick_small_talk_reply,
 )
 
 logger = logging.getLogger(__name__)
 
 # يميّز «لم يُمرَّر precalc» عن «النتيجة None بعد تشغيل pending مرة واحدة» (تجنّب استدعاء مزدوج).
 _PENDING_PRECALC_MISSING = object()
+
+
+def _logged_in_chat_customer_display_name() -> Optional[str]:
+    """اسم العرض لزائر دخل عبر /api/chat-login (بريد أو جوال) — يُكمَل من قاعدة العملاء عند الحاجة."""
+    scoped = session.get("login_scope") == "chat_customer"
+    uid = (session.get("user") or "").strip()
+    contact = (session.get("user_contact") or "").strip()
+    if not scoped and not (session.get("logged_in") and (uid or contact)):
+        return None
+    if scoped and not uid and not contact:
+        return None
+    nm = (session.get("name") or session.get("user_name") or "").strip()
+    if len(nm) < 2 and session.get("customer_id"):
+        try:
+            row = cs.get_db().get_customer_by_id(int(session["customer_id"]))
+            if row:
+                nm = (row.get("name") or "").strip()
+        except (TypeError, ValueError):
+            pass
+    if len(nm) < 2:
+        return None
+    return nm
+
+
+def _greeting_returning_visitor() -> bool:
+    """عائد: محادثة محفوظة في clients، أو عميل كان مسجّلاً قبل جلسة الدخول الحالية."""
+    cid = session.get("customer_id")
+    if cid:
+        try:
+            if cs.get_db().customer_has_saved_chat_history(int(cid)):
+                return True
+        except (TypeError, ValueError):
+            pass
+    return bool(session.get("chat_customer_returning_visitor"))
+
+
+def _normalize_delivery_trigger_text(message: str) -> str:
+    t = (message or "").strip().lower()
+    for a, b in (("أ", "ا"), ("إ", "ا"), ("آ", "ا"), ("ى", "ي"), ("ة", "ه")):
+        t = t.replace(a, b)
+    return t
+
+
+def _message_asks_about_branch_delivery(message: str) -> bool:
+    t = _normalize_delivery_trigger_text(message)
+    if not t:
+        return False
+    keys = (
+        "توصيل",
+        "التوصيل",
+        "يوصل",
+        "يوصلون",
+        "توصلون",
+        "توصلوا",
+        "توصيلكم",
+        "يوصلك",
+        "يوصلونك",
+        "شحن",
+        "الشحن",
+        "دليفري",
+        "delivery",
+        "هل عندكم توصيل",
+        "عندكم توصيل",
+        "في توصيل",
+        "فيه توصيل",
+        "عندك توصيل",
+        "تسلمون",
+        "يسلمون",
+        "ايصال",
+        "إيصال",
+    )
+    return any(k in t for k in keys)
+
+
+def _service_row_is_delivery(title: str, details: str) -> bool:
+    blob = _normalize_delivery_trigger_text(f"{title} {details}")
+    markers = ("توصيل", "شحن", "delivery", "دليفري")
+    return any(m in blob for m in markers)
+
+
+def _json_delivery_answer_for_branch_id(
+    db: Any, bid: int, branch_list: list
+) -> Any:
+    rows = db.list_services_for_branch(int(bid))
+    delivery_parts: list[str] = []
+    for r in rows:
+        title = (r.get("service_title") or "").strip()
+        det = (r.get("details") or "").strip()
+        if not _service_row_is_delivery(title, det):
+            continue
+        if title and det:
+            delivery_parts.append(f"{title}: {det}")
+        elif title:
+            delivery_parts.append(title)
+        elif det:
+            delivery_parts.append(det)
+    session["chat_current_intent"] = "delivery_local"
+    if delivery_parts:
+        body = "\n".join(delivery_parts)
+        msg = f"نعم، عندنا توصيل.\n{body}"
+    else:
+        msg = "حالياً ما عندنا توصيل في هذا الفرع."
+    return jsonify(
+        {
+            "products": [],
+            "message": msg,
+            "branches": branch_list,
+            "intent": "delivery_local",
+        }
+    )
+
+
+def _try_resolve_pending_delivery_inquiry(
+    message: str, branch_list: list
+) -> Optional[Any]:
+    """متابعة سؤال التوصيل بعد «أي مدينة؟» — ليس طلب موقع."""
+    if session.get("pending_intent") != "delivery_inquiry":
+        return None
+    db = cs.get_db()
+    bn = cs.resolve_branch_from_message(message)
+    if not bn:
+        return jsonify(
+            {
+                "products": [],
+                "message": f"ما التقطنا المدينة.\n{cs._branch_selection_prompt()}",
+                "branches": branch_list,
+                "intent": "delivery_local",
+            }
+        )
+    bid = db.get_branch_id_by_city_name(bn)
+    if not bid:
+        return jsonify(
+            {
+                "products": [],
+                "message": "ما التقطنا الفرع. جرّب تذكر المدينة (مثل: جدة، مكة).",
+                "branches": branch_list,
+                "intent": "delivery_local",
+            }
+        )
+    chat_ctx.remember_branch_by_name(bn)
+    session.pop("pending_intent", None)
+    return _json_delivery_answer_for_branch_id(db, bid, branch_list)
+
+
+def _try_delivery_service_inquiry(message: str, branch_list: list) -> Optional[Any]:
+    if session.get("complaint_active"):
+        return None
+    if not _message_asks_about_branch_delivery(message):
+        return None
+    db = cs.get_db()
+    bn = cs.resolve_branch_from_message(message) or chat_ctx.get_last_branch()
+    if not bn:
+        session["pending_intent"] = "delivery_inquiry"
+        return jsonify(
+            {
+                "products": [],
+                "message": f"أي مدينة أو فرع تقصد؟\n{cs._branch_selection_prompt()}",
+                "branches": branch_list,
+                "intent": "delivery_local",
+            }
+        )
+    bid = db.get_branch_id_by_city_name(bn)
+    if not bid:
+        session["pending_intent"] = "delivery_inquiry"
+        return jsonify(
+            {
+                "products": [],
+                "message": "ما التقطنا الفرع. جرّب تذكر المدينة (مثل: جدة، مكة).",
+                "branches": branch_list,
+                "intent": "delivery_local",
+            }
+        )
+    session.pop("pending_intent", None)
+    return _json_delivery_answer_for_branch_id(db, bid, branch_list)
+
+
+def _norm_branch_offer_reply(message: str) -> str:
+    t = (message or "").strip().lower()
+    for a, b in (("أ", "ا"), ("إ", "ا"), ("آ", "ا"), ("ى", "ي"), ("ة", "ه")):
+        t = t.replace(a, b)
+    return t.strip("؟.! \t\r\n")
+
+
+def _try_resolve_pending_branch_phone_offer(message: str, branch_list: list) -> Optional[Any]:
+    if not session.get("chat_pending_branch_phone_offer"):
+        return None
+    t = _norm_branch_offer_reply(message)
+    if not t:
+        return None
+    tn = t.replace(" ", "")
+    if t.startswith("لا") or "لاشكر" in tn or "مابي" in tn or "ماابغى" in tn or "ماابغي" in tn:
+        session.pop("chat_pending_branch_phone_offer", None)
+        return jsonify(
+            {
+                "products": [],
+                "message": "تمام، وإذا احتجت شيء أنا حاضر.",
+                "intent": "general",
+            }
+        )
+    if t in (
+        "نعم",
+        "ايه",
+        "اي",
+        "تمام",
+        "يب",
+        "موافق",
+        "اوكي",
+        "أوكي",
+        "ok",
+        "yes",
+        "اكيد",
+        "أكيد",
+        "يلا",
+        "ابغى",
+        "أبغى",
+        "ابغي",
+        "أبغي",
+    ) or t.startswith("نعم ") or t.startswith("ايه"):
+        session.pop("chat_pending_branch_phone_offer", None)
+        bn = chat_ctx.get_last_branch() or cs.resolve_branch_from_message(message)
+        if bn:
+            return jsonify(branch_phone_payload(bn))
+        return jsonify(
+            {
+                "products": [],
+                "message": f"أي فرع تبغى رقمه؟\n{cs._branch_selection_prompt()}",
+                "branches": branch_list,
+                "intent": "branch_phone",
+            }
+        )
+    return None
 
 
 def _return_policy_reply_for_chat(display_name: str, message: str) -> str:
@@ -548,6 +790,8 @@ def _rule_payload_needs_orchestrator(
     intent = str(rule_d.get("intent") or "")
     if intent == "silent":
         return True
+    if intent in ("greeting", "delivery_local"):
+        return False
     if decision.get("route") == "score_direct":
         return False
     if not decision_meets_global_rule_threshold(
@@ -556,7 +800,12 @@ def _rule_payload_needs_orchestrator(
         return True
     prods = rule_d.get("products") or []
     si = decision.get("score_intent") or ""
-    if (intent in ("product", "section", "recommendation") or si == "product") and (
+    if intent == "section":
+        msg_ok = (rule_d.get("message") or "").strip()
+        secs = rule_d.get("sections") if isinstance(rule_d.get("sections"), list) else []
+        if msg_ok or secs:
+            return False
+    if (intent in ("product", "recommendation") or si == "product") and (
         not isinstance(prods, list) or len(prods) == 0
     ):
         return True
@@ -602,6 +851,15 @@ def _router_intent_branch_rules_only(
     message: str, branch_list: list, decision: dict
 ) -> Optional[Any]:
     """أقسام، فرع/دوام/هاتف، ثم rule_based و score_direct — دون المنسّق."""
+    if message_asks_full_category_catalog(message):
+        session["chat_current_intent"] = "section"
+        session["chat_pending_action"] = None
+        return section_all_main_categories_response()
+    if message_asks_clothing_departments_overview(message):
+        session["chat_current_intent"] = "section"
+        session["chat_pending_action"] = None
+        return section_clothing_main_categories_response()
+
     if _looks_like_section_stock_question(message):
         session["chat_current_intent"] = "section"
         session["chat_pending_action"] = None
@@ -653,17 +911,18 @@ def _route_main_chat_with_rules_and_ai(
     rule_resp = pending if pending is not None else intent_rules
     rule_d = _response_to_dict(rule_resp)
     # حوار شكوى منظم: رد واحد من القواعد فقط — بدون دمج منسّق (يمنع التكرار والاختلاط).
-    if (
-        rule_resp is not None
-        and isinstance(rule_d, dict)
-        and str(rule_d.get("intent") or "").startswith("complaint")
-        and (
-            session.get("complaint_data")
-            or session.get("complaint_wizard")
-            or session.get("complaint_policy_precheck")
-        )
-    ):
-        return rule_resp
+    # بعد تسجيل الشكوى يُزال complaint_data؛ intent يبقى complaint — لا نمرّر لدمج AI/موقع.
+    if rule_resp is not None and isinstance(rule_d, dict):
+        intent_s = str(rule_d.get("intent") or "").strip()
+        if rule_payload_is_complaint_submit_response(rule_d) or (
+            intent_s.startswith("complaint")
+            and (
+                session.get("complaint_data")
+                or session.get("complaint_wizard")
+                or session.get("complaint_policy_precheck")
+            )
+        ):
+            return rule_resp
     if not session.get("complaint_active") and decision.get("route") == "score_direct" and rule_resp is not None:
         return rule_resp
     if isinstance(rule_d, dict):
@@ -740,6 +999,8 @@ def _should_reset_product_section_context(message: str) -> bool:
         return True
     if any(k in tl for k in kw.GOODBYE_KEYWORDS):
         return True
+    if message_signals_category_browse_correction(message):
+        return True
     if any(k in t for k in kw.BRANCH_PHONE_CONTACT_TRIGGERS):
         return True
     if any(k in t for k in kw.BRANCH_LOCATION_KEYWORDS):
@@ -805,6 +1066,21 @@ def _maybe_reset_product_section_context(message: str) -> None:
     إذا كان هناك سياق منتج/قسم ثم غيّر المستخدم الموضوع بشكل واضح (نية غير تسوّق)،
     نُزيل last_product / last_section وما يتبعها حتى لا تُفسَّر الرسالة كمتابعة سابقة.
     """
+    if message_signals_category_browse_correction(message) and (
+        session.get("last_section") or session.get("pending_section_choices")
+    ):
+        session.pop("last_section", None)
+        session.pop("pending_section_choices", None)
+        session.pop("chat_last_intent", None)
+        session.pop("chat_current_intent", None)
+        session.pop("chat_last_product", None)
+        session.pop("last_products", None)
+        session.pop("pending_product_intent", None)
+        session.pop("remaining_products", None)
+        session.pop("remaining_products_intent", None)
+        session.pop("chat_pending_branch_phone_offer", None)
+        return
+
     if not (
         session.get("chat_last_product")
         or session.get("last_products")
@@ -821,6 +1097,7 @@ def _maybe_reset_product_section_context(message: str) -> None:
     session.pop("pending_product_intent", None)
     session.pop("remaining_products", None)
     session.pop("remaining_products_intent", None)
+    session.pop("chat_pending_branch_phone_offer", None)
 
 
 def _try_rule_based_branch_location_phone(message: str, branch_list: list) -> Optional[Any]:
@@ -898,7 +1175,13 @@ def _execute_ai_orchestrator(
         intent_decision=intent_decision,
         rule_findings=rule_findings,
     )
-    plan = ai_fb.run_chat_orchestrator_openai(message, context)
+    # ── تمرير تاريخ المحادثة للمنسّق ──
+    try:
+        from flask import has_request_context, session as _sess
+        _hist = _sess.get("_conv_history", []) if has_request_context() else []
+    except Exception:
+        _hist = []
+    plan = ai_fb.run_chat_orchestrator_openai(message, context, history=_hist)
     if logger.isEnabledFor(logging.DEBUG):
         try:
             import json as _json
@@ -1075,7 +1358,8 @@ def _execute_ai_orchestrator(
         g_use = gender_f if gender_f in ("male", "female") else None
         merged_q = ai_fb.apply_shopping_context_to_search_query(base_q, g_use, uctx)
         psq = ai_fb.enhance_search_query_with_openai(merged_q, "product")
-        prod = _build_products_response(psq, hint_source_message=message)
+        # استخدام الدالة الجديدة التي تُنشئ استفساراً عند عدم وجود المنتج
+        prod = try_product_search_with_inquiry(psq, hint_source_message=message)
         if prod and prod.get("products"):
             session["chat_current_intent"] = "product"
             session["chat_pending_action"] = None
@@ -1190,7 +1474,24 @@ def _router_early_exits(data: dict) -> Optional[Any]:
             )
         session["chat_awaiting_optional_name"] = False
 
+    if not looks_like_direct_request(message) and is_small_talk_wellbeing_message(message):
+        return jsonify(
+            {
+                "products": [],
+                "message": pick_small_talk_reply(),
+                "intent": "greeting",
+            }
+        )
+
     if chat_ctx.is_islamic_salam_message(message):
+        if not looks_like_direct_request(message):
+            logged_nm = _logged_in_chat_customer_display_name()
+            if logged_nm:
+                text = build_logged_in_islamic_salam_reply(
+                    logged_nm,
+                    returning_visitor=_greeting_returning_visitor(),
+                )
+                return jsonify({"products": [], "message": text, "intent": "greeting"})
         pl: dict[str, Any] = {
             "products": [],
             "message": SALAM_REPLY_FIRST,
@@ -1202,7 +1503,7 @@ def _router_early_exits(data: dict) -> Optional[Any]:
                 cs._display_name(), prior_salam_count=prior
             )
             dn = (cs._display_name() or "").strip()
-            if dn and dn != "حضرتك":
+            if dn and dn not in ("أخوي", "حضرتك"):
                 session["chat_islamic_salam_named_count"] = prior + 1
         return jsonify(pl)
 
@@ -1214,7 +1515,74 @@ def _router_pending_and_services(message: str, branch_list: list) -> Optional[An
     ticket_lookup = try_complaint_ticket_status_lookup(message)
     if ticket_lookup is not None:
         return ticket_lookup
+
+    # ── معالجة "pending_complaint_lookup": العميل يعطي اسمه أو الفرع بعد طلبنا ──
+    if session.get("pending_complaint_lookup"):
+        db = cs.get_db()
+        # استخرج اسم العميل والفرع من الرسالة
+        br = cs.resolve_branch_from_message(message)
+        cname = (session.get("name") or session.get("user_name") or "").strip()
+        # حاول تجد الشكوى
+        results = db.find_complaints_by_name_or_branch(
+            customer_name=cname,
+            branch_name=br or message,
+            limit=3,
+        )
+        if results:
+            c = results[0]
+            ticket  = (c.get("ticket_code") or "").strip()
+            status  = (c.get("status") or "pending").lower()
+            st_ar   = "تم الحل" if status == "resolved" else "قيد المعالجة"
+            notes   = (c.get("resolution_notes") or "").strip()
+            reply   = (c.get("customer_reply_text") or "").strip()
+            msg_out = f"لقيت شكواك"
+            if ticket:
+                msg_out += f" — رقم التذكرة: {ticket}"
+            msg_out += f"\nالحالة: {st_ar}"
+            if notes:
+                msg_out += f"\nملاحظات: {notes}"
+            if reply:
+                msg_out += f"\nرد الفريق: {reply}"
+            if status != "resolved":
+                msg_out += "\n\nفريقنا يتابع طلبك وسيتواصل معك قريباً."
+            session.pop("pending_complaint_lookup", None)
+            return jsonify({"products": [], "message": msg_out, "intent": "complaint_ticket_lookup"})
+        else:
+            session.pop("pending_complaint_lookup", None)
+            dn = cs._display_name()
+            return jsonify({
+                "products": [],
+                "message": (
+                    f"ما قدرت أجد شكوى مسجّلة بهذه المعلومات يا {dn}. "
+                    "تأكد من الاسم أو الفرع، أو أرسل رقم التذكرة لو عندك."
+                ),
+                "intent": "complaint_ticket_lookup",
+            })
+
+    # كشف مبكر: "اشتكيت سابقاً" قبل أي معالجة للشكاوى
+    from logic.complaint_service import _message_is_previous_complaint_followup
+    if _message_is_previous_complaint_followup(message):
+        from logic.complaint_service import clear_complaint_session_for_topic_switch
+        clear_complaint_session_for_topic_switch()
+        session["pending_complaint_lookup"] = True
+        session["chat_current_intent"] = "complaint_ticket_lookup"
+        return jsonify({
+            "products": [],
+            "message": "أرسل لي رقم تذكرتك لو سمحت، يبدأ بـ TKT-\nوإذا ما عندك الرقم، اكتب لي اسمك والفرع وأحاول أساعدك.",
+            "intent": "complaint_ticket_lookup",
+        })
     maybe_clear_complaint_session_before_router(message)
+    if message_asks_full_category_catalog(message):
+        session["chat_pending_action"] = None
+        session["chat_current_intent"] = "section"
+        return section_all_main_categories_response()
+    if message_asks_clothing_departments_overview(message):
+        session["chat_pending_action"] = None
+        session["chat_current_intent"] = "section"
+        return section_clothing_main_categories_response()
+    pend_deliv = _try_resolve_pending_delivery_inquiry(message, branch_list)
+    if pend_deliv is not None:
+        return pend_deliv
     if session.get("complaint_active"):
         policy_precheck_r = _handle_complaint_policy_precheck_turn(message, branch_list)
         if policy_precheck_r is not None:
@@ -1235,6 +1603,11 @@ def _router_pending_and_services(message: str, branch_list: list) -> Optional[An
     time_fu = _try_time_or_phone_followup(message, branch_list)
     if time_fu is not None:
         return time_fu
+
+    if not session.get("complaint_active"):
+        deliv_r = _try_delivery_service_inquiry(message, branch_list)
+        if deliv_r is not None:
+            return deliv_r
 
     pending = session.get("chat_pending_action")
     if pending == cs._CHAT_PENDING_BRANCH:
@@ -1275,6 +1648,10 @@ def _router_pending_and_services(message: str, branch_list: list) -> Optional[An
     if pending_prod is not None:
         return pending_prod
 
+    offer_ph = _try_resolve_pending_branch_phone_offer(message, branch_list)
+    if offer_ph is not None:
+        return offer_ph
+
     next_rem = _try_next_remaining_product_response(message)
     if next_rem is not None:
         return next_rem
@@ -1302,8 +1679,16 @@ def _dispatch_rule_based_intent(message: str, branch_list: list, decision: dict)
     d = session.get("chat_dialect") or "default"
     dn = cs._display_name()
     if li == "greeting":
+        logged_nm = _logged_in_chat_customer_display_name()
+        if logged_nm:
+            greet_msg = build_logged_in_casual_greeting_reply(
+                logged_nm,
+                returning_visitor=_greeting_returning_visitor(),
+            )
+        else:
+            greet_msg = dialect_message(d, "greeting", name=dn)
         return jsonify(
-            {"products": [], "message": dialect_message(d, "greeting", name=dn), "intent": "greeting"}
+            {"products": [], "message": greet_msg, "intent": "greeting"}
         )
     if li == "thanks":
         return jsonify(
@@ -1336,6 +1721,14 @@ def _dispatch_rule_based_intent(message: str, branch_list: list, decision: dict)
             session["chat_current_intent"] = "location"
             return jsonify(_branch_location_json(bn, message))
         return None
+    if li == "section":
+        session["chat_pending_action"] = None
+        session["chat_current_intent"] = "section"
+        if message_asks_full_category_catalog(message):
+            return section_all_main_categories_response()
+        if message_asks_clothing_departments_overview(message):
+            return section_clothing_main_categories_response()
+        return _section_chat_response(message)
     return None
 
 
@@ -1353,7 +1746,8 @@ def _dispatch_score_direct_intent(message: str, branch_list: list, decision: dic
         g_use = g if g in ("male", "female") else None
         widened = ai_fb.apply_shopping_context_to_search_query(message, g_use, uctx)
         psq = ai_fb.enhance_search_query_with_openai(widened, "product")
-        prod = _build_products_response(psq, hint_source_message=message)
+        # استخدام الدالة الجديدة التي تُنشئ استفساراً عند عدم وجود المنتج
+        prod = try_product_search_with_inquiry(psq, hint_source_message=message)
         if prod and prod.get("products"):
             session["chat_current_intent"] = "product"
             session["chat_pending_action"] = None
@@ -1417,6 +1811,27 @@ def _router_intent_branch(
     )
 
 
+def _save_bot_reply(db, session_id: str, response_obj) -> None:
+    """يستخرج نص الرد من كائن Flask Response ويحفظه في تاريخ المحادثة."""
+    try:
+        import json as _json
+        resp = response_obj[0] if isinstance(response_obj, tuple) else response_obj
+        if not hasattr(resp, 'get_data'):
+            return
+        data = _json.loads(resp.get_data(as_text=True))
+        text = (data.get("message") or "").strip()
+        intent = (data.get("intent") or "").strip()
+        if text:
+            db.save_chat_message(
+                session_id=session_id,
+                role="assistant",
+                content=text,
+                intent=intent,
+            )
+    except Exception:
+        pass
+
+
 def dispatch_chat_query():
     """مسار /chat_query — تحليل نية أولي ثم نفس الترتيب المعتاد."""
     data = request.get_json(silent=True) or {}
@@ -1443,22 +1858,45 @@ def dispatch_chat_query():
         )
         cs._apply_session_display_name(proposed, account_logged_in=account_logged_in)
 
-        derived = None
-        try:
-            derived = attachment_openai.text_from_saved_file(path, ext)
-        except Exception:
-            logger.exception("attachment OpenAI processing failed")
+        is_image = ext in {"png", "jpg", "jpeg", "gif", "webp"}
+        user_text = (data.get("message") or "").strip()  # نص كتبه العميل مع الصورة
+        image_path_rel = f"static/uploads/{unique_name}"
 
-        if (derived or "").strip():
-            data["message"] = derived.strip()
+        derived = None
+        if is_image:
+            try:
+                derived = attachment_openai.text_from_saved_file(path, ext)
+            except Exception:
+                logger.exception("image analysis failed")
         else:
+            # صوت → Whisper
+            try:
+                derived = attachment_openai.text_from_saved_file(path, ext)
+            except Exception:
+                logger.exception("audio transcription failed")
+
+        # ── بناء رسالة البحث: نص المستخدم + وصف Gemini ──
+        search_text = ""
+        if user_text and derived:
+            search_text = f"{user_text} {derived}"
+        elif user_text:
+            search_text = user_text
+        elif derived:
+            search_text = derived
+
+        if search_text.strip():
+            # لدينا نص للبحث → ابحث مع حفظ مسار الصورة في الجلسة
+            data["message"] = search_text.strip()
+            if is_image:
+                session["_pending_image_path"] = image_path_rel
+        else:
+            # لا يوجد نص ولا وصف
             db = cs.get_db()
-            is_image = ext in {"png", "jpg", "jpeg", "gif", "webp"}
-            msg = (
-                f"تم استلام الصورة يا {cs._display_name()}، صفّ لي طلبك أو استفسارك بالنص لأساعدك بشكل أدق."
-                if is_image
-                else f"تم استلام التسجيل الصوتي يا {cs._display_name()}، اكتب لي طلبك بالنص وسأساعدك."
-            )
+            if is_image:
+                session["_pending_image_path"] = image_path_rel
+                msg = f"وصلتني الصورة يا {cs._display_name()} 📸 صفّ لي طلبك بالنص وأساعدك."
+            else:
+                msg = f"وصلني الصوت يا {cs._display_name()} — اكتب طلبك بالنص وأساعدك."
             return _finalize_chat_outputs_with_trends(
                 db,
                 jsonify({"products": [], "message": msg, "intent": "attachment"}),
@@ -1466,6 +1904,34 @@ def dispatch_chat_query():
             )
 
     message = (data.get("message") or "").strip()
+
+    # ── معرّف الجلسة لذاكرة المحادثة ──
+    _session_id = (
+        session.get("user_id")
+        or session.get("sid")
+        or session.get("_sid")
+        or request.remote_addr
+        or "anon"
+    )
+
+    # ── جلب تاريخ المحادثة قبل حفظ الرسالة الحالية ──
+    # (مهم: يجب الجلب أولاً حتى لا تظهر رسالة المستخدم الحالية مرتين في السياق)
+    _chat_history = []
+    try:
+        _chat_history = cs.get_db().get_chat_history(_session_id, limit=10)
+    except Exception:
+        logger.debug("get_chat_history failed (non-critical)")
+    session["_conv_history"] = _chat_history
+
+    if message:
+        try:
+            cs.get_db().save_chat_message(
+                session_id=_session_id,
+                role="user",
+                content=message,
+            )
+        except Exception:
+            logger.debug("save user chat message failed (non-critical)")
 
     session["chat_dialect"] = detect_dialect(message)
     session["chat_intent_snapshot"] = pre_route_intent_snapshot(
@@ -1483,13 +1949,16 @@ def dispatch_chat_query():
     cust_ch.sync_customer_from_session(db, message)
 
     try:
+
         early = _router_early_exits(data)
         if early is not None:
             if data.get("account_session_sync"):
                 logger.debug("early exit: account_session_sync")
                 return early
             logger.debug("early exit: greeting/attachment/name/salam/…")
-            return _finalize_chat_outputs_with_trends(db, early, message)
+            result = _finalize_chat_outputs_with_trends(db, early, message)
+            _save_bot_reply(db, _session_id, result)
+            return result
 
         _maybe_reset_product_section_context(message)
 
@@ -1497,11 +1966,13 @@ def dispatch_chat_query():
         branch_list = [{"name": b["city_name"]} for b in branches]
 
         mid = _router_pending_and_services(message, branch_list)
-        return _finalize_chat_outputs_with_trends(
+        final_response = _finalize_chat_outputs_with_trends(
             db,
             _router_intent_branch(message, branch_list, pending_precalc=mid),
             message,
         )
+        _save_bot_reply(db, _session_id, final_response)
+        return final_response
     except Exception:
         logger.exception("dispatch_chat_query failed")
         d = session.get("chat_dialect") or "default"

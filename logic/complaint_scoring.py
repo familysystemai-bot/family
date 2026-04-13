@@ -43,11 +43,14 @@ def compute_complaint_score(
     normalized_message: str, *, has_known_branch: bool = False
 ) -> int:
     score = 0
-    if has_primary_complaint_signal(normalized_message):
+    primary = has_primary_complaint_signal(normalized_message)
+    negative = has_negative_complaint_tone(normalized_message)
+    if primary:
         score += COMPLAINT_SCORE_PRIMARY_WEIGHT
-    if has_negative_complaint_tone(normalized_message):
+    if negative:
         score += COMPLAINT_SCORE_NEGATIVE_WEIGHT
-    if has_known_branch:
+    # ذكر مدينة/فرع وحده استفسار موقع شائع — لا يُعد شكوى إلا مع نبرة أو عبارة شكوى
+    if has_known_branch and (primary or negative):
         score += COMPLAINT_SCORE_BRANCH_WEIGHT
     return score
 

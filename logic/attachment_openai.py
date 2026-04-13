@@ -40,15 +40,43 @@ def attachments_ai_enabled() -> bool:
 def text_from_saved_file(abs_path: str, ext: str) -> Optional[str]:
     """
     يعيد نصاً عربياً مستخرجاً من الملف، أو None عند التعطيل/الفشل.
+
+    توزيع المهام:
+    - الصور  → Gemini Flash (رخيص + متعدد الوسائط) — Fallback: OpenAI Vision
+    - الصوت  → OpenAI Whisper (الأفضل للعربية)
     """
-    if not attachments_ai_enabled():
+    ext_clean = (ext or "").lower().strip(".")
+
+    if ext_clean in _IMAGE_MIME:
+        # أولوية: Gemini للصور (أرخص وأسرع)
+        gemini_result = _describe_image_gemini(abs_path, ext_clean)
+        if gemini_result:
+            return gemini_result
+        # Fallback: OpenAI Vision إذا Gemini غير متاح
+        if attachments_ai_enabled():
+            return _describe_image(abs_path, ext_clean)
         return None
-    ext = (ext or "").lower().strip(".")
-    if ext in _IMAGE_MIME:
-        return _describe_image(abs_path, ext)
-    if ext in {"webm", "wav", "mp3", "ogg", "m4a"}:
-        return _transcribe_audio(abs_path)
+
+    if ext_clean in {"webm", "wav", "mp3", "ogg", "m4a"}:
+        # الصوت → OpenAI Whisper دائماً (الأفضل للعربية)
+        if attachments_ai_enabled():
+            return _transcribe_audio(abs_path)
+        return None
+
     return None
+
+
+def _describe_image_gemini(abs_path: str, ext: str) -> Optional[str]:
+    """
+    يحلّل الصورة عبر Gemini Flash (أرخص بكثير من OpenAI Vision).
+    يعيد None إذا Gemini غير مفعّل أو فشل.
+    """
+    try:
+        from logic.gemini_service import analyze_image_for_product
+        return analyze_image_for_product(abs_path, ext)
+    except Exception:
+        logger.debug("attachment: Gemini image analysis unavailable, will try OpenAI fallback")
+        return None
 
 
 def _transcribe_audio(abs_path: str) -> Optional[str]:

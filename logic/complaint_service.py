@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import random
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 import re
 from datetime import datetime
 
@@ -31,7 +31,7 @@ from logic.mail_service import send_email
 from logic.branch_service import _branch_location_json
 from logic.product_service import NO_PRODUCTS_PAYLOAD, _build_products_response
 from logic import chat_context as chat_ctx
-from logic.chat_handlers.complaint_handler import random_opening_apology, success_message
+from logic.chat_handlers.complaint_handler import success_message
 from site_config.branches import get_branch, get_management_emails
 from site_config.company_policies import build_return_policy_complaint_precheck_summary
 
@@ -45,6 +45,46 @@ def _cs():
 logger = logging.getLogger(__name__)
 
 _TICKET_IN_MESSAGE_RE = re.compile(r"\bTKT-[A-Z0-9]{8}\b", re.IGNORECASE)
+
+# عبارات تدل على وجود شكوى سابقة
+_PREV_COMPLAINT_PHRASES = (
+    "اشتكيت سابقا",
+    "اشتكيت سابقاً",
+    "اشتكيت قبل",
+    "اشتكيت من قبل",
+    "شكوى سابقة",
+    "شكوى قديمة",
+    "عندي شكوى مسبقة",
+    "رفعت شكوى",
+    "سجلت شكوى",
+    "سجّلت شكوى",
+    "عندي تذكرة",
+    "رقم التذكرة",
+    "رقم الشكوى",
+    "شكواي السابقة",
+    "شكواي القديمة",
+    "وش صار بشكواي",
+    "وش صار بالشكوى",
+    "وش صار ب الشكوى",
+    "ايش صار بشكواي",
+    "ايش صار بالشكوى",
+    "شو صار بشكواي",
+    "متابعة شكوى",
+    "اتابع شكوى",
+    "أتابع شكوى",
+    "شكواي",
+    "شكوايه",
+    "شكواي وين",
+    "وين شكواي",
+)
+
+
+def _message_is_previous_complaint_followup(message: str) -> bool:
+    """هل الرسالة تُشير لشكوى سابقة بدون رقم تذكرة؟"""
+    t = (message or "").strip()
+    if _TICKET_IN_MESSAGE_RE.search(t):
+        return False   # عنده رقم → يُعالَج بـ try_complaint_ticket_status_lookup
+    return any(p in t for p in _PREV_COMPLAINT_PHRASES)
 
 
 def _message_after_complaint_saved(complaint_id: Optional[int]) -> str:
@@ -61,6 +101,14 @@ def _message_after_complaint_saved(complaint_id: Optional[int]) -> str:
             "احفظ الرقم للاستعلام عن حالة الشكوى في أي وقت."
         )
     return msg_ok
+
+
+def rule_payload_is_complaint_submit_response(rule_d: Any) -> bool:
+    """
+    رد تسجيل شكوى نهائي من المسار المنظم (intent حرفياً complaint).
+    بعد الحفظ تُزال complaint_data من الجلسة؛ يُستخدم هذا للتمييز عن complaint_rule وغيره.
+    """
+    return isinstance(rule_d, dict) and str(rule_d.get("intent") or "").strip() == "complaint"
 
 
 def try_complaint_ticket_status_lookup(message: str):
@@ -138,7 +186,7 @@ _STANDARD_APOLOGIES = [
 
 def detect_complaint_score(message: str) -> int:
     """
-    نقاط شكوى: كلمات أساسية +2، نبرة سلبية +1، ذكر فرع معروف +1.
+    نقاط شكوى: كلمات أساسية +2، نبرة سلبية +1، وذكر فرع معروف +1 فقط إن وُجدت إشارة شكوى أو نبرة سلبية.
     عند بلوغ العتبة الموحّدة تُفعّل معالجة الشكوى.
     """
     raw = (message or "").strip()
@@ -191,25 +239,107 @@ def _pick_apology_line(message: str) -> str:
     return pick
 
 
-def _complaint_prompt_body(
-    message: str, kind: Literal["need_branch", "need_details", "need_target"]
-) -> str:
-    """نص بشري: اعتذار حسب اللهجة + سطر المتابعة."""
-    apology = _pick_apology_line(message)
-    if kind == "need_branch":
-        return f"{apology} 🙏\nممكن تحدد لي الفرع؟"
-    if kind == "need_details":
-        return f"{apology} 🙏\nممكن توضح لي وش صار بالضبط؟"
+def _complaint_warm_display_name() -> str:
+    """اسم للعنوان في نص الشكوى — من الجلسة فقط."""
+    nm = (session.get("name") or session.get("user_name") or "").strip()
+    if len(nm) < 2 or nm in ("أخوي", "حضرتك"):
+        return ""
+    return nm
+
+
+def _complaint_branch_display_short(city_name: Optional[str]) -> str:
+    s = (city_name or "").strip()
+    return s.replace("فرع ", "").strip() or s or "المذكور"
+
+
+def _warm_complaint_opening_need_branch() -> str:
+    """أول رد شكوى: اعتذار خليجي دافئ + طلب الفرع."""
+    nm = _complaint_warm_display_name()
+    ya = f" يا {nm}" if nm else ""
     return (
-        f"{apology} 🙏\n"
-        "تم تحديد الفرع — نرفعها لإدارة الفرع ولا للإدارة العليا؟\n"
-        "اكتب «الفرع» أو «الإدارة العليا» — أو 1 و 2."
+        f"نأسف جداً على هذه التجربة{ya} 🙏 "
+        "هذا مو المستوى اللي نرضاه لعملائنا. "
+        "ممكن تحدد لي الفرع عشان نتابع معك الموضوع؟"
+    )
+
+
+def _complaint_prompt_body(
+    message: str, kind: Literal["need_branch", "need_details"]
+) -> str:
+    """نص بشري حسب خطوة الشكوى (بدون نبرة آلية)."""
+    if kind == "need_branch":
+        return _warm_complaint_opening_need_branch()
+    nm = _complaint_warm_display_name()
+    ya = f"يا {nm}، " if nm else ""
+    return (
+        f"{ya}نأسف إنك مرت بالموضوع 🙏 "
+        "وش صار بالضبط؟ اكتب لي التفاصيل عشان نخدمك كويس."
+    )
+
+
+def _complaint_need_target_ack_and_followup(branch_city: Optional[str]) -> tuple[str, str]:
+    """بعد تحديد الفرع: رسالة تأكيد + متابعة منفصلة لخيارات التصعيد."""
+    nm = _complaint_warm_display_name()
+    br = _complaint_branch_display_short(branch_city)
+    if nm:
+        ack = f"تمام يا {nm}، سجّلنا ملاحظتك على فرع {br}."
+    else:
+        ack = f"تمام، سجّلنا ملاحظتك على فرع {br}."
+    follow = "تبي نرفع الشكوى لـ:\n\n• إدارة الفرع\n• الإدارة العليا"
+    return ack, follow
+
+
+def _complaint_success_message_after_submit(target: str) -> str:
+    """
+    بعد حفظ الشكوى — الرد دائماً مطمئن بغض النظر عن اختيار العميل.
+    الشكاوى تُوجَّه للفرع دائماً أولاً (حتى لو اختار الإدارة العليا).
+    """
+    nm = _complaint_warm_display_name()
+    ya = f" يا {nm}" if nm else ""
+    return (
+        f"ابشر{ya}، ما لك إلا اللي يرضيك ✅ "
+        "تم رفع موضوعك وراح يتواصل معك الفريق بأقرب وقت ممكن 🙏"
+    )
+
+
+def _complaint_rule_submitted_user_message(
+    complaint_id: Optional[int], target: str, email_ok: bool
+) -> str:
+    """نص نهائي بعد تسجيل شكوى مسار القواعد + تذكرة إن وُجدت."""
+    msg_ok = _complaint_success_message_after_submit(target)
+    if complaint_id:
+        row = _cs().get_db().get_complaint_row(int(complaint_id))
+        ticket = (row.get("ticket_code") or "").strip() if row else ""
+        if ticket:
+            msg_ok += (
+                f"\n\nرقم تذكرتك: {ticket}\n"
+                "احفظ الرقم للاستعلام عن حالة الشكوى في أي وقت."
+            )
+    if email_ok is False:
+        msg_ok += " (تعذر إرسال البريد؛ تم حفظ الشكوى.)"
+    return msg_ok
+
+
+def _jsonify_complaint_rule_need_target(
+    branch_city: Optional[str], branch_list: list,
+) -> Any:
+    ack, follow = _complaint_need_target_ack_and_followup(branch_city)
+    return jsonify(
+        {
+            "products": [],
+            "message": ack,
+            "followup_message": follow,
+            "intent": "complaint_rule",
+            "branches": branch_list,
+        }
     )
 
 
 def _complaint_retry_target_message(message: str) -> str:
-    a = _pick_apology_line(message)
-    return f"{a} 🙏\nاختَر بوضوح: اكتب «الفرع» أو «الإدارة العليا» أو أرسل 1 أو 2."
+    return (
+        "ما التقطنا اختيارك 🙏 "
+        "اكتب بوضوح: «إدارة الفرع» أو «الإدارة العليا» — أو أرسل 1 أو 2."
+    )
 
 
 def _complaint_message_with_policy_ai(
@@ -245,7 +375,7 @@ def _complaint_message_with_policy_ai(
 
 def _user_facing_complaint_text(
     message: str,
-    kind: Literal["need_branch", "need_details", "need_target"],
+    kind: Literal["need_branch", "need_details"],
     merged_issue_for_ai: str,
 ) -> str:
     return _complaint_message_with_policy_ai(
@@ -297,6 +427,20 @@ _COMPLAINT_RETURN_POLICY_KW = (
     "رفضوا",
     "ما يقبلون",
 )
+
+_RETURN_EXCHANGE_KEYWORDS = (
+    "استبدال", "استرجاع", "إرجاع", "ارجاع",
+    "رجعت", "أرجع", "ارجع", "يرجع",
+    "استبدل", "أستبدل", "ما قبلوا", "ما يقبلون",
+    "رفضوا الاسترجاع", "رفض الاستبدال",
+    "مرتجع", "مرتجعات",
+)
+
+
+def _is_return_exchange_complaint(text: str) -> bool:
+    """هل الشكوى تتعلق بالاسترجاع أو الاستبدال؟"""
+    t = (text or "").strip()
+    return any(k in t for k in _RETURN_EXCHANGE_KEYWORDS)
 
 # خروج صريح من وضع الشكوى فقط بهذه الصياغ
 _EXPLICIT_PRODUCT_SWITCH = (
@@ -373,12 +517,19 @@ def _fresh_intent_exits_complaint_flow(message: str) -> bool:
     if _complaint_signals_negated(msg):
         return True
     cd = session.get("complaint_data") or {}
-    if (cd.get("step") or "") == "need_target" and _parse_escalation_target(msg):
+    step = (cd.get("step") or "").strip()
+    if step == "need_target" and _parse_escalation_target(msg):
         return False
     if _looks_like_shopping_followup_not_complaint(msg):
         return True
     cs = _cs()
     intent = detect_chat_intent(msg, cs.resolve_branch_from_message)
+    # اسم مدينة/فرع قصير يُصنَّف موقعاً — لا يُلغي جمع بيانات الشكوى
+    if step in ("need_branch", "need_details", "need_target") and intent in (
+        "location",
+        "location_pick",
+    ):
+        return False
     if intent in _INTENTS_EXIT_COMPLAINT_CONTEXT:
         return True
     if intent == "unknown":
@@ -535,7 +686,7 @@ def _customer_contact_from_session():
         else:
             phone = raw[:64]
     name = (session.get("name") or session.get("user_name") or "").strip()
-    if not name or name == "حضرتك":
+    if not name or name in ("أخوي", "حضرتك"):
         name = None
     return name, phone, email
 
@@ -562,7 +713,11 @@ def _submit_new_complaint(message: str, branch_name_override=None):
     branch_id = get_db().get_branch_id_by_city_name(branch_name) if branch_name else None
     nm = _display_name()
     message_plain = (message or "").strip()
-    issue_body = f"[العميل: {nm}]\n{message_plain}" if nm != "حضرتك" else message_plain
+    issue_body = (
+        f"[العميل: {nm}]\n{message_plain}"
+        if nm not in ("أخوي", "حضرتك")
+        else message_plain
+    )
     ctype = classify_complaint_issue(issue_body)
     branch_display = (branch_name or "").strip()
     if not branch_display and branch_id:
@@ -595,19 +750,34 @@ def _submit_new_complaint(message: str, branch_name_override=None):
 
 
 def _complaint_return_precheck_message(addressing: str) -> str:
-    """ملخص سياسة الاسترجاع من قاعدة البيانات فقط؛ وإلا النص الاحتياطي من الإعدادات."""
+    """
+    رسالة ذكية وبشرية للاسترجاع/الاستبدال:
+    1. تعرض الشروط من قاعدة البيانات إن وُجدت
+    2. تطمّن العميل أن الفرع سيتدخل حتى لو الشروط لا تنطبق
+    3. تسأله هل يريد تسجيل الشكوى
+    """
     get_db = _cs().get_db
-    row = get_db().get_complaint_precheck_policy_summary_text()
-    if row:
-        name = (addressing or "").strip()
-        opener = f"حياك يا {name}، " if name and name != "حضرتك" else "حياك، "
+    policy_text = get_db().get_complaint_precheck_policy_summary_text()
+    name = (addressing or "").strip()
+    nm = name if name and name not in ("أخوي", "حضرتك") else None
+    ya = f"يا {nm}، " if nm else ""
+
+    if policy_text:
         return (
-            f"{opener}حسب ما هو مسجّل عندنا:\n\n{row}\n\n"
-            "إذا ما انطبق عليك الوضع أو حسيت إن ما تم الالتزام، قُل **نعم** أو **سجّل الشكوى** وأكمل لك."
+            f"{ya}فهمت موضوعك ويهمنا نخدمك صح 🙏\n\n"
+            f"حسب سياسة الاسترجاع والاستبدال المعتمدة عندنا:\n\n"
+            f"{policy_text}\n\n"
+            "إذا حسيت إن حالتك ما انطبقت على الشروط، أو الموظف ما التزم — "
+            "قُل **نعم** وأنا أرفع الموضوع مباشرة لإدارة الفرع يشوفون لك الحل المناسب."
         )
-    return build_return_policy_complaint_precheck_summary(addressing)
 
-
+    # لا توجد سياسة مسجّلة → رد بشري مطمئن
+    return (
+        f"{ya}فهمت، وما يصير إلا كل خير 🙏\n\n"
+        "حسب الشروط العامة، عمليات الاسترجاع والاستبدال تخضع لحالة المنتج ومدة الشراء. "
+        "بس حتى لو ما كانت حالتك ضمن الشروط، إدارة الفرع تقدر تشوف لك حل استثنائي.\n\n"
+        "تبغى أرفع موضوعك لإدارة الفرع يتواصلون معك؟ قُل **نعم** أو **سجّل الشكوى**."
+    )
 def _complaint_mentions_return_policy(text: str) -> bool:
     t = text or ""
     return any(k in t for k in _COMPLAINT_RETURN_POLICY_KW)
@@ -682,9 +852,18 @@ def _handle_complaint_policy_precheck_turn(message: str, branch_list: list):
         if err:
             return jsonify({"products": [], "message": err, "intent": "complaint"})
         _exit_complaint_mode_after_successful_submit()
-        msg_ok = _message_after_complaint_saved(complaint_id)
+        nm = _complaint_warm_display_name()
+        ya = f" يا {nm}" if nm else ""
+        msg_ok = (
+            f"ابشر{ya}، فهمنا موضوعك ✅ "
+            "راح يتواصل معك فريق الفرع بأقرب وقت ويشوفون لك الحل المناسب 🙏"
+        )
+        row_c = _cs().get_db().get_complaint_row(complaint_id) if complaint_id else None
+        ticket = (row_c.get("ticket_code") or "").strip() if row_c else ""
+        if ticket:
+            msg_ok += f"\n\nرقم تذكرتك: {ticket}\nاحفظه للاستعلام في أي وقت."
         if email_ok is False:
-            msg_ok += " (تعذر إرسال نسخة البريد؛ تم حفظ الشكوى في النظام.)"
+            msg_ok += " (تعذر إرسال نسخة البريد؛ تم حفظ الشكوى.)"
         payload = {
             "products": [],
             "message": msg_ok,
@@ -725,6 +904,22 @@ def _try_complaint_wizard(message: str, branch_list: list):
     if _fresh_intent_exits_complaint_flow(msg):
         clear_complaint_session_for_topic_switch()
         return None
+
+    # اكتشاف: العميل يتحدث عن شكوى سابقة → اطلب رقم التذكرة
+    if _message_is_previous_complaint_followup(msg):
+        clear_complaint_session_for_topic_switch()
+        session["pending_complaint_lookup"] = True
+        session["chat_current_intent"] = "complaint_ticket_lookup"
+        return jsonify(
+            {
+                "products": [],
+                "message": (
+                    "أرسل لي رقم تذكرتك لو سمحت، يبدأ بـ TKT-\n"
+                    "وإذا ما عندك الرقم، اكتب لي اسمك والفرع وأحاول أساعدك."
+                ),
+                "intent": "complaint_ticket_lookup",
+            }
+        )
 
     apology_merge = bool(w.pop("_apology_turn_merged", False))
 
@@ -809,6 +1004,18 @@ def _try_complaint_wizard(message: str, branch_list: list):
     detail_ok = len(issue_text.strip()) >= _MIN_COMPLAINT_DETAIL
     branch_ok = bool(br) and get_db().get_branch_id_by_city_name(br) is not None
 
+    # كشف مبكر داخل الـ wizard: استرجاع/استبدال → اعرض الشروط فوراً بدون انتظار
+    if _is_return_exchange_complaint(issue_text) or _complaint_mentions_return_policy(issue_text):
+        session["complaint_policy_precheck"] = {"issue": issue_text, "branch": br}
+        session.pop("complaint_wizard", None)
+        return jsonify(
+            {
+                "products": [],
+                "message": _complaint_return_precheck_message(_display_name()),
+                "intent": "complaint_policy_precheck",
+            }
+        )
+
     if detail_ok and not branch_ok:
         session["complaint_wizard"] = {
             "step": "need_branch",
@@ -840,17 +1047,6 @@ def _try_complaint_wizard(message: str, branch_list: list):
             }
         )
 
-    if _complaint_mentions_return_policy(issue_text):
-        session["complaint_policy_precheck"] = {"issue": issue_text, "branch": br}
-        session.pop("complaint_wizard", None)
-        return jsonify(
-            {
-                "products": [],
-                "message": _complaint_return_precheck_message(_display_name()),
-                "intent": "complaint_policy_precheck",
-            }
-        )
-
     session.pop("complaint_wizard", None)
     complaint_id, branch_name, err, email_ok, ctype = _submit_new_complaint(
         issue_text, branch_name_override=br
@@ -873,13 +1069,31 @@ def _try_complaint_wizard(message: str, branch_list: list):
 
 
 def _handle_new_complaint_intent(message: str, branch_list: list):
-    """أول رد: اعتذار فقط؛ تُستكمل التفاصيل في complaint_wizard."""
+    """
+    أول رد على الشكوى.
+    إذا كانت الشكوى عن استرجاع/استبدال → يعرض الشروط فوراً بدل الانتظار.
+    غيرها → يبدأ wizard لجمع التفاصيل.
+    """
     cs = _cs()
     resolve_branch_from_message = cs.resolve_branch_from_message
+    _display_name = cs._display_name
     msg = (message or "").strip()
     br = resolve_branch_from_message(msg)
     if br:
         chat_ctx.remember_branch_by_name(br)
+
+    # كشف مبكر: استرجاع أو استبدال → اعرض الشروط فوراً
+    if _is_return_exchange_complaint(msg) or _complaint_mentions_return_policy(msg):
+        session["complaint_policy_precheck"] = {"issue": msg, "branch": br}
+        session["chat_current_intent"] = "complaint"
+        return jsonify(
+            {
+                "products": [],
+                "message": _complaint_return_precheck_message(_display_name()),
+                "intent": "complaint_policy_precheck",
+            }
+        )
+
     session["complaint_wizard"] = {
         "apology_sent": True,
         "issue": msg,
@@ -889,7 +1103,7 @@ def _handle_new_complaint_intent(message: str, branch_list: list):
     return jsonify(
         {
             "products": [],
-            "message": random_opening_apology(),
+            "message": _warm_complaint_opening_need_branch(),
             "intent": "complaint_wizard",
             "branches": branch_list,
         }
@@ -950,7 +1164,10 @@ def _try_chat_active_complaint_turn(message: str, branch_list: list):
     bl = session.get("complaint_branch_label") or ""
     bid = row["branch_id"] if row else None
     email_ok = _send_complaint_email(cid, bl, full_issue, is_append=True, branch_id=bid)
-    note = f"تم تسجيل ملاحظتك يا {_display_name()}، وتم إيصالها للفريق."
+    note = (
+        f"تمام يا {_display_name()}، لقينا ملاحظتك وسجّلناها للفريق "
+        "وراح يشوفونها بأقرب وقت 🙏"
+    )
     if email_ok is False:
         note += " (تعذر إرسال التنبيه بالبريد؛ تم حفظ الملاحظة في النظام.)"
     payload = {
@@ -1042,24 +1259,22 @@ def _send_complaint_routed_email(
         contact = get_branch(branch_label) or {}
         branch_email = (contact.get("manager_email") or "").strip() or None
 
-    if target == "branch":
-        if branch_email:
-            recipients.append(branch_email)
-        else:
-            logger.warning("complaint routing: missing branch email — fallback")
-            if main_m:
-                recipients.append(main_m)
-            elif admin_m:
-                recipients.append(admin_m)
+    # التوجيه الذكي: كل الشكاوى تروح للفرع أولاً
+    # إذا اختار العميل "الإدارة العليا" يُضاف ADMIN_EMAIL كنسخة إضافية فقط
+    if branch_email:
+        recipients.append(branch_email)
     else:
-        if admin_m:
+        logger.warning("complaint routing: missing branch email — fallback to main")
+        if main_m:
+            recipients.append(main_m)
+        elif admin_m:
             recipients.append(admin_m)
-        else:
-            logger.warning("complaint routing: ADMIN_EMAIL missing — fallback")
-            if main_m:
-                recipients.append(main_m)
-            elif branch_email:
-                recipients.append(branch_email)
+
+    # لو target=admin أضف نسخة للإدارة لكن الفرع يبقى المسؤول الأول
+    if target == "admin" and admin_m and admin_m not in recipients:
+        recipients.append(admin_m)
+        # غيّر عنوان البريد للإشارة لأنها مُصعَّدة
+        subject = f"[مُصعَّدة] {subject}" if "subject" in dir() else subject
 
     if alerts:
         recipients.append(alerts)
@@ -1083,7 +1298,7 @@ def _submit_complaint_rule_session(
     branch_id = get_db().get_branch_id_by_city_name(branch_name) if branch_name else None
     nm = _display_name()
     plain = (issue_text or "").strip()
-    issue_body = f"[العميل: {nm}]\n{plain}" if nm != "حضرتك" else plain
+    issue_body = f"[العميل: {nm}]\n{plain}" if nm not in ("أخوي", "حضرتك") else plain
     ctype = classify_complaint_issue(issue_body)
     dept = "فرع" if target == "branch" else "إدارة عليا"
     cust_name, cust_phone, cust_email = _customer_contact_from_session()
@@ -1174,14 +1389,7 @@ def _try_complaint_rule_flow(message: str, branch_list: list):
             }
             session["chat_current_intent"] = "complaint"
             _sync_complaint_progress_session(invalid_target=False)
-            return jsonify(
-                {
-                    "products": [],
-                    "message": _user_facing_complaint_text(msg, "need_target", merged),
-                    "intent": "complaint_rule",
-                    "branches": branch_list,
-                }
-            )
+            return _jsonify_complaint_rule_need_target(br, branch_list)
 
         if step == "need_details":
             merged = f"{issue}\n{msg}".strip() if issue else msg
@@ -1224,17 +1432,15 @@ def _try_complaint_rule_flow(message: str, branch_list: list):
                 "branch": br,
             }
             _sync_complaint_progress_session(invalid_target=False)
-            return jsonify(
-                {
-                    "products": [],
-                    "message": _user_facing_complaint_text(msg, "need_target", merged),
-                    "intent": "complaint_rule",
-                    "branches": branch_list,
-                }
-            )
+            return _jsonify_complaint_rule_need_target(br, branch_list)
 
         if step == "need_target":
-            tgt = _parse_escalation_target(msg)
+            # استرجاع/استبدال: لا نسأل عن الهدف — نوجّه مباشرة للفرع
+            issue_check = (cd.get("issue") or "").strip()
+            if _is_return_exchange_complaint(issue_check):
+                tgt = "branch"
+            else:
+                tgt = _parse_escalation_target(msg)
             if not tgt:
                 _sync_complaint_progress_session(invalid_target=True)
                 return jsonify(
@@ -1267,9 +1473,7 @@ def _try_complaint_rule_flow(message: str, branch_list: list):
             if err:
                 return jsonify({"products": [], "message": err, "intent": "complaint"})
             _exit_complaint_mode_after_successful_submit()
-            msg_ok = _message_after_complaint_saved(cid)
-            if email_ok is False:
-                msg_ok += " (تعذر إرسال البريد؛ تم حفظ الشكوى.)"
+            msg_ok = _complaint_rule_submitted_user_message(cid, tgt, email_ok)
             payload = {
                 "products": [],
                 "message": msg_ok,
@@ -1290,10 +1494,39 @@ def _try_complaint_rule_flow(message: str, branch_list: list):
     if not complaint_score_is_direct(detect_complaint_score(message)):
         return None
 
+    # اكتشاف: العميل يتحدث عن شكوى سابقة بدون رقم
+    if _message_is_previous_complaint_followup(msg):
+        session["pending_complaint_lookup"] = True
+        session["chat_current_intent"] = "complaint_ticket_lookup"
+        return jsonify(
+            {
+                "products": [],
+                "message": (
+                    "أرسل لي رقم تذكرتك لو سمحت، يبدأ بـ TKT-\n"
+                    "وإذا ما عندك الرقم، اكتب لي اسمك والفرع وأحاول أساعدك."
+                ),
+                "intent": "complaint_ticket_lookup",
+            }
+        )
+
     br = resolve_branch_from_message(msg)
     if br:
         chat_ctx.remember_branch_by_name(br)
     issue_text = msg
+
+    # كشف مبكر في مسار القواعد: استرجاع/استبدال → اعرض الشروط مباشرة
+    if _is_return_exchange_complaint(issue_text) or _complaint_mentions_return_policy(issue_text):
+        session["complaint_policy_precheck"] = {"issue": issue_text, "branch": br}
+        session["chat_current_intent"] = "complaint"
+        _sync_complaint_progress_session(invalid_target=False)
+        return jsonify(
+            {
+                "products": [],
+                "message": _complaint_return_precheck_message(_cs()._display_name()),
+                "intent": "complaint_policy_precheck",
+            }
+        )
+
     detail_ok = len(issue_text.strip()) >= _MIN_COMPLAINT_DETAIL
 
     if not br:
@@ -1335,11 +1568,4 @@ def _try_complaint_rule_flow(message: str, branch_list: list):
     }
     session["chat_current_intent"] = "complaint"
     _sync_complaint_progress_session(invalid_target=False)
-    return jsonify(
-        {
-            "products": [],
-            "message": _user_facing_complaint_text(msg, "need_target", issue_text),
-            "intent": "complaint_rule",
-            "branches": branch_list,
-        }
-    )
+    return _jsonify_complaint_rule_need_target(br, branch_list)

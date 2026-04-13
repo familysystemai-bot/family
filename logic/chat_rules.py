@@ -4,13 +4,45 @@
 """
 from __future__ import annotations
 
+import random
 import re
 from typing import Optional
 
+from logic import keywords as kw
+
 # رد السلام — منفصلان في الواجهة عبر message + followup_message
 SALAM_REPLY_FIRST = "وعليكم السلام ورحمة الله وبركاته"
-SALAM_REPLY_SECOND = "حياك الله، تفضل كيف أقدر أخدمك؟"
+SALAM_REPLY_SECOND = "حياك الله، بوش تامرني؟"
 NAME_PROMPT_AFTER_SERVICE = "إذا حاب، وش تحب نناديك؟"
+
+
+def build_logged_in_islamic_salam_reply(name: str, *, returning_visitor: bool) -> str:
+    """رد سلام موحّد لزائر مسجّل الدخول بالبريد/الجوال (اسم من الجلسة)."""
+    nm = (name or "").strip()
+    if returning_visitor:
+        return f"نورتنا من جديد يا {nm}، بوش تامرني؟"
+    return (
+        f"وعليكم السلام ورحمة الله وبركاته، حياك الله يا {nm}، بوش تامرني؟"
+    )
+
+
+def build_logged_in_casual_greeting_reply(name: str, *, returning_visitor: bool) -> str:
+    """تحية عامة (هلا، مرحبا، …) لزائر مسجّل الدخول دون سطر السلام الإسلامي."""
+    nm = (name or "").strip()
+    if returning_visitor:
+        return f"نورتنا من جديد يا {nm}، بوش تامرني؟"
+    return f"حياك الله يا {nm}، بوش تامرني؟"
+
+
+_SMALL_TALK_REPLIES = (
+    "بخير والحمد لله، وأنت كيف حالك؟ بوش تامرني؟",
+    "الحمد لله بخير، وش أخبارك؟ بوش تامرني؟",
+    "تمام والحمد لله — ونسأل عنك؟ تفضل، وش تحتاج؟",
+)
+
+
+def pick_small_talk_reply() -> str:
+    return random.choice(_SMALL_TALK_REPLIES)
 
 
 def build_personalized_salam_followup(display_name: str, *, prior_salam_count: int) -> str:
@@ -19,7 +51,7 @@ def build_personalized_salam_followup(display_name: str, *, prior_salam_count: i
     prior_salam_count: عدد مرات سابقة حصل فيها المستخدم على متابعة سلام مُسماة في هذه الجلسة.
     """
     dn = (display_name or "").strip()
-    if not dn or dn == "حضرتك":
+    if not dn or dn in ("أخوي", "حضرتك"):
         return SALAM_REPLY_SECOND
     if prior_salam_count <= 0:
         return f"حياك الله يا {dn}"
@@ -167,6 +199,33 @@ DIRECT_REQUEST_MARKERS = (
     "فستان",
     "قسم",
 )
+
+
+def is_small_talk_wellbeing_message(message: str) -> bool:
+    """سؤال عن الحال أو تهامل قصير — رد محلي فقط."""
+    raw = (message or "").strip()
+    if not raw or len(raw) > 120:
+        return False
+    tl = raw.lower().strip()
+    if tl in ("hi", "hello", "hey"):
+        return True
+    t = (
+        raw.replace("ٱ", "ا")
+        .replace("أ", "ا")
+        .replace("إ", "ا")
+        .replace("آ", "ا")
+        .replace("ى", "ي")
+    )
+    for frag in _PRODUCT_OR_SHOPPING_SUBSTRINGS:
+        if frag in t:
+            return False
+    for frag in _BRANCH_OR_CITY_FRAGMENTS:
+        if frag in t:
+            return False
+    for phrase in kw.SMALL_TALK_WELLBEING_PHRASES:
+        if phrase in t:
+            return True
+    return False
 
 
 def _normalize_tokens(text: str) -> list[str]:

@@ -18,6 +18,8 @@ from logic.category_repository import CategoryRepositoryMixin
 from logic.company_info_repository import CompanyInfoRepositoryMixin
 from logic.customer_repository import CustomerRepositoryMixin
 from logic.product_repository import ProductRepositoryMixin
+from logic.conversation_repository import ConversationRepositoryMixin
+from logic.branch_inquiry_repository import BranchInquiryRepositoryMixin
 
 
 class DatabaseManager(
@@ -27,6 +29,8 @@ class DatabaseManager(
     ProductRepositoryMixin,
     CustomerRepositoryMixin,
     CompanyInfoRepositoryMixin,
+    ConversationRepositoryMixin,
+    BranchInquiryRepositoryMixin,
 ):
     def __init__(self, db_path=None):
         ensure_data_dir()
@@ -320,6 +324,33 @@ class DatabaseManager(
             )
         """)
 
+        # ── ذاكرة المحادثة ──
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS conversation_history (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id  TEXT    NOT NULL,
+                role        TEXT    NOT NULL,
+                content     TEXT    NOT NULL,
+                intent      TEXT    DEFAULT '',
+                created_at  TEXT    DEFAULT (datetime('now'))
+            )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_conv_session_time
+            ON conversation_history (session_id, created_at)
+        """)
+
+        # إضافة أعمدة رد الفرع على العميل
+        for _col_sql in (
+            "ALTER TABLE complaints ADD COLUMN customer_reply_text TEXT DEFAULT ''",
+            "ALTER TABLE complaints ADD COLUMN customer_reply_sent INTEGER DEFAULT 0",
+            "ALTER TABLE complaints ADD COLUMN customer_reply_sent_at TEXT",
+        ):
+            try:
+                conn.execute(_col_sql)
+            except Exception:
+                pass
+
         for alter in (
             "ALTER TABLE clients ADD COLUMN complaint_draft TEXT DEFAULT ''",
             "ALTER TABLE clients ADD COLUMN gender_hint TEXT DEFAULT ''",
@@ -441,6 +472,9 @@ class DatabaseManager(
         conn.commit()
         conn.close()
 
+        # جدول استفسارات الفروع (ينشأ تلقائياً إذا لم يكن موجوداً)
+        self._ensure_inquiry_table()
+
     def _migrate_working_hours_period_columns(self, cursor, conn):
         """أعمدة فترتين: start/end_1 و start/end_2 مع نسخ من open_time/close_time للبيانات القديمة."""
         cursor.execute("PRAGMA table_info(working_hours)")
@@ -530,6 +564,68 @@ class DatabaseManager(
             return cursor.lastrowid
         except Exception:
             return None
+        finally:
+            conn.close()
+
+    def find_complaints_by_name_or_branch(
+        self, customer_name: str = "", branch_name: str = "", limit: int = 5
+    ) -> list:
+        """يبحث عن شكاوى بالاسم أو الفرع لمساعدة العميل اللي ما عنده رقم تذكرة."""
+        conn = self._get_connection()
+        try:
+            parts, params = [], []
+            if (customer_name or "").strip():
+                parts.append("LOWER(customer_name) LIKE ?")
+                params.append(f"%{customer_name.strip().lower()}%")
+            if (branch_name or "").strip():
+                parts.append("LOWER(branch_name) LIKE ?")
+                params.append(f"%{branch_name.strip().lower()}%")
+            if not parts:
+                return []
+            where = " AND ".join(parts)
+            params.append(int(limit))
+            cur = conn.execute(
+                f"SELECT * FROM complaints WHERE {where} ORDER BY id DESC LIMIT ?",
+                params,
+            )
+            return [dict(r) for r in cur.fetchall()]
+        finally:
+            conn.close()
+
+    def get_complaint_with_customer_contact(self, complaint_id: int):
+        """يجيب الشكوى مع بيانات تواصل العميل لإرسال الرد."""
+        conn = self._get_connection()
+        try:
+            cur = conn.execute(
+                "SELECT * FROM complaints WHERE id = ?", (int(complaint_id),)
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def save_complaint_customer_reply(
+        self, complaint_id: int, reply_text: str
+    ) -> bool:
+        """يحفظ نص رد الفرع على العميل ويحدّث حالة الإرسال."""
+        conn = self._get_connection()
+        try:
+            conn.execute(
+                """
+                UPDATE complaints
+                SET customer_reply_text = ?,
+                    customer_reply_sent = 1,
+                    customer_reply_sent_at = datetime('now'),
+                    status = 'resolved',
+                    resolved_at = datetime('now')
+                WHERE id = ?
+                """,
+                (str(reply_text)[:4000], int(complaint_id)),
+            )
+            conn.commit()
+            return True
+        except Exception:
+            return False
         finally:
             conn.close()
 

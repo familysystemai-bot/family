@@ -58,6 +58,23 @@ class CompanyInfoRepositoryMixin:
             if k in ALLOWED_COMPANY_INFO_KEYS:
                 self.set_company_info_key(k, v if v is not None else "")
 
+    def list_services_for_branch(self, branch_id: int) -> List[Dict[str, Any]]:
+        """خدمات فرع واحد من company_branch_services (للشات المحلي دون AI)."""
+        conn = self._get_connection()
+        try:
+            cur = conn.execute(
+                """
+                SELECT service_title, details, sort_order, id
+                FROM company_branch_services
+                WHERE branch_id = ?
+                ORDER BY sort_order, id
+                """,
+                (int(branch_id),),
+            )
+            return [dict(r) for r in cur.fetchall()]
+        finally:
+            conn.close()
+
     def list_branch_services_with_branches(self) -> List[Dict[str, Any]]:
         conn = self._get_connection()
         try:

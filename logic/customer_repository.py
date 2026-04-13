@@ -27,6 +27,28 @@ class CustomerRepositoryMixin:
             return None
         return digits[:40]
 
+    def customer_has_saved_chat_history(self, customer_id: int) -> bool:
+        """هل يوجد سجل محادثة محفوظ لعميل مربوط ببريد/جوال (جدول clients)."""
+        uid = f"customer:{int(customer_id)}"
+        conn = self._get_connection()
+        try:
+            cur = conn.execute(
+                "SELECT chat_history FROM clients WHERE user_id = ?", (uid,)
+            )
+            row = cur.fetchone()
+            if not row:
+                return False
+            raw = (row["chat_history"] or "").strip()
+            if not raw:
+                return False
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                return len(raw) > 4
+            return isinstance(data, list) and len(data) > 0
+        finally:
+            conn.close()
+
     def get_customer_by_id(self, customer_id: int) -> Optional[Dict[str, Any]]:
         conn = self._get_connection()
         try:

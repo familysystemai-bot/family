@@ -362,12 +362,41 @@ def dashboard():
         br = db.get_branch_by_id(bid_int)
         if br:
             branches = [br]
+    # شكاوى الفرع للعرض في الداشبورد
+    branch_complaints = []
+    if bid_int is not None:
+        try:
+            branch_complaints = db.get_complaints(branch_name=None, status=None, limit=50)
+            branch_complaints = [
+                c for c in branch_complaints
+                if c.get("branch_id") is not None and int(c["branch_id"]) == bid_int
+            ]
+        except Exception:
+            branch_complaints = []
+
+    # استفسارات العملاء عن منتجات غير مسجلة
+    branch_inquiries = []
+    pending_inquiries_count = 0
+    if bid_int is not None:
+        try:
+            br_info = db.get_branch_by_id(bid_int)
+            br_city = (br_info.get("city_name") or "") if br_info else ""
+            branch_inquiries = db.get_branch_inquiries(br_city, limit=50)
+            pending_inquiries_count = sum(
+                1 for i in branch_inquiries if i.get("status") == "pending"
+            )
+        except Exception:
+            branch_inquiries = []
+
     return render_template(
         "dashboard.html",
         main_categories=branch_cats,
         products=products,
         branch_services_by_id=branch_services_by_id,
         branches=branches,
+        branch_complaints=branch_complaints,
+        branch_inquiries=branch_inquiries,
+        pending_inquiries_count=pending_inquiries_count,
     )
 
 @app.route('/logout')
@@ -1364,6 +1393,116 @@ def admin_complaints():
     )
 
 
+@app.route("/branch/complaints/<int:complaint_id>/reply", methods=["POST"])
+@staff_member_required
+def branch_complaint_reply(complaint_id: int):
+    """
+    مدير الفرع يكتب رد على الشكوى → النظام يرسله للعميل (إيميل أو واتساب).
+    """
+    from logic.mail_service import send_email as _send_email
+
+    role = session.get("role")
+    bid_sess = _session_branch_id_int()
+
+    reply_text = (request.form.get("reply_text") or "").strip()
+    if not reply_text:
+        flash("يرجى كتابة نص الرد.", "warning")
+        return redirect(request.referrer or url_for("dashboard"))
+
+    row = db.get_complaint_with_customer_contact(complaint_id)
+    if not row:
+        flash("الشكوى غير موجودة.", "danger")
+        return redirect(request.referrer or url_for("dashboard"))
+
+    # التحقق من صلاحية الفرع
+    if role == "branch":
+        comp_bid = row.get("branch_id")
+        if comp_bid is not None and int(comp_bid) != bid_sess:
+            flash("غير مصرح لك بالرد على هذه الشكوى.", "danger")
+            return redirect(url_for("dashboard"))
+
+    cust_name  = (row.get("customer_name")  or "").strip() or "العميل"
+    cust_email = (row.get("customer_email") or "").strip() or None
+    cust_phone = (row.get("customer_phone") or "").strip() or None
+    ticket     = (row.get("ticket_code")    or "").strip()
+    branch_lbl = (row.get("branch_name")    or session.get("city_name") or "").strip()
+
+    sent_channels = []
+    send_failed   = []
+
+    # ── إرسال عبر البريد ──
+    if cust_email:
+        subj = f"رد على شكواك" + (f" #{ticket}" if ticket else "")
+        ticket_line = f" برقم {ticket}" if ticket else ""
+        branch_name_line = branch_lbl or "خدمة العملاء"
+        body = (
+            "أخي/أختي " + cust_name + "،\n\n"
+            "بخصوص شكواك المسجّلة" + ticket_line + ":\n\n"
+            + reply_text + "\n\n"
+            "نشكر تواصلك معنا ونتمنى أن يكون الأمر قد حُلّ بما يرضيك.\n"
+            "فريق " + branch_name_line
+        )
+        if _send_email(cust_email, subj, body):
+            sent_channels.append("البريد الإلكتروني")
+        else:
+            send_failed.append("البريد الإلكتروني")
+
+    # ── تسجيل الرد في قاعدة البيانات ──
+    db.save_complaint_customer_reply(complaint_id, reply_text)
+
+    if sent_channels:
+        flash(f"تم إرسال الرد للعميل عبر: {', '.join(sent_channels)}.", "success")
+    elif cust_email or cust_phone:
+        flash("تم حفظ الرد — تعذر الإرسال التلقائي، تحقق من إعدادات البريد.", "warning")
+    else:
+        flash("تم حفظ الرد — لا يوجد بريد أو جوال للعميل لإرساله تلقائياً.", "info")
+
+    return redirect(request.referrer or url_for("dashboard"))
+
+
+@app.route("/branch/inquiry/<int:inquiry_id>/reply", methods=["POST"])
+def branch_reply_inquiry(inquiry_id: int):
+    """
+    الفرع يرد على استفسار العميل بنص + سعر + صورة اختيارية.
+    """
+    if not _staff_session_ok():
+        return redirect(url_for("login"))
+
+    reply_text = (request.form.get("reply_text") or "").strip()
+    branch_price = (request.form.get("branch_price") or "").strip()
+
+    if not reply_text:
+        flash("يرجى كتابة نص الرد.", "warning")
+        return redirect(request.referrer or url_for("dashboard"))
+
+    # رفع صورة اختيارية من الفرع
+    branch_image_path = ""
+    img_file = request.files.get("branch_image")
+    if img_file and img_file.filename:
+        ext_img = img_file.filename.rsplit(".", 1)[-1].lower()
+        if ext_img in {"png", "jpg", "jpeg", "gif", "webp"}:
+            import uuid as _uuid
+            unique_img = f"inq_{_uuid.uuid4().hex}.{ext_img}"
+            save_path = os.path.join(UPLOAD_FOLDER, unique_img)
+            os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+            img_file.save(save_path)
+            branch_image_path = f"static/uploads/{unique_img}"
+
+    ok = db.reply_to_inquiry(
+        inquiry_id=inquiry_id,
+        branch_reply=reply_text,
+        branch_price=branch_price,
+        branch_image_path=branch_image_path,
+    )
+
+    if ok:
+        flash("✅ تم إرسال الرد للعميل بنجاح.", "success")
+    else:
+        flash("حدث خطأ أثناء حفظ الرد.", "danger")
+
+    return redirect(request.referrer or url_for("dashboard"))
+
+
 @app.route("/admin/complaints/<int:complaint_id>/resolve", methods=["POST"])
 def admin_resolve_complaint(complaint_id: int):
     if not _staff_session_ok():
@@ -1491,12 +1630,18 @@ def chat_login():
         return jsonify(
             {"ok": False, "error": "الاسم مطلوب (حرفان على الأقل) كما في واجهة الشات."}
         ), 400
+    prior_customer = (
+        db.get_customer_by_email(value)
+        if kind == "email"
+        else db.get_customer_by_phone(value)
+    )
     session.permanent = True
     session["logged_in"] = True
     session["login_scope"] = "chat_customer"
     session["user"] = value
     session["name"] = nm[:120]
     session["user_name"] = nm[:120]
+    session["chat_customer_returning_visitor"] = bool(prior_customer)
     if kind == "email":
         session["user_email"] = value
         session.pop("user_phone", None)

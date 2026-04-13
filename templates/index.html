@@ -53,11 +53,17 @@
     </main>
 
     <footer class="chat-footer">
+        <!-- معاينة الصورة المرفقة قبل الإرسال -->
+        <div id="imagePreviewBar" style="display:none; padding:8px 12px; background:rgba(255,255,255,0.06); border-top:1px solid rgba(255,255,255,0.08); align-items:center; gap:10px;">
+            <img id="imagePreviewThumb" src="" alt="" style="height:52px; width:52px; object-fit:cover; border-radius:8px; border:2px solid rgba(255,255,255,0.2);">
+            <span id="imagePreviewName" style="font-size:0.82rem; color:rgba(255,255,255,0.7); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+            <button onclick="clearPendingImage()" style="background:none; border:none; color:rgba(255,100,100,0.9); font-size:1.1rem; cursor:pointer; padding:4px 8px;" title="إلغاء الصورة">✕</button>
+        </div>
         <div class="input-row">
-            <button class="action-btn" onclick="document.getElementById('fileInput').click()" title="إرفاق صورة أو فيديو">
+            <button class="action-btn" onclick="document.getElementById('fileInput').click()" title="إرفاق صورة">
                 <i class="fa-solid fa-camera"></i>
             </button>
-            <input type="file" id="fileInput" accept="image/*,video/*" style="display:none" onchange="handleFileSelect(event)">
+            <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFileSelect(event)">
             <input type="text" id="userInput" placeholder="اكتب رسالتك..." onkeypress="if(event.key==='Enter') sendMessage()">
             <button class="action-btn voice-btn" id="voiceBtn" onclick="toggleVoiceRecording()" title="تسجيل صوتي">
                 <i class="fa-solid fa-microphone"></i>
@@ -435,46 +441,38 @@
             }
         }
 
+        // ── ملف معلّق (ينتظر الإرسال مع رسالة نصية) ──
+        let pendingImageFile = null;
+
         function handleFileSelect(event) {
             const file = event.target.files[0];
             if (!file) return;
-            const div = document.createElement('div');
-            div.className = 'message msg-user';
-            const isImage = file.type.startsWith('image');
-            let iconClass = isImage ? 'fa-image' : 'fa-video';
-            let label = isImage ? 'صورة' : 'فيديو';
-            let previewHTML = '';
-            if (isImage) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const img = div.querySelector('.attached-image-preview');
-                    if (img) img.src = e.target.result;
-                };
-                reader.readAsDataURL(file);
-                previewHTML = '<img class="attached-image-preview" src="" alt="صورة مرفقة">';
+            if (!file.type.startsWith('image/')) {
+                appendBotMessageText('يرجى إرفاق صورة فقط (jpg/png/webp).');
+                event.target.value = '';
+                return;
             }
-            div.innerHTML = '<div>تم إرفاق ' + label + '</div>' + previewHTML + '<div class="msg-attachment"><i class="fa-solid ' + iconClass + '"></i><span>' + file.name + '</span></div>';
-            document.getElementById('chatBox').appendChild(div);
-            scrollChat();
-            
-            // رفع الملف مباشرة للسيرفر (إضافة بسيطة لتسهيل المعالجة)
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('message', '');
-            if(isLoggedIn) {
-                formData.append('user_name', userName);
-                formData.append('account_logged_in', '1');
-            }
-            
-            fetch('/chat_query', {
-                method: 'POST',
-                body: formData,
-                credentials: 'same-origin',
-            }).then(response => response.json())
-              .then(data => appendBotTyping((data && (data.message || data.reply)) || ''))
-              .catch(error => console.error("Error uploading file: ", error));
+            pendingImageFile = file;
 
+            // عرض المعاينة فوق خانة الكتابة
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById('imagePreviewThumb').src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+            document.getElementById('imagePreviewName').textContent = file.name;
+            document.getElementById('imagePreviewBar').style.display = 'flex';
+            document.getElementById('userInput').placeholder = 'أضف وصفاً للصورة (اختياري) ثم اضغط إرسال...';
+            document.getElementById('userInput').focus();
             event.target.value = '';
+        }
+
+        function clearPendingImage() {
+            pendingImageFile = null;
+            document.getElementById('imagePreviewBar').style.display = 'none';
+            document.getElementById('imagePreviewThumb').src = '';
+            document.getElementById('imagePreviewName').textContent = '';
+            document.getElementById('userInput').placeholder = 'اكتب رسالتك...';
         }
 
         let mediaRecorder = null;
@@ -541,45 +539,94 @@
         async function sendMessage() {
             const input = document.getElementById('userInput');
             const msg = input.value.trim();
-            if (!msg) return;
+
+            // لازم يكون نص أو صورة (أو الاثنين)
+            if (!msg && !pendingImageFile) return;
 
             // إذا كتب شكوى وهو مو مسجل دخول
-            if (!isLoggedIn && detectLoginIntent(msg)) {
+            if (!isLoggedIn && msg && detectLoginIntent(msg)) {
                 if(smartLoginModal) smartLoginModal.show();
                 return;
             }
 
-            appendMessage(msg, 'user');
+            // ── عرض رسالة المستخدم في الشات ──
+            const chatBox = document.getElementById('chatBox');
+            const userDiv = document.createElement('div');
+            userDiv.className = 'message msg-user';
+
+            if (pendingImageFile && msg) {
+                // صورة + نص معاً
+                const imgEl = document.createElement('img');
+                imgEl.className = 'attached-image-preview';
+                imgEl.src = document.getElementById('imagePreviewThumb').src;
+                imgEl.style.cssText = 'max-width:180px;border-radius:10px;display:block;margin-bottom:6px;';
+                userDiv.appendChild(imgEl);
+                const textEl = document.createElement('div');
+                textEl.textContent = msg;
+                userDiv.appendChild(textEl);
+            } else if (pendingImageFile) {
+                // صورة فقط
+                const imgEl = document.createElement('img');
+                imgEl.className = 'attached-image-preview';
+                imgEl.src = document.getElementById('imagePreviewThumb').src;
+                imgEl.style.cssText = 'max-width:180px;border-radius:10px;display:block;';
+                userDiv.appendChild(imgEl);
+                const textEl = document.createElement('div');
+                textEl.textContent = '📷 صورة مرفقة';
+                textEl.style.cssText = 'font-size:0.82rem;color:rgba(255,255,255,0.6);margin-top:4px;';
+                userDiv.appendChild(textEl);
+            } else {
+                userDiv.textContent = msg;
+            }
+            chatBox.appendChild(userDiv);
+            scrollChat();
+
             input.value = '';
 
             try {
-                const payload = { message: msg };
-                if (isLoggedIn && userName) {
-                    payload.user_name = userName;
-                    payload.account_logged_in = true;
+                let response;
+                if (pendingImageFile) {
+                    // إرسال صورة (+ نص اختياري) كـ FormData
+                    const formData = new FormData();
+                    formData.append('file', pendingImageFile);
+                    formData.append('message', msg);  // قد يكون فارغاً
+                    if (isLoggedIn) {
+                        formData.append('user_name', userName);
+                        formData.append('account_logged_in', '1');
+                        if (userContact) formData.append('user_contact', userContact);
+                    }
+                    clearPendingImage();
+                    response = await fetch('/chat_query', {
+                        method: 'POST',
+                        body: formData,
+                        credentials: 'same-origin',
+                    });
+                } else {
+                    // نص فقط كـ JSON
+                    const payload = { message: msg };
+                    if (isLoggedIn && userName) { payload.user_name = userName; payload.account_logged_in = true; }
+                    if (isLoggedIn && userContact) payload.user_contact = userContact;
+                    response = await fetch('/chat_query', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        credentials: 'same-origin',
+                        body: JSON.stringify(payload),
+                    });
                 }
-                if (isLoggedIn && userContact) {
-                    payload.user_contact = userContact;
-                }
-                const response = await fetch('/chat_query', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    credentials: 'same-origin',
-                    body: JSON.stringify(payload),
-                });
+
                 const data = await response.json();
                 const hasProducts = data && Array.isArray(data.products) && data.products.length > 0;
                 if (hasProducts) {
                     const intro = data.message ? String(data.message).trim() : '';
                     if (intro) appendBotMessageText(intro);
-                    const fol = data && data.followup_message ? String(data.followup_message).trim() : '';
+                    const fol = data.followup_message ? String(data.followup_message).trim() : '';
                     if (fol) appendBotMessageText(fol);
                     appendBotHTML(renderProducts(data.products));
                 } else {
                     appendBotChatPayload(data);
                 }
             } catch (error) {
-                appendMessage("عذراً، حدث خطأ في الاتصال بالسيرفر.", 'bot');
+                appendBotMessageText('عذراً، حدث خطأ في الاتصال بالسيرفر.');
             }
         }
     </script>

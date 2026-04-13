@@ -71,7 +71,7 @@ _NON_RETURN_MATCHES: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
 
 def _opener_for_addressing(addressing: str) -> str:
     name = (addressing or "").strip()
-    if name and name != "حضرتك":
+    if name and name not in ("أخوي", "حضرتك"):
         return f"حياك يا {name}، "
     return "حياك، "
 
@@ -275,7 +275,11 @@ def build_return_policy_complaint_precheck_summary(addressing: str = "") -> str:
         hint_24 = f" وبعض الأصناف كـ {special[0]} و{special[1]} غالباً لها مهلة أقصر." if len(special) > 1 else f" وبعض الأصناف كـ {special[0]} غالباً لها مهلة أقصر."
 
     name = (addressing or "").strip()
-    opener = f"حياك يا {name}، " if name and name != "حضرتك" else "حياك، "
+    opener = (
+        f"حياك يا {name}، "
+        if name and name not in ("أخوي", "حضرتك")
+        else "حياك، "
+    )
     mid = (
         f"{opener}حسب سياسة الاستبدال والاسترجاع: تقدر تستبدل خلال {ex} أيام "
         f"وتسترجع خلال {ret} أيام، بشرط {cond_phrase}."
