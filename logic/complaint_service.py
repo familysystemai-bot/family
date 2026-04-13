@@ -337,8 +337,7 @@ def _jsonify_complaint_rule_need_target(
 
 def _complaint_retry_target_message(message: str) -> str:
     return (
-        "ما التقطنا اختيارك 🙏 "
-        "اكتب بوضوح: «إدارة الفرع» أو «الإدارة العليا» — أو أرسل 1 أو 2."
+        "ما فهمت اختيارك، اكتب: إدارة الفرع أو الإدارة العليا"
     )
 
 
