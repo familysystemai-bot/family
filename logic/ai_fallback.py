@@ -712,20 +712,11 @@ def contextualize_no_product_message(
     user_context: Dict[str, Optional[str]],
     category_names: List[str],
 ) -> str:
-    """يضيف تلميحاً يتناسب مع المناسبة عند عدم وجود منتجات."""
-    base = (ai_msg or "").strip()
-    uc = user_context or {}
-    if not any(uc.get(k) for k in ("occasion", "target", "style")):
-        return base
-    extra_lines = _template_recommendation_lines(uc, [])
-    cat_hint = ""
-    if category_names:
-        cat_hint = "جرب تتفرّج على: " + "، ".join(category_names[:6]) + "."
-    tail_parts = extra_lines + ([cat_hint] if cat_hint else [])
-    tail = "\n\n".join(tail_parts).strip()
-    if not tail:
-        return base
-    return f"{base}\n\n{tail}".strip() if base else tail
+    """
+    كانت تضيف "جرب تتفرّج على..." — محذوف لأنه يعطي اقتراحات عشوائية غير مفيدة.
+    الردود تُبنى على بيانات حقيقية أو تصعيد للفرع.
+    """
+    return (ai_msg or "").strip()
 
 
 def is_ai_fallback_enabled() -> bool:
@@ -1624,13 +1615,10 @@ def _remove_branch_info(text: str, user_message: str = "") -> str:
     if len(sents) <= 1:
         stub = sents[0] if sents else raw
         if _sentence_mentions_branch_location(stub):
-            return "قولي وش تبغى بالضبط؟"
+            return ""  # ترك النص فارغاً → مسار التصعيد
         return raw
     kept = [s for s in sents if not _sentence_mentions_branch_location(s)]
-    out = " ".join(kept).strip()
-    if not out:
-        return "قولي وش تبغى بالضبط؟"
-    return out
+    return " ".join(kept).strip()
 
 
 def _remove_irrelevant_category_sentences(text: str, user_message: str) -> str:

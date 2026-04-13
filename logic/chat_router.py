@@ -414,16 +414,39 @@ def _merge_text_avoid_redundant_overlap(base_msg: str, ai_msg: str) -> str:
 
 def _scrub_disallowed_bot_phrases(text: str) -> str:
     """
-    يزيل عبارات عديمة الفائدة (غالباً من نموذج) دون المساس بباقي النص.
+    يزيل عبارات ممنوعة من ردود البوت.
     إن أصبح النص فارغاً بعد الإزالة يُعاد سلسلة فارغة → مسار صامت لاحقاً.
     """
     t = (text or "").strip()
     if not t:
         return ""
-    # عبارات ممنوعة كاملة أو مكررة بلا قيمة مضافة
+    # عبارات ممنوعة تُحذف من النص
     banned = (
         "ما حصلت نفس الطلب",
         "ما حصلت نفس الطلب.",
+        "ما لقطت عليك",
+        "ما لقيت عليك",
+        "وش تدور",
+        "وش تدوّر",
+        "جرب تشوف",
+        "جرّب تشوف",
+        "جرب تتفرج",
+        "جرّب تتفرّج",
+        "تتفرج على",
+        "تتفرّج على",
+        "في أكثر من قسم قريب من طلبك",
+        "أقسام قريبة من طلبك",
+        "أقسام قد تناسبك",
+        "ممكن تتفرّج على أقسام",
+        "ممكن تتفرج على أقسام",
+        "وضح لي أكثر",
+        "وضّح لي أكثر",
+        "وضّح لي المطلوب",
+        "وضح لي المطلوب",
+        "وضّح لي",
+        "وضح لي",
+        "قولي وش تبغى بالضبط",
+        "قولي وش تبغى",
     )
     for b in banned:
         if b in t:
@@ -1308,6 +1331,33 @@ def _execute_ai_orchestrator(
             msg_out = dialect_message(
                 d, "unknown_fallback", name=cs._display_name()
             )
+        # إذا كان رد الذكاء الاصطناعي يحتوي على عبارات تدل على عدم الفهم أو الاقتراح
+        # وكانت رسالة العميل تحتوي على كلمات منتج → صعّد للفرع بدل الرد الفارغ
+        _product_hints = (
+            "فستان", "فساتين", "عباية", "عبايات", "قميص", "بنطال", "حذاء",
+            "شنطة", "حقيبة", "ساعة", "عطر", "لانجري", "داخلية", "بيجامة",
+            "قماش", "كوري", "تركي", "حرير", "قطن", "ثوب", "شماغ", "غترة",
+            "سنتيان", "برا", "ستارة", "سجادة", "لحاف", "وسادة", "بطانية",
+            "منتج", "قطعة", "موديل", "ماركة", "برند", "سعر", "بكام",
+        )
+        _bad_ai_phrases = (
+            "وضّح", "وضح", "تتفرج", "تتفرّج", "وش تدور", "وش تدوّر",
+            "أقسام قريبة", "ما لقطت", "ما لقيت",
+        )
+        msg_lower_g = message.lower()
+        ai_has_bad = any(p in msg_out for p in _bad_ai_phrases)
+        msg_has_product = any(h in message for h in _product_hints)
+        if (ai_has_bad or (msg_has_product and not msg_out.strip())) :
+            from logic.product_service import try_product_search_with_inquiry
+            inq = try_product_search_with_inquiry(message, hint_source_message=message)
+            if inq:
+                return jsonify(inq)
+            d = session.get("chat_dialect") or "default"
+            return jsonify({
+                "products": [],
+                "message": dialect_message(d, "product_fallback", name=cs._display_name()),
+                "intent": "inquiry_confirm",
+            })
         if needs_branch:
             msg_out = (msg_out + "\n\n" + cs._branch_selection_prompt()).strip()
         return jsonify(
@@ -1319,37 +1369,17 @@ def _execute_ai_orchestrator(
         )
 
     if action == "category_suggestion":
-        session["chat_current_intent"] = "general"
-        cats = filters.get("suggested_categories") or []
-        if not isinstance(cats, list):
-            cats = []
-        cats = [c for c in cats if isinstance(c, str) and c.strip()]
-        if not cats:
-            cats = ai_fb.pick_fallback_categories(
-                context,
-                ai_fb.merged_turn_text_for_shopping(message),
-                gender_f if gender_f in ("male", "female") else None,
-            )
-        msg_parts = [ai_msg] if ai_msg else []
-        if cats:
-            msg_parts.append("أقسام قد تناسبك: " + "، ".join(str(c) for c in cats[:8] if c))
-        if needs_branch:
-            msg_parts.append(cs._branch_selection_prompt())
-        final_msg = "\n\n".join(p for p in msg_parts if p).strip()
-        if not final_msg:
-            d = session.get("chat_dialect") or "default"
-            final_msg = dialect_message(
-                d, "unknown_fallback", name=cs._display_name()
-            )
-        final_msg = ai_fb.contextualize_no_product_message(
-            final_msg, message, uctx, cats
-        )
-        if not (final_msg or "").strip():
-            d = session.get("chat_dialect") or "default"
-            final_msg = dialect_message(
-                d, "unknown_fallback", name=cs._display_name()
-            )
-        return jsonify({"products": [], "message": final_msg, "intent": "general"})
+        # بدل عرض أقسام غير مرتبطة → صعّد للفرع مباشرة
+        from logic.product_service import try_product_search_with_inquiry
+        inq = try_product_search_with_inquiry(message, hint_source_message=message)
+        if inq:
+            return jsonify(inq)
+        d = session.get("chat_dialect") or "default"
+        return jsonify({
+            "products": [],
+            "message": dialect_message(d, "product_fallback", name=cs._display_name()),
+            "intent": "inquiry_confirm",
+        })
 
     if action == "product_search":
         sq = str(filters.get("search_query") or "").strip()
@@ -1373,38 +1403,19 @@ def _execute_ai_orchestrator(
             )
             return jsonify(out)
 
-        cats = filters.get("suggested_categories") or []
-        if not isinstance(cats, list):
-            cats = []
-        cats = [c for c in cats if isinstance(c, str) and c.strip()]
-        if not cats:
-            cats = ai_fb.pick_fallback_categories(
-                context,
-                ai_fb.merged_turn_text_for_shopping(message),
-                gender_f if gender_f in ("male", "female") else None,
-            )
-        msg_parts = []
-        if ai_msg:
-            msg_parts.append(ai_msg)
-        if cats:
-            msg_parts.append("ممكن تتفرّج على أقسام قريبة من طلبك: " + "، ".join(cats[:8]))
-        if needs_branch:
-            msg_parts.append(cs._branch_selection_prompt())
-        final_msg = "\n\n".join(msg_parts).strip()
-        if not final_msg:
-            d = session.get("chat_dialect") or "default"
-            final_msg = dialect_message(
-                d, "unknown_fallback", name=cs._display_name()
-            )
-        final_msg = ai_fb.contextualize_no_product_message(
-            final_msg, message, uctx, cats
-        )
-        if not (final_msg or "").strip():
-            d = session.get("chat_dialect") or "default"
-            final_msg = dialect_message(
-                d, "unknown_fallback", name=cs._display_name()
-            )
-        return jsonify({"products": [], "message": final_msg, "intent": "general"})
+        # المنتج غير موجود → صعّد للفرع فوراً بدل أقسام مقترحة
+        if prod and prod.get("intent") in ("inquiry_confirm", "branch_inquiry"):
+            return jsonify(prod)
+        from logic.product_service import try_product_search_with_inquiry
+        inq = try_product_search_with_inquiry(message, hint_source_message=message)
+        if inq:
+            return jsonify(inq)
+        d = session.get("chat_dialect") or "default"
+        return jsonify({
+            "products": [],
+            "message": dialect_message(d, "product_fallback", name=cs._display_name()),
+            "intent": "inquiry_confirm",
+        })
 
     d = session.get("chat_dialect") or "default"
     return jsonify(

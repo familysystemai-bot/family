@@ -1539,15 +1539,16 @@ def try_product_search_with_inquiry(
 ) -> dict:
     """
     يبحث عن المنتج أولاً.
-    إذا لم يجد + القسم موجود عندنا → يسأل العميل: تبغى أتأكد من الفرع أو كل الفروع؟
-    إذا القسم غير موجود → يعيد NO_PRODUCTS_PAYLOAD.
+    إذا وُجد → يعيده مباشرة.
+    إذا لم يُجد → دائماً يصعّد للفرع (لا يقول "ما لقيت" ولا يخمّن).
 
-    التدفق الصحيح:
-    1. هذه الدالة تحفظ pending_inquiry في الجلسة وتعيد سؤالاً للعميل.
-    2. chat_router يلتقط رد العميل عبر _try_resolve_pending_inquiry.
-    3. عند التأكيد → ينشئ الاستفسار ويرسل البريد.
+    التدفق:
+    1. يحفظ pending_inquiry في الجلسة.
+    2. يعيد سؤال "تبغى أسأل الفرع؟" للعميل.
+    3. chat_router يلتقط رد العميل عبر _try_resolve_pending_inquiry.
+    4. عند التأكيد → ينشئ الاستفسار ويرسل للفرع.
 
-    ملاحظة: هذه الدالة تعيد dict فقط (لا jsonify).
+    القاعدة: إذا ما عندنا جواب أكيد → نصعّد. لا نخمن.
     """
     result = _build_products_response(message, hint_source_message)
 
@@ -1555,6 +1556,7 @@ def try_product_search_with_inquiry(
     if result.get("intent") != "no_products":
         return result
 
+    # ── المنتج غير موجود → تصعيد للفرع دائماً ──
     try:
         from logic.category_classifier import infer_category_from_text
 
@@ -1569,9 +1571,11 @@ def try_product_search_with_inquiry(
         except Exception:
             db_cats = []
 
-        category = infer_category_from_text(message, db_cats)
-        if not category:
-            return result  # لا يوجد قسم مطابق → رد افتراضي
+        # استخدم النص الأصلي للتحليل
+        original_text = (hint_source_message or message).strip()
+
+        # حاول استنتاج الفئة — لكن لا تتوقف إذا ما وُجدت
+        category = infer_category_from_text(original_text, db_cats) or ""
 
         branch_name = (
             session.get("chat_selected_branch")
@@ -1579,11 +1583,9 @@ def try_product_search_with_inquiry(
             or ""
         )
         customer_name = (session.get("user_name") or "").strip()
-        name_part = f" يا {customer_name}" if customer_name else ""
+        name_prefix = f"يا {customer_name}، " if customer_name else ""
 
-        # ── احفظ الاستفسار في الجلسة ولا تُنشئه تلقائياً ──
-        # استخدم النص الأصلي للعميل (hint_source_message) لا الاستعلام المُحسَّن
-        original_text = (hint_source_message or message).strip()
+        # ── احفظ الاستفسار في الجلسة دائماً ──
         session["pending_inquiry"] = {
             "text": original_text,
             "category": category,
@@ -1591,18 +1593,22 @@ def try_product_search_with_inquiry(
             "image_path": session.get("_pending_image_path", ""),
         }
 
-        # بناء سؤال التأكيد
-        if branch_name:
+        # ── بناء سؤال التأكيد ──
+        if category and branch_name:
             q = (
-                f"عندنا قسم {category}{name_part} ✅\n"
-                f"ما لقيت المنتج المحدد حالياً — تبغى أتأكد لك من فرع {branch_name}، "
+                f"{name_prefix}عندنا قسم {category} ✅\n"
+                f"ما لقيت هذا المنتج محدداً — تبغى أتأكد لك من فرع {branch_name}، "
                 f"أو أشوف في كل الفروع؟"
             )
-        else:
+        elif category:
             q = (
-                f"عندنا قسم {category}{name_part} ✅\n"
-                f"ما لقيت المنتج المحدد حالياً — تبغى أشوف لك في كل الفروع؟"
+                f"{name_prefix}عندنا قسم {category} ✅\n"
+                f"ما لقيته محدداً عندي — تبغى أسأل الفروع عنه؟"
             )
+        elif branch_name:
+            q = f"{name_prefix}ما لقيت هذا المنتج حالياً — تبغى أتأكد لك من فرع {branch_name}؟"
+        else:
+            q = f"{name_prefix}ما لقيت هذا المنتج حالياً — تبغى أسأل الفروع عنه؟"
 
         return {
             "products": [],
