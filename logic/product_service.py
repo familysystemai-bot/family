@@ -1607,18 +1607,17 @@ def try_product_search_with_inquiry(
         if category and branch_name:
             q = (
                 f"{name_prefix}عندنا قسم {category} ✅\n"
-                f"ما لقيت هذا المنتج محدداً — تبغى أتأكد لك من فرع {branch_name}، "
-                f"أو أشوف في كل الفروع؟"
+                f"بأكد لك التوفر من فرع {branch_name} — تبغى أسأل الفرع، أو أشوف في كل الفروع؟"
             )
         elif category:
             q = (
                 f"{name_prefix}عندنا قسم {category} ✅\n"
-                f"ما لقيته محدداً عندي — تبغى أسأل الفروع عنه؟"
+                f"بأكد لك التوفر من الفرع — تبغى أسأل الفروع عنه؟"
             )
         elif branch_name:
-            q = f"{name_prefix}ما لقيت هذا المنتج حالياً — تبغى أتأكد لك من فرع {branch_name}؟"
+            q = f"{name_prefix}لحظة، بأكد لك من فرع {branch_name} 🙏 — تبغى؟"
         else:
-            q = f"{name_prefix}ما لقيت هذا المنتج حالياً — تبغى أسأل الفروع عنه؟"
+            q = f"{name_prefix}لحظة، بأكد لك من الفرع 🙏 — تبغى أسأل الفروع عنه؟"
 
         return {
             "products": [],

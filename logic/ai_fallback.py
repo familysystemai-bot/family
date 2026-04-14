@@ -101,7 +101,9 @@ _ORCHESTRATOR_SYSTEM = """أنت موظف خدمة عملاء حقيقي في م
 - أسلوب بشري (مو رسمي بزيادة)، بدون قوائم طويلة أو فقرات أو تكرار.
 - معلومات المنتجات والأقسام والفروع فقط من database_context؛ لا تخمن ولا تخترع منتجات أو أقساماً غير موجودة في العينة.
 - عند عدم اليقين: لا تقل "وضّح" أو "وضح لي" أبداً. بدلاً من ذلك قل "لحظة، بأكد لك من الفرع 🙏" واجعل action = "product_search" ليتم التصعيد للفرع.
-- ممنوع نهائياً هذه العبارات: "وضّح لي"، "وضح لي"، "ما لقطت عليك"، "وش تدور"، "جرب تشوف"، "تتفرج على"، "أقسام قريبة من طلبك"، "أقسام قد تناسبك".
+- ممنوع نهائياً هذه العبارات: "وضّح لي"، "وضح لي"، "ما لقطت عليك"، "ما لقيت هذا"، "ما لقيت المنتج"، "وش تدور"، "جرب تشوف"، "تتفرج على"، "أقسام قريبة من طلبك"، "أقسام قد تناسبك".
+- ممنوع تماماً: ذكر بطء النظام أو أعطال تقنية أو "جرّب بعد لحظة" — لا تخترع أعذاراً تقنية أبداً.
+- ممنوع تماماً: قول "ما لقيت" أو "لا يوجد" أو "غير موجود" في حقل message — بدلاً من ذلك اجعل action = "product_search" وسيتولى النظام التصعيد للفرع تلقائياً.
 - ممنوع «الهبد»: لا اقتراح أقسام عشوائية بعيدة عن طلب العميل (مثل أقسام لا صلة لها بالرسالة).
 - لا تذكر فروعاً أو مدناً أو مواقع أو دواماً إلا إذا سأل العميل عن الفرع/الموقع/الأقرب/الزيارة صراحة — **استثناء**: إذا كان الرد مأخوذاً حصراً من database_context.company_info (نص رسمي مُدخل من الإدارة) فيُسمح بذكر ما ورد هناك.
 
@@ -1293,6 +1295,29 @@ def run_chat_orchestrator_openai(message: str, context: Dict[str, Any], history:
             + "\n\n--- مرجع سياسات المتجر (أولوية: ما سبق من لوحة الإدارة؛ ثم الملخص التالي إن وُجد) ---\n"
             + policy_block
         )
+    # ── تنظيف تاريخ المحادثة للصيغة الصحيحة ──
+    clean_history = []
+    for h in (history or []):
+        if isinstance(h, dict):
+            role = h.get("role", "")
+            content = h.get("content", "")
+            # تحويل role "bot" أو "assistant" إلى "assistant"
+            if role in ("bot", "assistant"):
+                role = "assistant"
+            elif role == "user":
+                pass
+            else:
+                continue
+            if content and isinstance(content, str):
+                # إذا كان content هو JSON payload كبير → استخرج customer_message فقط
+                if content.strip().startswith("{") and "customer_message" in content:
+                    try:
+                        parsed = json.loads(content)
+                        content = parsed.get("customer_message") or content
+                    except Exception:
+                        pass
+                clean_history.append({"role": role, "content": str(content)[:800]})
+
     try:
         if OPENAI_ORCH_DEBUG:
             logger.debug("orchestrator: calling OpenAI model=%s", model)
@@ -1300,11 +1325,11 @@ def run_chat_orchestrator_openai(message: str, context: Dict[str, Any], history:
         response = client.chat.completions.create(
             model=model,
             max_tokens=_MAX_ORCHESTRATOR_TOKENS,
-            temperature=0.28,
+            temperature=0.25,
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": system_content},
-                *(history or []),
+                *clean_history,
                 {"role": "user", "content": user_text},
             ],
         )

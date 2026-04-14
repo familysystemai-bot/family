@@ -18,7 +18,7 @@ RESPONSES: Dict[str, Dict[str, str]] = {
         "goodbye": "مع السلامة يا {name}، وشرفتنا.",
         "general": "يا {name}، تفضل — وش تحتاج؟",
         "unknown_fallback": "وش أقدر أساعدك فيه؟",
-        "server_error": "صار عندنا بطء بالنظام يا {name}، جرّب بعد لحظة.",
+        "server_error": "لحظة يا {name}، بأكد لك من الفرع 🙏",
         "product_found_soft": "يا {name}، نعم متوفر 👍 وش تبي بالضبط؟",
         "product_search_intro": "يا {name}، هذا اللي عندنا 👇",
         "product_available_ack": "نعم متوفر 👍\nتبغى موديل معين؟",

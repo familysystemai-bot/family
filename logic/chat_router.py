@@ -541,6 +541,14 @@ def _scrub_disallowed_bot_phrases(text: str) -> str:
         "ما حصلت نفس الطلب.",
         "ما لقطت عليك",
         "ما لقيت عليك",
+        "ما لقيت هذا المنتج بالضبط",
+        "ما لقيت هذا المنتج",
+        "لم أجد هذا المنتج",
+        "غير متوفر حالياً",
+        "لا يوجد هذا المنتج",
+        "صار عندنا بطء",
+        "جرّب بعد لحظة",
+        "جرب بعد لحظة",
         "وش تدور",
         "وش تدوّر",
         "جرب تشوف",
@@ -1711,6 +1719,32 @@ def _router_pending_and_services(message: str, branch_list: list) -> Optional[An
             "intent": "complaint_ticket_lookup",
         })
     maybe_clear_complaint_session_before_router(message)
+
+    # ── كشف "عندكم X؟" / "فيه عندكم X" → بحث منتج مباشرة ──
+    _availability_prefixes = ("عندكم", "عندكم فيه", "فيه عندكم", "يوجد عندكم",
+                               "تبيعون", "تبيعوا", "عندهم", "متوفر عندكم",
+                               "تعندكم", "عندكوا")
+    _msg_stripped = message.strip().rstrip("؟?!")
+    _found_avail = False
+    _avail_product_query = ""
+    for _pfx in _availability_prefixes:
+        if _msg_stripped.startswith(_pfx):
+            _avail_product_query = _msg_stripped[len(_pfx):].strip()
+            if len(_avail_product_query) >= 2:
+                _found_avail = True
+                break
+    if _found_avail and not session.get("complaint_active"):
+        session["chat_current_intent"] = "product"
+        _avail_result = _build_products_response(_avail_product_query, hint_source_message=message)
+        if _avail_result and _avail_result.get("products"):
+            out = dict(_avail_result)
+            out["message"] = f"نعم، عندنا 👍\n" + (out.get("message") or "")
+            return jsonify(out)
+        # ما وجد → صعّد للفرع
+        _inq = try_product_search_with_inquiry(_avail_product_query, hint_source_message=message)
+        if _inq:
+            return jsonify(_inq)
+
     if message_asks_full_category_catalog(message):
         session["chat_pending_action"] = None
         session["chat_current_intent"] = "section"
