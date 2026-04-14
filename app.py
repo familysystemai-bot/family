@@ -1805,11 +1805,15 @@ def whatsapp_webhook_verify():
     token     = request.args.get("hub.verify_token", "")
     challenge = request.args.get("hub.challenge", "")
 
+    # Meta يرسل أحياناً GET بدون params كـ health-check — نرد 200 بدل 403
+    if not mode and not token:
+        return "ok", 200
+
     if mode == "subscribe" and token == _WA_VERIFY_TOKEN:
         logger.info("[WA-Webhook] Verification successful ✅")
         return challenge, 200
 
-    logger.warning("[WA-Webhook] Verification failed ❌ — bad token or mode")
+    logger.warning("[WA-Webhook] Verification failed ❌ — mode=%s token=%s", mode, token)
     return "Forbidden", 403
 
 
