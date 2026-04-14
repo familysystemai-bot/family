@@ -1766,6 +1766,36 @@ def chat_query():
 # WhatsApp Cloud API Webhook
 # ─────────────────────────────────────────────────────────────────────────────
 _WA_VERIFY_TOKEN = os.environ.get("WA_VERIFY_TOKEN", "kazem_token_123")
+_WA_ACCESS_TOKEN = os.environ.get("WA_ACCESS_TOKEN", "")
+
+
+def _wa_send_message(phone_number_id: str, to: str, text: str) -> bool:
+    """يرسل رسالة نصية عبر WhatsApp Cloud API."""
+    import requests as _req
+    if not _WA_ACCESS_TOKEN:
+        logger.warning("[WA] WA_ACCESS_TOKEN غير مضبوط — لا يمكن إرسال الرسالة")
+        return False
+    url = f"https://graph.facebook.com/v19.0/{phone_number_id}/messages"
+    headers = {
+        "Authorization": f"Bearer {_WA_ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "text",
+        "text": {"body": text},
+    }
+    try:
+        resp = _req.post(url, headers=headers, json=payload, timeout=10)
+        if resp.ok:
+            logger.info("[WA] رسالة أُرسلت بنجاح إلى %s", to)
+            return True
+        logger.warning("[WA] فشل الإرسال: %s %s", resp.status_code, resp.text[:300])
+        return False
+    except Exception:
+        logger.exception("[WA] خطأ أثناء إرسال الرسالة")
+        return False
 
 
 @app.route("/webhook/whatsapp", methods=["GET"])
@@ -1786,8 +1816,9 @@ def whatsapp_webhook_verify():
 @app.route("/webhook/whatsapp", methods=["POST"])
 def whatsapp_webhook_receive():
     """Receive incoming WhatsApp messages/events from Meta."""
+    import json as _json
     body = request.get_json(silent=True) or {}
-    logger.info("[WA-Webhook] Incoming payload:\n%s", __import__("json").dumps(body, ensure_ascii=False, indent=2))
+    logger.info("[WA-Webhook] Incoming payload:\n%s", _json.dumps(body, ensure_ascii=False, indent=2))
     return jsonify({"status": "ok"}), 200
 
 
