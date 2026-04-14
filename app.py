@@ -1819,10 +1819,69 @@ def whatsapp_webhook_verify():
 
 @app.route("/webhook/whatsapp", methods=["POST"])
 def whatsapp_webhook_receive():
-    """Receive incoming WhatsApp messages/events from Meta."""
+    """Receive incoming WhatsApp messages/events from Meta.
+    يعالج الرسالة بنفس منطق /chat_query تماماً — نفس الدماغ، نفس الردود.
+    """
     import json as _json
+
     body = request.get_json(silent=True) or {}
-    logger.info("[WA-Webhook] Incoming payload:\n%s", _json.dumps(body, ensure_ascii=False, indent=2))
+    logger.info("[WA-Webhook] payload: %s", _json.dumps(body, ensure_ascii=False, indent=2)[:800])
+
+    try:
+        # ── استخراج الرسالة النصية من Meta payload ──
+        entry  = (body.get("entry")   or [{}])[0]
+        change = (entry.get("changes") or [{}])[0]
+        value  = change.get("value") or {}
+        msgs   = value.get("messages") or []
+
+        if not msgs or msgs[0].get("type") != "text":
+            # غير نصي (صورة، صوت…) — نتجاهل مؤقتاً
+            return jsonify({"status": "ok"}), 200
+
+        wa_from  = msgs[0].get("from", "").strip()          # رقم هاتف المرسل
+        wa_text  = (msgs[0].get("text") or {}).get("body", "").strip()
+        phone_id = (value.get("metadata") or {}).get("phone_number_id", "")
+
+        if not wa_text or not wa_from:
+            return jsonify({"status": "ok"}), 200
+
+        logger.info("[WA-Webhook] from=%s text=%s", wa_from, wa_text[:200])
+
+        # ── معالجة الرسالة بنفس dispatch_chat_query() ──
+        # نستخدم test_request_context لمحاكاة طلب POST /chat_query
+        # مع session_id = رقم هاتف المستخدم (للذاكرة عبر الرسائل في DB)
+        wa_session_id = f"wa_{wa_from}"
+        fake_body = _json.dumps({"message": wa_text}).encode("utf-8")
+
+        with app.test_request_context(
+            "/chat_query",
+            method="POST",
+            data=fake_body,
+            content_type="application/json",
+            environ_base={"REMOTE_ADDR": wa_from},
+        ):
+            from flask import session as _sess
+            _sess["user_id"] = wa_session_id
+            _sess["sid"]     = wa_session_id
+            _sess.modified   = True
+
+            from logic.chat_router import dispatch_chat_query
+            result = dispatch_chat_query()
+
+        # ── استخراج نص الرد من الاستجابة ──
+        resp_obj  = result[0] if isinstance(result, tuple) else result
+        resp_data = (resp_obj.get_json(silent=True) or {}) if hasattr(resp_obj, "get_json") else {}
+        reply_text = (resp_data.get("message") or "").strip()
+
+        logger.info("[WA-Webhook] reply to %s: %s", wa_from, reply_text[:200])
+
+        # ── إرسال الرد للمستخدم عبر WhatsApp Cloud API ──
+        if reply_text and phone_id:
+            _wa_send_message(phone_id, wa_from, reply_text)
+
+    except Exception:
+        logger.exception("[WA-Webhook] error while processing message")
+
     return jsonify({"status": "ok"}), 200
 
 
