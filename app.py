@@ -53,6 +53,9 @@ logger = logging.getLogger(__name__)
 # الملفات العامة (CSS/JS) من /static/؛ الشعار يُخزَّن تحت static/uploads/ ويُعرَض عبر url_for('static', filename='uploads/...')
 # لا تغيّر static_folder إلى uploads فقط — سيُعطّل كل الموارد الثابتة.
 app = Flask(__name__, static_folder='static')
+@app.route("/delete-data")
+def delete_data():
+    return "To delete your data, contact us at kognitixai@gmail.com"
 app.secret_key = SECRET_KEY
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
