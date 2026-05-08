@@ -1,8 +1,10 @@
 <!DOCTYPE html>
+{% from "macros/csrf.html" import csrf_input %}
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% include "partials/pwa_head.html" %}
     <title>تعديل المنتج</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
@@ -49,6 +51,7 @@
 
     <div class="stat-card">
         <form action="/edit_product/{{ product['id'] }}" method="POST" enctype="multipart/form-data">
+            {{ csrf_input() }}
             <div class="row g-3">
                 <div class="col-md-6">
                     <label class="small fw-bold">اسم المنتج</label>
@@ -105,7 +108,7 @@
                     <h5 class="fw-bold" style="color: var(--accent-gold);">الصور الحالية</h5>
                     <div class="d-flex gap-2 flex-wrap mb-2">
                         {% for img in product['images'] %}
-                            <img class="preview-img" src="{{ url_for('static', filename=img) }}" alt="img">
+                            <img class="preview-img" src="{{ media_url(img) }}" alt="img">
                         {% endfor %}
                         {% if not product['images'] or product['images']|length == 0 %}
                             <div class="text-muted">لا توجد صور.</div>

@@ -1,5 +1,16 @@
-Flask
-gunicorn
-python-dotenv
-openai
-google-generativeai
+Flask>=3.0
+gunicorn>=21.2
+python-dotenv>=1.0
+openai>=1.0
+google-generativeai>=0.5
+psycopg2-binary>=2.9
+# ── الدفعة 4-ج: الأمان ──
+Flask-WTF>=1.2
+# ── الدفعة 4-أ: التخزين السحابي (اختياري حسب المنصة المختارة) ──
+# cloudinary>=1.40       # لو تستخدم Cloudinary
+# boto3>=1.34            # لو تستخدم S3 / R2 / SES
+# imagekitio>=4.0        # لو تستخدم ImageKit
+# ── الدفعة 4-ب: الفواتير (اختياري) ──
+# reportlab>=4.0         # لتوليد PDF
+# qrcode>=7.4            # لـ ZATCA QR codes
+# Pillow>=10.0           # لـ qrcode (image generation)

@@ -1,6 +1,7 @@
 {% extends "founder/base.html" %}
 {% block title %}الفروع{% endblock %}
 {% block content %}
+{% from "macros/csrf.html" import csrf_input %}
 <div class="fd-page-head">
     <h1 class="fd-page-title">إدارة الفروع</h1>
 </div>
@@ -10,6 +11,7 @@
         <div class="fd-card">
             <h2 class="fd-card-title">➕ إضافة فرع جديد</h2>
             <form action="{{ url_for('create_branch') }}" method="POST">
+                {{ csrf_input() }}
                 <div class="mb-3">
                     <label class="form-label small fw-bold">اسم المدينة / الفرع</label>
                     <input type="text" name="u_city" class="form-control" placeholder="مثلاً: جيزان" required>

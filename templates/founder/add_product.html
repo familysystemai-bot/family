@@ -7,6 +7,7 @@
 </style>
 {% endblock %}
 {% block content %}
+{% from "macros/csrf.html" import csrf_input %}
 <div class="fd-page-head">
     <h1 class="fd-page-title">إضافة منتج لفرع</h1>
     <a class="btn btn-outline-secondary btn-sm text-light" href="{{ url_for('founder_products') }}">رجوع للمنتجات</a>
@@ -14,6 +15,7 @@
 
 <div class="fd-card">
     <form action="{{ url_for('founder_add_product') }}" method="POST" enctype="multipart/form-data">
+        {{ csrf_input() }}
         <div class="row g-3">
             <div class="col-12">
                 <label class="form-label small fw-bold">الفرع</label>

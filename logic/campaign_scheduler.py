@@ -97,10 +97,12 @@ def process_due_campaigns(db, request_url_root: Optional[str] = None) -> List[di
             out.append(res)
             if res.get("ok"):
                 logger.info(
-                    "campaign_scheduler: sent campaign %s targeted=%s sent=%s",
+                    "campaign_scheduler: sent campaign %s email_targeted=%s email_sent=%s wa_targeted=%s wa_sent=%s",
                     cid,
                     res.get("targeted"),
                     res.get("sent"),
+                    res.get("wa_targeted"),
+                    res.get("wa_sent"),
                 )
         except Exception:
             logger.exception("campaign_scheduler: failed campaign %s", cid)

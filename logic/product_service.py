@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import copy
+import os
 import re
 from typing import List, Optional
 
@@ -37,6 +38,62 @@ NO_PRODUCTS_PAYLOAD = {
     "message": NO_PRODUCTS_MESSAGE,
     "products": [],
 }
+
+
+def _send_product_inquiry_to_branch(product_query: str) -> bool:
+    """
+    يرسل استفسار منتج للفرع بالإيميل لما ما يلقاه في قاعدة البيانات.
+    يسجّل الطلب في product_requests أيضاً.
+    """
+    try:
+        cs = _cs()
+        db = cs.get_db()
+        dn = cs._display_name()
+        query = (product_query or "").strip()[:300]
+        if not query:
+            return False
+
+        # حفظ في product_requests
+        uid = "web_user_unknown"
+        try:
+            from flask import session as _sess
+            cid = _sess.get("customer_id")
+            if cid:
+                uid = f"customer:{int(cid)}"
+        except Exception:
+            pass
+        db.add_product_request(uid, query)
+
+        # بناء الإيميل
+        from logic.mail_service import send_email
+        from config import MAIN_RECEIVER_EMAIL
+        from datetime import datetime
+
+        branches = db.get_all_branches()
+        branch_emails = []
+        for b in branches:
+            bid = b.get("id")
+            if bid:
+                em = (db.get_branch_complaint_email(int(bid)) or "").strip()
+                if em:
+                    branch_emails.append(em)
+        if not branch_emails and MAIN_RECEIVER_EMAIL:
+            branch_emails = [MAIN_RECEIVER_EMAIL]
+        if not branch_emails:
+            return False
+
+        subject = f"استفسار عن منتج من العميل {dn}"
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        body = (
+            "استفسار منتج — " + now_str + "\n\n"
+            + "العميل: " + dn + "\n"
+            + "طلبه: " + query + "\n\n"
+            + "المنتج غير موجود في قاعدة البيانات.\n"
+            + "يرجى الرد على العميل من لوحة التحكم أو إضافة المنتج."
+        )
+        return send_email(branch_emails, subject, body)
+    except Exception:
+        return False
 # عند نية منتج من AI دون مطابقة DB — طلب توضيح بدل رد عام/مضلّل
 PRODUCT_CLARIFY_MESSAGE = "وش المنتج اللي تقصده؟"
 PRODUCT_CLARIFY_PAYLOAD = {
@@ -293,11 +350,33 @@ def _chat_image_url(path: Optional[str]) -> str:
         return ""
     if p.startswith(("http://", "https://")):
         return p
+    base_url = (
+        (os.getenv("PUBLIC_BASE_URL") or os.getenv("BASE_URL") or "").strip().rstrip("/")
+    )
     if p.startswith("/static/"):
-        return p
-    if p.startswith("static/"):
-        return "/" + p
-    return "/static/" + p.lstrip("/")
+        rel = p
+    elif p.startswith("static/"):
+        rel = "/" + p
+    else:
+        rel = "/static/" + p.lstrip("/")
+    if base_url.startswith("https://"):
+        return f"{base_url}{rel}"
+    return rel
+
+
+def _product_image_url_abs_https(path: Optional[str]) -> str:
+    """رابط صورة بـ https لـ WhatsApp Cloud API (يفضّل PUBLIC_BASE_URL)."""
+    u = (_chat_image_url(path) or "").strip()
+    if not u:
+        return ""
+    if u.startswith("https://"):
+        return u
+    if u.startswith("http://"):
+        return "https://" + u[len("http://") :]
+    base = (os.getenv("PUBLIC_BASE_URL") or os.getenv("BASE_URL") or "").strip().rstrip("/")
+    if base.startswith("https://") and u.startswith("/"):
+        return base + u
+    return u
 
 
 def _short_chat_description(text: Optional[str], max_len: int = 180) -> str:
@@ -417,6 +496,9 @@ def _save_chat_last_product_snapshot(product_dict, variants_raw):
         "colors": list(product_dict.get("colors") or []),
         "quantity": int(product_dict.get("quantity") or 0),
         "variants": clean_variants,
+        "images": list(product_dict.get("images") or []),
+        "image_url": (product_dict.get("image_url") or "").strip(),
+        "primary_image_href": (product_dict.get("primary_image_href") or "").strip(),
     }
 
 
@@ -447,6 +529,15 @@ def _detail_question_match(msg: str) -> bool:
         "كم متوفر",
         "هل متوفر",
         "عدد القطع",
+        "صور",
+        "صورة",
+        "ورني الصور",
+        "ورني صورة",
+        "فين الصور",
+        "ارسل صورة",
+        "أرسل صورة",
+        "ابغى صور",
+        "أبغى صور",
     )
     return any(n in t for n in needles)
 
@@ -564,6 +655,62 @@ def _try_product_detail_reply(message: str):
                 "products": [],
                 "message": "ما عندنا تفاصيل ألوان مسجّلة لهذا المنتج في النظام حالياً.",
                 "intent": "product_followup",
+            }
+        )
+
+    if any(k in t for k in ("صور", "صورة", "ورني", "فين الصور", "ارسل صورة", "أرسل صورة")):
+        img_list = [str(x).strip() for x in (snap.get("images") or []) if str(x).strip()]
+        if not img_list:
+            i1 = (snap.get("image_url") or "").strip()
+            if i1:
+                img_list = [i1]
+        if not img_list:
+            i2 = (snap.get("primary_image_href") or "").strip()
+            if i2:
+                img_list = [i2]
+        if img_list:
+            detail_msg = _format_product_detail_text(
+                nm,
+                price_val,
+                snap.get("sizes") or [],
+                snap.get("colors") or [],
+                total_q,
+            )
+            return jsonify(
+                {
+                    "products": [
+                        {
+                            "id": snap.get("id"),
+                            "name": nm,
+                            "price": price_val,
+                            "quantity": total_q,
+                            "sizes": list(snap.get("sizes") or []),
+                            "colors": list(snap.get("colors") or []),
+                            "images": img_list[:3],
+                            "img1": img_list[0],
+                            "primary_image_href": img_list[0],
+                            "image_url": img_list[0],
+                        }
+                    ],
+                    "message": f"تفضل، هذه صور المتوفر من «{nm}» 👇\n{detail_msg}",
+                    "intent": "product_followup",
+                }
+            )
+
+        session["pending_inquiry"] = {
+            "text": f"صور المنتج: {nm}",
+            "category": "",
+            "branch_name": session.get("chat_selected_branch") or session.get("chat_last_branch") or "",
+            "image_path": "",
+        }
+        return jsonify(
+            {
+                "products": [],
+                "message": (
+                    f"حالياً ما عندي صور جاهزة لـ «{nm}».\n"
+                    "إذا تبغى أرسل استفسار للفرع الآن يجهزون لك صور المتوفر، قل: نعم."
+                ),
+                "intent": "inquiry_confirm",
             }
         )
 
@@ -913,11 +1060,16 @@ def _product_dict_for_chat(
     primary_href = _chat_image_url(images[0] if images else "")
     if not primary_href and img1_col:
         primary_href = _chat_image_url(img1_col)
+    image_url = _product_image_url_abs_https(images[0] if images else "") or _product_image_url_abs_https(
+        img1_col
+    )
+    name_str = (p.get("product_name") or "").strip() or "المنتج"
+    price_str = f"{price:g}"
     return {
         "id": product_id,
-        "name": p.get("product_name"),
+        "name": name_str,
         "description": p.get("description") or "",
-        "price": price,
+        "price": price_str,
         "sizes": sizes,
         "colors": colors,
         "quantity": total_qty,
@@ -927,6 +1079,7 @@ def _product_dict_for_chat(
         "detail_text": detail_text,
         "chat_text": chat_text,
         "primary_image_href": primary_href,
+        "image_url": image_url,
         "search_text": search_text,
     }
 
@@ -1126,12 +1279,62 @@ def _product_list_intro_message(_display_name, out_products: list, has_more: boo
     return intro
 
 
-def _build_products_response(message: str, hint_source_message: Optional[str] = None):
+def _search_query_from_image_description(description: str) -> tuple[str, str]:
+    """
+    يستخرج سطر SEARCH: من مخرجات نموذج الرؤية إن وُجد، ويعيد (نص_البحث، نص_للتلميح).
+    """
+    t = (description or "").strip()
+    if not t:
+        return "", ""
+    lines = [ln.strip() for ln in t.replace("\r\n", "\n").split("\n") if ln.strip()]
+    search_line = ""
+    display_parts: list[str] = []
+    for ln in lines:
+        low = ln.lower()
+        if low.startswith("search:") or low.startswith("search :"):
+            search_line = ln.split(":", 1)[-1].strip()
+        else:
+            display_parts.append(ln)
+    display = "\n".join(display_parts).strip() or t
+    q = (search_line or display).strip()
+    return q, display
+
+
+def build_products_response_from_customer_image(description: str) -> Optional[dict]:
+    """
+    بعد تحليل صورة العميل (Gemini/OpenAI): يبحث في قاعدة المنتجات ويعيد نفس شكل _build_products_response.
+    لا يرسل استفساراً تلقائياً للفرع عند عدم المطابقة (صورة قد تكون غامضة).
+    يعيد None إذا كان الوصف يشير لصورة غير صالحة للبحث.
+    """
+    blob = (description or "").strip()
+    if not blob:
+        return None
+    if "غير واضحة" in blob and ("وضّح" in blob or "وضح" in blob):
+        return None
+    if "وضّح طلبك بالنص" in blob or "وضح طلبك بالنص" in blob:
+        return None
+    q, hint = _search_query_from_image_description(blob)
+    search_msg = q if len(q) >= 2 else blob
+    hint_src = hint if len(hint) >= 2 else blob
+    return _build_products_response(
+        search_msg,
+        hint_source_message=hint_src,
+        image_attachment=True,
+    )
+
+
+def _build_products_response(
+    message: str,
+    hint_source_message: Optional[str] = None,
+    *,
+    image_attachment: bool = False,
+):
     """
     بحث منتجات للشات — على كل الفروع، بترتيب: قسم فرعي → فئة → اسم → وصف،
     مع توسيع المناسبات العامة (زواج، مناسبة، …).
     يعرض حتى منتجين لكل رد؛ الباقي يُعرض عند طلب «غيره».
     hint_source_message: نص المستخدم الأصلي (لتلميحات النوع وفلترة الأسماء) عندما يختلف نص البحث عنه.
+    image_attachment: إذا True، عدم المطابقة لا يُرسل استفساراً تلقائياً للفرع (مسار صورة العميل).
     """
     raw_message = (message or "").strip()
 
@@ -1201,7 +1404,26 @@ def _build_products_response(message: str, hint_source_message: Optional[str] = 
     if not rows:
         session.pop("remaining_products", None)
         session.pop("remaining_products_intent", None)
-        return dict(NO_PRODUCTS_PAYLOAD)
+        cs_dn = _cs()._display_name()
+        if image_attachment:
+            return {
+                "products": [],
+                "intent": "product",
+                "message": (
+                    f"ما لقيت في الكتالوج مطابقة واضحة لما في الصورة يا {cs_dn}. "
+                    "جرّب تكتب اسم المنتج أو القسم، أو أرسل صورة أوضح 👍"
+                ),
+            }
+        # أرسل للفرع واعطِ العميل رد إيجابي
+        _send_product_inquiry_to_branch(raw_message)
+        return {
+            "products": [],
+            "intent": "product_inquiry_sent",
+            "message": (
+                f"لحظات يا {cs_dn}، راسلت الفرع عن هذا المنتج "
+                "وراح يردوا عليك بأقرب وقت 👍"
+            ),
+        }
 
     out_products = []
     fallback_products = []  # منتجات تطابق الاسم لكن ليس اللون/المقاس
@@ -1243,7 +1465,25 @@ def _build_products_response(message: str, hint_source_message: Optional[str] = 
     if not out_products:
         session.pop("remaining_products", None)
         session.pop("remaining_products_intent", None)
-        return dict(NO_PRODUCTS_PAYLOAD)
+        cs_dn = _cs()._display_name()
+        if image_attachment:
+            return {
+                "products": [],
+                "intent": "product",
+                "message": (
+                    f"ما طابقت الصورة بمنتج محدد حالياً يا {cs_dn}. "
+                    "اكتب اسم القطعة أو تصفّح الأقسام إذا تحب."
+                ),
+            }
+        _send_product_inquiry_to_branch(raw_message)
+        return {
+            "products": [],
+            "intent": "product_inquiry_sent",
+            "message": (
+                f"لحظات يا {cs_dn}، راسلت الفرع عن هذا المنتج "
+                "وراح يردوا عليك بأقرب وقت 👍"
+            ),
+        }
 
     has_more = has_more_tier or len(rows) > len(out_products)
     session["last_products"] = [int(x["id"]) for x in out_products]
@@ -1505,13 +1745,16 @@ def _try_last_section_product_followup(message: str):
         session.pop("remaining_products", None)
         session.pop("remaining_products_intent", None)
         ls = (last or "").strip() or "هذا القسم"
-        session["chat_pending_branch_phone_offer"] = True
+        _send_product_inquiry_to_branch(t)
+        cs_dn = _cs()._display_name()
         return jsonify(
             {
                 "products": [],
-                "message": f"ما لقيت هذا المنتج بالضبط في قسم {ls}.",
-                "followup_message": "تبي أرسل لك رقم الفرع تسأل مباشرة؟",
-                "intent": "product",
+                "message": (
+                    f"لحظات يا {cs_dn}، راسلت الفرع عن هذا المنتج "
+                    "وراح يردوا عليك بأقرب وقت 👍"
+                ),
+                "intent": "product_inquiry_sent",
             }
         )
     session["last_products"] = [int(p["id"]) for p in out_products]

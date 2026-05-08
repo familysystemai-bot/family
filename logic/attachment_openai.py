@@ -8,7 +8,7 @@ from __future__ import annotations
 import base64
 import logging
 import os
-from typing import Optional
+from typing import Optional, Union
 
 from config import (
     OPENAI_API_KEY,
@@ -31,15 +31,27 @@ _IMAGE_MIME = {
 }
 
 
+def _resolved_openai_key() -> str:
+    try:
+        from logic.llm_provider import get_openai_api_key
+
+        k = (get_openai_api_key() or "").strip()
+        if k:
+            return k
+    except Exception:
+        pass
+    return (OPENAI_API_KEY or "").strip()
+
+
 def attachments_ai_enabled() -> bool:
     if not OPENAI_ATTACHMENTS_ENABLED:
         return False
-    return bool((OPENAI_API_KEY or "").strip())
+    return bool(_resolved_openai_key())
 
 
-def text_from_saved_file(abs_path: str, ext: str) -> Optional[str]:
+def text_from_saved_file(abs_path: str, ext: str) -> Optional[Union[str, dict]]:
     """
-    يعيد نصاً عربياً مستخرجاً من الملف، أو None عند التعطيل/الفشل.
+    يعيد نصاً عربياً مستخرجاً من الملف، أو dict fallback للصوت، أو None عند التعطيل/الفشل. # FIXED
 
     توزيع المهام:
     - الصور  → Gemini Flash (رخيص + متعدد الوسائط) — Fallback: OpenAI Vision
@@ -60,8 +72,13 @@ def text_from_saved_file(abs_path: str, ext: str) -> Optional[str]:
     if ext_clean in {"webm", "wav", "mp3", "ogg", "m4a"}:
         # الصوت → OpenAI Whisper دائماً (الأفضل للعربية)
         if attachments_ai_enabled():
-            return _transcribe_audio(abs_path)
-        return None
+            tr = _transcribe_audio(abs_path)
+            if tr:
+                return tr
+        return {  # FIXED
+            "fallback": True,  # FIXED
+            "message": "وصلتني رسالتك الصوتية 🎤 ممكن تكتب طلبك نصاً؟",  # FIXED
+        }  # FIXED
 
     return None
 
@@ -94,22 +111,41 @@ def _transcribe_audio(abs_path: str) -> Optional[str]:
     except ImportError:
         logger.warning("attachment_openai: openai package not installed")
         return None
-    key = (OPENAI_API_KEY or "").strip()
-    if not key:
+    try:
+        from logic.llm_provider import openai_api_key_candidates
+    except Exception:
+        openai_api_key_candidates = None  # type: ignore
+    keys = []
+    if openai_api_key_candidates:
+        try:
+            keys = openai_api_key_candidates() or []
+        except Exception:
+            keys = []
+    if not keys:
+        k = _resolved_openai_key()
+        keys = [k] if k else []
+    if not keys:
         return None
     model = (OPENAI_WHISPER_MODEL or "whisper-1").strip() or "whisper-1"
-    try:
-        client = OpenAI(api_key=key)
-        with open(abs_path, "rb") as audio_f:
-            tr = client.audio.transcriptions.create(
-                model=model,
-                file=audio_f,
-            )
-        text = (getattr(tr, "text", None) or "").strip()
-        return text or None
-    except Exception:
-        logger.exception("attachment_openai: Whisper transcription failed")
-        return None
+    for idx, key in enumerate(keys):
+        if not key:
+            continue
+        try:
+            client = OpenAI(api_key=key)
+            with open(abs_path, "rb") as audio_f:
+                tr = client.audio.transcriptions.create(
+                    model=model,
+                    file=audio_f,
+                )
+            text = (getattr(tr, "text", None) or "").strip()
+            if text:
+                return text
+        except Exception:
+            if idx + 1 < len(keys):
+                logger.warning("attachment_openai: Whisper failed with primary key; retrying")
+            else:
+                logger.exception("attachment_openai: Whisper transcription failed")
+    return None
 
 
 def _describe_image(abs_path: str, ext: str) -> Optional[str]:
@@ -138,37 +174,57 @@ def _describe_image(abs_path: str, ext: str) -> Optional[str]:
     except ImportError:
         logger.warning("attachment_openai: openai package not installed")
         return None
-    key = (OPENAI_API_KEY or "").strip()
-    if not key:
+    try:
+        from logic.llm_provider import openai_api_key_candidates
+    except Exception:
+        openai_api_key_candidates = None  # type: ignore
+    keys = []
+    if openai_api_key_candidates:
+        try:
+            keys = openai_api_key_candidates() or []
+        except Exception:
+            keys = []
+    if not keys:
+        k = _resolved_openai_key()
+        keys = [k] if k else []
+    if not keys:
         return None
-    model = (OPENAI_VISION_MODEL or "gpt-4o-mini").strip() or "gpt-4o-mini"
+    model = (OPENAI_VISION_MODEL or "gpt-4o").strip() or "gpt-4o"
     prompt = (
         "أعد صياغة ما يهم العميل في هذه الصورة كجملة أو جملتين بالعربية، "
         "كأنه يطلب شيئاً في متجر ملابس. لا تخترع منتجات غير ظاهرة. "
-        "إن لم يكن هناك معنى واضح للطلب قل عبارة قصيرة: وضّح طلبك بالنص."
+        "في سطر جديد اكتب بالضبط: SEARCH: ثم 4-10 كلمات مفتاحية بالعربية للبحث في المتجر. "
+        "إن لم يكن هناك معنى واضح للطلب قل فقط: وضّح طلبك بالنص."
     )
-    try:
-        client = OpenAI(api_key=key)
-        response = client.chat.completions.create(
-            model=model,
-            max_tokens=220,
-            temperature=0.2,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": data_url},
-                        },
-                    ],
-                }
-            ],
-        )
-        choice = response.choices[0]
-        text = (choice.message.content or "").strip()
-        return text or None
-    except Exception:
-        logger.exception("attachment_openai: vision description failed")
-        return None
+    for idx, key in enumerate(keys):
+        if not key:
+            continue
+        try:
+            client = OpenAI(api_key=key)
+            response = client.chat.completions.create(
+                model=model,
+                max_tokens=220,
+                temperature=0.2,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": data_url},
+                            },
+                        ],
+                    }
+                ],
+            )
+            choice = response.choices[0]
+            text = (choice.message.content or "").strip()
+            if text:
+                return text
+        except Exception:
+            if idx + 1 < len(keys):
+                logger.warning("attachment_openai: vision failed with primary key; retrying")
+            else:
+                logger.exception("attachment_openai: vision description failed")
+    return None

@@ -1,10 +1,23 @@
 # -*- coding: utf-8 -*-
+"""
+ComplaintRepositoryMixin — إدارة الشكاوى.
+
+التحديثات في هذا الإصدار:
+- إضافة rollback() صريح في كل دالة عند فشل أي استعلام (تجنّب InFailedSqlTransaction).
+- إصلاح حلقة توليد ticket_code: إنشاء cursor جديد بعد كل rollback (الـ cursor
+  السابق قد يصبح غير صالح بعد rollback على PostgreSQL).
+- استخدام self.db_type المتاح في DatabaseManager بدل إنشاء DBAdapter جديد كل مرة.
+- نفس الواجهة العامة محفوظة بالكامل.
+"""
 from __future__ import annotations
 
+import logging
 import secrets
-import sqlite3
 import string
 from typing import Any, Dict, List, Optional
+from logic.db_adapter import DBAdapter
+
+logger = logging.getLogger(__name__)
 
 _TICKET_ALPHABET = string.ascii_uppercase + string.digits
 
@@ -15,6 +28,19 @@ def _generate_complaint_ticket_code() -> str:
 
 class ComplaintRepositoryMixin:
     """Mixin: يُدمج في DatabaseManager — يستخدم self._get_connection() فقط."""
+
+    def _db_adapter(self) -> DBAdapter:
+        return DBAdapter(sqlite_path=getattr(self, "db_path", None))
+
+    def _safe_rollback_pg(self, conn) -> None:
+        """rollback آمن للـ PostgreSQL فقط — لا يعمل شيء على SQLite."""
+        if getattr(self, "db_type", None) != "postgres":
+            return
+        try:
+            conn.rollback()
+        except Exception as e:
+            logger.warning("rollback failed in complaint_repository: %s", e)
+
     def add_complaint(
         self,
         user_id,
@@ -32,9 +58,12 @@ class ComplaintRepositoryMixin:
         complaint_ai_classification=None,
         ticket_code=None,
     ):
+        # الشكوى تُسجَّل فقط عند ربطها بفرع (لوحات الفرع / المؤسس / الإدارة).
+        if branch_id is None:
+            logger.warning("add_complaint: rejected — branch_id is required")
+            return None
         conn = self._get_connection()
         try:
-            cursor = conn.cursor()
             ct = (complaint_type or "unspecified").strip() or "unspecified"
             st = (status or "pending").strip() or "pending"
             msg = (message if message is not None else issue) or ""
@@ -44,8 +73,12 @@ class ComplaintRepositoryMixin:
             ce = (customer_email or "").strip() or None
             ai_c = (complaint_ai_classification or "").strip() or None
             tc = (ticket_code or "").strip().upper() or None
+
             for _attempt in range(32):
                 code = tc or _generate_complaint_ticket_code()
+                # ملاحظة الإصلاح: ننشئ cursor جديد لكل محاولة لأن
+                # rollback() على PostgreSQL يُبطل الـ cursor السابق.
+                cursor = conn.cursor()
                 try:
                     cursor.execute(
                         """
@@ -55,7 +88,7 @@ class ComplaintRepositoryMixin:
                             customer_name, customer_phone, customer_email,
                             complaint_ai_classification, ticket_code
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """,
                         (
                             user_id,
@@ -76,19 +109,24 @@ class ComplaintRepositoryMixin:
                     )
                     conn.commit()
                     return cursor.lastrowid
-                except sqlite3.IntegrityError:
-                    conn.rollback()
+                except Exception:
+                    # rollback لتنظيف حالة المعاملة على PostgreSQL
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
                     if tc:
-                        print(f"❌ add_complaint: ticket_code مكرر {tc}")
+                        # الـ ticket_code أتى من الخارج وفشل — لا فائدة من إعادة المحاولة
+                        logger.warning("add_complaint: ticket_code مكرر %s", tc)
                         return None
+                    # وإلا نولّد كود جديد ونعيد المحاولة
                     continue
-            print("❌ add_complaint: تعذر توليد رقم تذكرة فريد")
+
+            logger.warning("add_complaint: تعذر توليد رقم تذكرة فريد بعد 32 محاولة")
             return None
         except Exception as e:
-            print(f"❌ add_complaint DB error: {e}")
-            import traceback
-
-            traceback.print_exc()
+            self._safe_rollback_pg(conn)
+            logger.exception("add_complaint DB error: %s", e)
             return None
         finally:
             conn.close()
@@ -101,11 +139,11 @@ class ComplaintRepositoryMixin:
         conn = self._get_connection()
         try:
             cursor = conn.execute(
-                "SELECT issue, message FROM complaints WHERE id = ?", (complaint_id,)
+                "SELECT issue, message FROM complaints WHERE id = %s", (complaint_id,)
             )
             row = cursor.fetchone()
             if not row:
-                print(f"❌ append_complaint_issue: لا يوجد سجل #{complaint_id}")
+                logger.warning("append_complaint_issue: لا يوجد سجل #%s", complaint_id)
                 return False
             r = dict(row)
             old = (r.get("issue") or "").strip()
@@ -113,16 +151,14 @@ class ComplaintRepositoryMixin:
             old_msg = (r.get("message") or "").strip()
             new_msg = f"{old_msg}\n────────────\n{extra_text}" if old_msg else extra_text
             conn.execute(
-                "UPDATE complaints SET issue = ?, message = ? WHERE id = ?",
+                "UPDATE complaints SET issue = %s, message = %s WHERE id = %s",
                 (new_issue, new_msg, complaint_id),
             )
             conn.commit()
             return True
         except Exception as e:
-            print(f"❌ append_complaint_issue: {e}")
-            import traceback
-
-            traceback.print_exc()
+            self._safe_rollback_pg(conn)
+            logger.exception("append_complaint_issue: %s", e)
             return False
         finally:
             conn.close()
@@ -135,14 +171,15 @@ class ComplaintRepositoryMixin:
                 SELECT id, issue, branch_id, user_id, created_at, status, complaint_type,
                        message, branch_name, customer_name, customer_phone, customer_email,
                        resolved_at, ticket_code, resolution_notes
-                FROM complaints WHERE id = ?
+                FROM complaints WHERE id = %s
                 """,
                 (complaint_id,),
             )
             row = cursor.fetchone()
             return dict(row) if row else None
         except Exception as e:
-            print(f"❌ get_complaint_row: {e}")
+            self._safe_rollback_pg(conn)
+            logger.exception("get_complaint_row: %s", e)
             return None
         finally:
             conn.close()
@@ -163,13 +200,14 @@ class ComplaintRepositoryMixin:
                 SELECT id, issue, branch_id, user_id, created_at, status, complaint_type,
                        message, branch_name, customer_name, customer_phone, customer_email,
                        resolved_at, ticket_code, resolution_notes
-                FROM complaints WHERE UPPER(TRIM(COALESCE(ticket_code,''))) = ?
+                FROM complaints WHERE UPPER(TRIM(COALESCE(ticket_code,''))) = %s
                 """,
                 (raw,),
             ).fetchone()
             return dict(row) if row else None
         except Exception as e:
-            print(f"❌ get_complaint_by_ticket_code: {e}")
+            self._safe_rollback_pg(conn)
+            logger.exception("get_complaint_by_ticket_code: %s", e)
             return None
         finally:
             conn.close()
@@ -180,13 +218,14 @@ class ComplaintRepositoryMixin:
         conn = self._get_connection()
         try:
             cur = conn.execute(
-                "UPDATE complaints SET complaint_type = ? WHERE id = ?",
+                "UPDATE complaints SET complaint_type = %s WHERE id = %s",
                 (ct, complaint_id),
             )
             conn.commit()
             return cur.rowcount > 0
         except Exception as e:
-            print(f"❌ update_complaint_type: {e}")
+            self._safe_rollback_pg(conn)
+            logger.exception("update_complaint_type: %s", e)
             return False
         finally:
             conn.close()
@@ -199,22 +238,23 @@ class ComplaintRepositoryMixin:
             if st == "resolved":
                 cursor.execute(
                     """
-                    UPDATE complaints SET status = ?, resolved_at = datetime('now')
-                    WHERE id = ?
+                    UPDATE complaints SET status = %s, resolved_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
                     """,
                     (st, complaint_id),
                 )
             else:
                 cursor.execute(
                     """
-                    UPDATE complaints SET status = ?, resolved_at = NULL
-                    WHERE id = ?
+                    UPDATE complaints SET status = %s, resolved_at = NULL
+                    WHERE id = %s
                     """,
                     (st, complaint_id),
                 )
             conn.commit()
             return cursor.rowcount > 0
         except Exception:
+            self._safe_rollback_pg(conn)
             return False
         finally:
             conn.close()
@@ -230,9 +270,9 @@ class ComplaintRepositoryMixin:
                 """
                 UPDATE complaints
                 SET status = 'resolved',
-                    resolved_at = datetime('now'),
-                    resolution_notes = ?
-                WHERE id = ?
+                    resolved_at = CURRENT_TIMESTAMP,
+                    resolution_notes = %s
+                WHERE id = %s
                   AND LOWER(TRIM(COALESCE(status,''))) != 'resolved'
                 """,
                 (notes, complaint_id),
@@ -240,7 +280,8 @@ class ComplaintRepositoryMixin:
             conn.commit()
             return cur.rowcount > 0
         except Exception as e:
-            print(f"❌ resolve_complaint: {e}")
+            self._safe_rollback_pg(conn)
+            logger.exception("resolve_complaint: %s", e)
             return False
         finally:
             conn.close()
@@ -259,6 +300,10 @@ class ComplaintRepositoryMixin:
             resolved = int(res_row["c"]) if res_row else 0
             open_count = max(0, total - resolved)
             return {"total": total, "open": open_count, "resolved": resolved}
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("get_complaints_stats: %s", e)
+            return {"total": 0, "open": 0, "resolved": 0}
         finally:
             conn.close()
 
@@ -277,6 +322,9 @@ class ComplaintRepositoryMixin:
                 cn = (row["city_name"] or "").strip()
                 if cn:
                     names.add(cn)
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("list_complaints_branch_filter_options: %s", e)
         finally:
             conn.close()
         return sorted(names, key=lambda x: x)
@@ -293,11 +341,11 @@ class ComplaintRepositoryMixin:
             q = "SELECT * FROM complaints WHERE 1=1"
             params = []
             if branch_id is not None:
-                q += " AND branch_id = ?"
+                q += " AND branch_id = %s"
                 params.append(branch_id)
             if branch_name:
                 bn = branch_name.strip()
-                q += " AND TRIM(COALESCE(branch_name,'')) = ?"
+                q += " AND TRIM(COALESCE(branch_name,'')) = %s"
                 params.append(bn)
             if status:
                 st = (status.strip()).lower()
@@ -305,11 +353,23 @@ class ComplaintRepositoryMixin:
                     q += " AND LOWER(TRIM(COALESCE(status,''))) != 'resolved'"
                 elif st == "resolved":
                     q += " AND LOWER(TRIM(COALESCE(status,''))) = 'resolved'"
-            q += " ORDER BY datetime(COALESCE(created_at, '1970-01-01')) DESC LIMIT ?"
+            # استخدام self.db_type المتاح في DatabaseManager (تحسين أداء)
+            db_type = getattr(self, "db_type", None) or self._db_adapter().db_type
+            if db_type == "postgres":
+                q += (
+                    " ORDER BY COALESCE(created_at::timestamptz, TIMESTAMP '1970-01-01') "
+                    "DESC LIMIT %s"
+                )
+            else:
+                q += (
+                    " ORDER BY datetime(COALESCE(created_at, '1970-01-01')) DESC LIMIT %s"
+                )
             params.append(limit)
             cursor = conn.execute(q, tuple(params))
             return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("get_complaints: %s", e)
+            return []
         finally:
             conn.close()
-
-

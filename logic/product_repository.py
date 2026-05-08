@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-import sqlite3
 import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
+from logic.db_adapter import DBAdapter
 
 # مصطلحات عامة في رسالة المستخدم → تلميحات أسماء أقسام للبحث (تُطبَّق عبر _resolve_canonical_subcategory_name)
 _GENERIC_SECTION_HINTS_FOR_FOLLOWUP: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
@@ -94,11 +94,11 @@ def _expand_arabic_like_variants(needle: str) -> List[str]:
 
 
 def _sql_or_likes_expr(expr_sql: str, variants: List[str]) -> Tuple[str, List[str]]:
-    """WHERE فرعي: (expr LIKE ? OR expr LIKE ? ...) لعدة تنويعات."""
+    """WHERE فرعي: (expr LIKE %s OR expr LIKE %s ...) لعدة تنويعات."""
     parts = []
     params: List[str] = []
     for v in variants:
-        parts.append(f"{expr_sql} LIKE ?")
+        parts.append(f"{expr_sql} LIKE %s")
         params.append(f"%{v}%")
     return "(" + " OR ".join(parts) + ")", params
 
@@ -131,6 +131,9 @@ def _normalize_variant_rows(variants: List[Dict[str, Any]]) -> List[Dict[str, An
 
 class ProductRepositoryMixin:
     """Mixin: يُدمج في DatabaseManager — يستخدم self._get_connection() فقط."""
+    def _db_adapter(self) -> DBAdapter:
+        return DBAdapter(sqlite_path=getattr(self, "db_path", None))
+
     def add_product_from_section(
         self,
         section_id: int,
@@ -174,7 +177,7 @@ class ProductRepositoryMixin:
 
             # branch_id من sub_categories نفسها
             cursor.execute(
-                "SELECT branch_id FROM sub_categories WHERE id = ?",
+                "SELECT branch_id FROM sub_categories WHERE id = %s",
                 (section_id,),
             )
             row = cursor.fetchone()
@@ -188,7 +191,7 @@ class ProductRepositoryMixin:
                     branch_id, sub_id, section_id,
                     product_name, description, price,
                     img1, img2, img3, sku
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     branch_id,
@@ -210,7 +213,7 @@ class ProductRepositoryMixin:
                 cursor.execute(
                     """
                     INSERT INTO product_images (product_id, image_path, position)
-                    VALUES (?, ?, ?)
+                    VALUES (%s, %s, %s)
                     """,
                     (product_id, p, idx),
                 )
@@ -220,14 +223,14 @@ class ProductRepositoryMixin:
                 cursor.execute(
                     """
                     INSERT INTO product_variants (product_id, size, color, price, quantity)
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s)
                     """,
                     (product_id, v["size"], v["color"], product_price_val, v["quantity"]),
                 )
                 cursor.execute(
                     """
                     INSERT INTO inventory (product_id, color, size, quantity)
-                    VALUES (?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s)
                     """,
                     (product_id, v["color"], v["size"], v["quantity"]),
                 )
@@ -247,7 +250,7 @@ class ProductRepositoryMixin:
                 """
                 SELECT size, color, price, quantity
                 FROM product_variants
-                WHERE product_id = ?
+                WHERE product_id = %s
                 ORDER BY size, color
                 """,
                 (product_id,),
@@ -263,7 +266,7 @@ class ProductRepositoryMixin:
                 """
                 SELECT image_path
                 FROM product_images
-                WHERE product_id = ?
+                WHERE product_id = %s
                 ORDER BY position
                 """,
                 (product_id,),
@@ -277,7 +280,7 @@ class ProductRepositoryMixin:
                 return images
             # fallback على الأعمدة القديمة في products
             cursor = conn.execute(
-                "SELECT img1, img2, img3 FROM products WHERE id = ?",
+                "SELECT img1, img2, img3 FROM products WHERE id = %s",
                 (product_id,),
             )
             row = cursor.fetchone()
@@ -319,7 +322,7 @@ class ProductRepositoryMixin:
                 """
                 SELECT quantity
                 FROM product_variants
-                WHERE product_id = ? AND size = ? AND color = ?
+                WHERE product_id = %s AND size = %s AND color = %s
                 """,
                 (product_id, size, color),
             )
@@ -332,8 +335,8 @@ class ProductRepositoryMixin:
             cursor.execute(
                 """
                 UPDATE product_variants
-                SET quantity = quantity - ?
-                WHERE product_id = ? AND size = ? AND color = ?
+                SET quantity = quantity - %s
+                WHERE product_id = %s AND size = %s AND color = %s
                 """,
                 (qty_int, product_id, size, color),
             )
@@ -350,12 +353,8 @@ class ProductRepositoryMixin:
     # ═══════════════════════════════════════════════════════════════
 
     def count_products_total(self) -> int:
-        conn = self._get_connection()
-        try:
-            row = conn.execute("SELECT COUNT(*) AS c FROM products").fetchone()
-            return int(row["c"]) if row else 0
-        finally:
-            conn.close()
+        row = self._db_adapter().fetch_one("SELECT COUNT(*) AS c FROM products")
+        return int(row["c"]) if row else 0
 
     def list_all_products_for_founder(self, limit: int = 800) -> List[Dict[str, Any]]:
         conn = self._get_connection()
@@ -375,9 +374,9 @@ class ProductRepositoryMixin:
                 JOIN branches b ON b.id = p.branch_id
                 LEFT JOIN product_variants pv ON pv.product_id = p.id
                 LEFT JOIN product_images pi ON pi.product_id = p.id AND pi.position = 1
-                GROUP BY p.id
+                GROUP BY p.id, b.id
                 ORDER BY p.id DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (limit,),
             )
@@ -388,7 +387,7 @@ class ProductRepositoryMixin:
     def _search_needle_tokens(self, needle: str) -> List[str]:
         """كلمات مفردة للبحث الاحتياطي عندما لا يطابق الجملة كاملة."""
         t = (needle or "").strip()
-        for ch in "؟?،,":
+        for ch in ("\u061f", "\x3f", "\u060c", ","):
             t = t.replace(ch, " ")
         return [w for w in t.split() if len(w) >= 2]
 
@@ -405,7 +404,7 @@ class ProductRepositoryMixin:
         for v in variants:
             pref = f"{v}%"
             ins = f"%{v}%"
-            like_parts.append("(p.product_name LIKE ? OR p.product_name LIKE ?)")
+            like_parts.append("(p.product_name LIKE %s OR p.product_name LIKE %s)")
             params.extend([pref, ins])
         where_sql = "(" + " OR ".join(like_parts) + ")"
         conn = self._get_connection()
@@ -433,7 +432,7 @@ class ProductRepositoryMixin:
                 WHERE
                     {where_sql}
                 ORDER BY p.id DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 tuple(params) + (limit,),
             )
@@ -479,6 +478,47 @@ class ProductRepositoryMixin:
                     return merged[:limit]
         return merged[:limit]
 
+    def list_products_for_main_category_name(
+        self, main_category_name: str, limit: int = 24
+    ) -> List[Dict[str, Any]]:
+        """منتجات مرتبطة بفئة رئيسية (اسم main_categories) — للشات/المنسّق."""
+        cat = (main_category_name or "").strip()
+        if not cat:
+            return []
+        like_pat = f"%{cat}%"
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute(
+                """
+                SELECT
+                    p.id AS product_id,
+                    p.product_name,
+                    p.description,
+                    p.price,
+                    p.img1,
+                    p.img2,
+                    p.img3,
+                    p.branch_id,
+                    b.city_name AS branch_city_name,
+                    mc.id AS category_id,
+                    mc.name AS category_name,
+                    sc.id AS section_id,
+                    sc.name AS section_name
+                FROM products p
+                JOIN branches b ON b.id = p.branch_id
+                JOIN sub_categories sc ON sc.id = p.sub_id
+                JOIN main_categories mc ON mc.id = sc.main_id
+                WHERE p.sub_id IS NOT NULL
+                  AND (mc.name = %s OR mc.name LIKE %s)
+                ORDER BY p.id DESC
+                LIMIT %s
+                """,
+                (cat, like_pat, limit),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
     def chat_tiered_product_search(self, needle: str, per_tier_limit: int = 4) -> Tuple[List[Dict[str, Any]], bool]:
         """
         بحث للشات — ترتيب المستويات حتى أول نتائج (الاسم أولاً لتقليل الخلط):
@@ -516,10 +556,10 @@ class ProductRepositoryMixin:
                 LEFT JOIN main_categories mc ON mc.id = sc.main_id
         """
         tier_exprs = (
-            "IFNULL(p.product_name, '')",
-            "IFNULL(p.description, '')",
-            "IFNULL(sc.name, '')",
-            "IFNULL(mc.name, '')",
+            "COALESCE(p.product_name, '')",
+            "COALESCE(p.description, '')",
+            "COALESCE(sc.name, '')",
+            "COALESCE(mc.name, '')",
         )
         tiers: List[Tuple[str, Tuple[Any, ...]]] = []
         for expr in tier_exprs:
@@ -529,7 +569,7 @@ class ProductRepositoryMixin:
                     f"""
                 WHERE {wsql}
                 ORDER BY p.id DESC
-                LIMIT ?
+                LIMIT %s
             """,
                     tuple(wparams) + (per_tier_limit,),
                 )
@@ -579,13 +619,13 @@ class ProductRepositoryMixin:
         conn = self._get_connection()
         try:
             row = conn.execute(
-                "SELECT name FROM sub_categories WHERE TRIM(name) = TRIM(?) LIMIT 1",
+                "SELECT name FROM sub_categories WHERE TRIM(name) = TRIM(%s) LIMIT 1",
                 (n,),
             ).fetchone()
             if row:
                 return (row["name"] or "").strip() or n
             row = conn.execute(
-                "SELECT name FROM sub_categories WHERE TRIM(name) = TRIM(?) LIMIT 1",
+                "SELECT name FROM sub_categories WHERE TRIM(name) = TRIM(%s) LIMIT 1",
                 (raw,),
             ).fetchone()
             if row:
@@ -594,7 +634,7 @@ class ProductRepositoryMixin:
                 if len(v) < 2:
                     continue
                 row = conn.execute(
-                    "SELECT name FROM sub_categories WHERE TRIM(name) = TRIM(?) LIMIT 1",
+                    "SELECT name FROM sub_categories WHERE TRIM(name) = TRIM(%s) LIMIT 1",
                     (v,),
                 ).fetchone()
                 if row:
@@ -602,7 +642,7 @@ class ProductRepositoryMixin:
             row = conn.execute(
                 """
                 SELECT name FROM sub_categories
-                WHERE TRIM(?) LIKE '%' || TRIM(name) || '%'
+                WHERE TRIM(%s) LIKE '%' || TRIM(name) || '%'
                 ORDER BY LENGTH(TRIM(name)) DESC
                 LIMIT 1
                 """,
@@ -613,7 +653,7 @@ class ProductRepositoryMixin:
             row = conn.execute(
                 """
                 SELECT name FROM sub_categories
-                WHERE TRIM(name) LIKE '%' || TRIM(?) || '%'
+                WHERE TRIM(name) LIKE '%' || TRIM(%s) || '%'
                 ORDER BY LENGTH(TRIM(name)) ASC
                 LIMIT 1
                 """,
@@ -690,7 +730,7 @@ class ProductRepositoryMixin:
                 if key in seen_like:
                     continue
                 seen_like.add(key)
-                kw_parts.append("(p.product_name LIKE ? OR p.product_name LIKE ?)")
+                kw_parts.append("(p.product_name LIKE %s OR p.product_name LIKE %s)")
                 kw_params.extend([pref, lk])
         if not kw_parts:
             return []
@@ -719,10 +759,10 @@ class ProductRepositoryMixin:
                 JOIN sub_categories sc ON sc.id = p.sub_id
                 JOIN main_categories mc ON mc.id = sc.main_id
                 WHERE p.sub_id IS NOT NULL
-                  AND (sc.name = ? OR sc.name LIKE ?)
+                  AND (sc.name = %s OR sc.name LIKE %s)
                   AND {kw_clause}
                 ORDER BY p.id DESC
-                LIMIT ?
+                LIMIT %s
             """
             params_old = [section_name, sec_like] + kw_params + [limit]
             cur = conn.execute(sql_old, params_old)
@@ -755,7 +795,7 @@ class ProductRepositoryMixin:
                 SELECT b.id AS branch_id, b.city_name
                 FROM products p
                 JOIN branches b ON b.id = p.branch_id
-                WHERE p.id = ?
+                WHERE p.id = %s
                 """,
                 (product_id,),
             )
@@ -798,10 +838,17 @@ class ProductRepositoryMixin:
                 LEFT JOIN main_categories mc ON mc.id = sc.main_id
                 LEFT JOIN product_variants pv ON pv.product_id = p.id
                 LEFT JOIN product_images pi ON pi.product_id = p.id AND pi.position = 1
-                WHERE p.branch_id = ?
-                GROUP BY p.id
+                WHERE p.branch_id = %s
+                GROUP BY
+                    p.id,
+                    p.product_name,
+                    p.description,
+                    p.price,
+                    p.branch_id,
+                    mc.name,
+                    sc.name
                 ORDER BY p.id DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (branch_id, limit),
             )
@@ -821,7 +868,7 @@ class ProductRepositoryMixin:
                 FROM products p
                 LEFT JOIN sub_categories sc ON sc.id = p.sub_id
                 LEFT JOIN main_categories mc ON mc.id = sc.main_id
-                WHERE p.id = ?
+                WHERE p.id = %s
                 """,
                 (product_id,),
             )
@@ -839,10 +886,10 @@ class ProductRepositoryMixin:
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM product_variants WHERE product_id = ?", (product_id,))
-            cursor.execute("DELETE FROM product_images WHERE product_id = ?", (product_id,))
-            cursor.execute("DELETE FROM inventory WHERE product_id = ?", (product_id,))
-            cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
+            cursor.execute("DELETE FROM product_variants WHERE product_id = %s", (product_id,))
+            cursor.execute("DELETE FROM product_images WHERE product_id = %s", (product_id,))
+            cursor.execute("DELETE FROM inventory WHERE product_id = %s", (product_id,))
+            cursor.execute("DELETE FROM products WHERE id = %s", (product_id,))
             conn.commit()
             return True
         except Exception:
@@ -865,8 +912,8 @@ class ProductRepositoryMixin:
             cursor.execute(
                 """
                 UPDATE products
-                SET product_name = ?, description = ?, price = ?
-                WHERE id = ?
+                SET product_name = %s, description = %s, price = %s
+                WHERE id = %s
                 """,
                 (name, description or "", price_val, product_id),
             )
@@ -891,7 +938,7 @@ class ProductRepositoryMixin:
         try:
             cursor = conn.cursor()
             if product_price is None:
-                cursor.execute("SELECT price FROM products WHERE id = ?", (product_id,))
+                cursor.execute("SELECT price FROM products WHERE id = %s", (product_id,))
                 row = cursor.fetchone()
                 try:
                     price_val = float(row["price"] if row else 0.0)
@@ -905,21 +952,21 @@ class ProductRepositoryMixin:
 
             cleaned = _normalize_variant_rows(variants)
 
-            cursor.execute("DELETE FROM product_variants WHERE product_id = ?", (product_id,))
-            cursor.execute("DELETE FROM inventory WHERE product_id = ?", (product_id,))
+            cursor.execute("DELETE FROM product_variants WHERE product_id = %s", (product_id,))
+            cursor.execute("DELETE FROM inventory WHERE product_id = %s", (product_id,))
 
             for v in cleaned:
                 cursor.execute(
                     """
                     INSERT INTO product_variants (product_id, size, color, price, quantity)
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s)
                     """,
                     (product_id, v["size"], v["color"], price_val, v["quantity"]),
                 )
                 cursor.execute(
                     """
                     INSERT INTO inventory (product_id, color, size, quantity)
-                    VALUES (?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s)
                     """,
                     (product_id, v["color"], v["size"], v["quantity"]),
                 )
@@ -936,12 +983,12 @@ class ProductRepositoryMixin:
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM product_images WHERE product_id = ?", (product_id,))
+            cursor.execute("DELETE FROM product_images WHERE product_id = %s", (product_id,))
             for idx, p in enumerate(image_paths, start=1):
                 cursor.execute(
                     """
                     INSERT INTO product_images (product_id, image_path, position)
-                    VALUES (?, ?, ?)
+                    VALUES (%s, %s, %s)
                     """,
                     (product_id, p, idx),
                 )
@@ -950,7 +997,7 @@ class ProductRepositoryMixin:
             img2 = image_paths[1] if len(image_paths) >= 2 else None
             img3 = image_paths[2] if len(image_paths) >= 3 else None
             cursor.execute(
-                "UPDATE products SET img1 = ?, img2 = ?, img3 = ? WHERE id = ?",
+                "UPDATE products SET img1 = %s, img2 = %s, img3 = %s WHERE id = %s",
                 (img1, img2, img3, product_id),
             )
             conn.commit()
@@ -972,7 +1019,7 @@ class ProductRepositoryMixin:
                 SELECT p.*, s.name as sub_category_name 
                 FROM products p
                 LEFT JOIN sub_categories s ON p.sub_id = s.id
-                WHERE p.branch_id = ?
+                WHERE p.branch_id = %s
                 ORDER BY p.id
             """, (branch_id,))
             return [dict(row) for row in cursor.fetchall()]
@@ -985,19 +1032,23 @@ class ProductRepositoryMixin:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO products (branch_id, sub_id, product_name, description, price, img1, img2, img3)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """, (branch_id, sub_id, name, desc, price, imgs[0], imgs[1], imgs[2]))
             product_id = cursor.lastrowid
             
             for item in inventory_data:
                 cursor.execute("""
                     INSERT INTO inventory (product_id, color, size, quantity)
-                    VALUES (?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s)
                 """, (product_id, item['color'], item['size'], item['quantity']))
             
             conn.commit()
         except Exception:
-            pass
+            # rollback صريح لمنع InFailedSqlTransaction على PostgreSQL
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         finally:
             conn.close()
 
@@ -1051,7 +1102,7 @@ class ProductRepositoryMixin:
                     branch_id, sub_id, section_id,
                     product_name, description, price,
                     img1, img2, img3
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     branch_id,
@@ -1072,7 +1123,7 @@ class ProductRepositoryMixin:
                 cursor.execute(
                     """
                     INSERT INTO product_images (product_id, image_path, position)
-                    VALUES (?, ?, ?)
+                    VALUES (%s, %s, %s)
                     """,
                     (product_id, p, idx),
                 )
@@ -1082,7 +1133,7 @@ class ProductRepositoryMixin:
                 cursor.execute(
                     """
                     INSERT INTO product_variants (product_id, size, color, price, quantity)
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s)
                     """,
                     (product_id, v["size"], v["color"], product_price, v["quantity"]),
                 )
@@ -1100,14 +1151,17 @@ class ProductRepositoryMixin:
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM product_variants WHERE product_id = ?", (product_id,))
-            cursor.execute("DELETE FROM product_images WHERE product_id = ?", (product_id,))
-            cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
+            cursor.execute("DELETE FROM product_variants WHERE product_id = %s", (product_id,))
+            cursor.execute("DELETE FROM product_images WHERE product_id = %s", (product_id,))
+            cursor.execute("DELETE FROM products WHERE id = %s", (product_id,))
             conn.commit()
             return cursor.rowcount >= 0
         except Exception:
+            # rollback صريح لمنع InFailedSqlTransaction على PostgreSQL
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             return False
         finally:
             conn.close()
-
-

@@ -1,9 +1,11 @@
 <!DOCTYPE html>
+{% from "macros/csrf.html" import csrf_input %}
 {% from "macros/site_logo.html" import site_logo_pair %}
 <html lang="ar" dir="rtl" class="dash-html">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% include "partials/pwa_head.html" %}
     <title>العائلة FAMILY</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/dashboard-layout.css') }}" rel="stylesheet">
@@ -65,6 +67,7 @@
                     <a class="nav-link" href="/add_product">➕ إضافة منتج</a>
                     <a class="nav-link" href="/products">📦 المنتجات</a>
                     <a class="nav-link" href="{{ url_for('campaigns.branch_campaigns') }}">📢 الحملات الإعلانية</a>
+                    <a class="nav-link" href="{{ url_for('wa_inbox.branch_messages_page') }}">💬 واتساب</a>
                     <a class="nav-link" href="#branch-complaints-block">📋 الشكاوى</a>
                     <a class="nav-link" href="#branch-inquiries-block">
                         🔔 طلبات العملاء
@@ -72,6 +75,7 @@
                         <span class="badge bg-danger ms-1">{{ pending_inquiries_count }}</span>
                         {% endif %}
                     </a>
+                    <a class="nav-link" href="#branch-product-requests-block">🔎 طلبات البحث عن منتج</a>
                     <a class="nav-link" href="#liveAnalyticsOffcanvas" data-bs-toggle="offcanvas" data-bs-target="#liveAnalyticsOffcanvas" aria-controls="liveAnalyticsOffcanvas">📊 التحليلات الحية</a>
                     <hr class="mx-3">
 
@@ -79,6 +83,7 @@
                     <div class="px-3 pb-3">
                         <small class="fw-bold d-block mb-2" style="color:var(--accent-gold); font-size:.8rem;">⚙️ بيانات التواصل</small>
                         <form action="/branch/settings/contact" method="POST">
+                            {{ csrf_input() }}
                             <div class="mb-2">
                                 <label class="form-label" style="font-size:.75rem; color:#555;">📧 البريد الإلكتروني</label>
                                 <input type="email" name="branch_email" class="form-control form-control-sm"
@@ -132,6 +137,7 @@
                         <div class="stat-card">
                             <h5 class="mb-4 fw-bold" style="color: var(--accent-gold);">📂 إضافة فئة رئيسية</h5>
                             <form action="/branch/add_category" method="POST">
+                                {{ csrf_input() }}
                                 <div class="mb-3">
                                     <label class="small fw-bold">اسم الفئة</label>
                                     <input type="text" name="cat_name" class="form-control" placeholder="مثلاً: قسم الملابس" required>
@@ -249,6 +255,7 @@
                                         </div>
                                         {% endif %}
                                         <form action="{{ url_for('branch_complaint_reply', complaint_id=c.id) }}" method="post">
+                                            {{ csrf_input() }}
                                             <textarea name="reply_text" class="form-control form-control-sm mb-2"
                                                       rows="3"
                                                       placeholder="اكتب ردك على العميل هنا...&#10;مثال: تم مراجعة طلبك وسيتم التواصل معك خلال 24 ساعة."
@@ -326,8 +333,8 @@
                                 </td>
                                 <td>
                                     {% if inq.customer_image_path %}
-                                    <a href="/{{ inq.customer_image_path }}" target="_blank">
-                                        <img src="/{{ inq.customer_image_path }}" class="inq-customer-img" alt="صورة العميل">
+                                    <a href="{{ media_url(inq.customer_image_path) }}" target="_blank" rel="noopener">
+                                        <img src="{{ media_url(inq.customer_image_path) }}" class="inq-customer-img" alt="صورة العميل">
                                     </a>
                                     {% else %}
                                     <span class="text-muted small">لا توجد صورة</span>
@@ -367,6 +374,7 @@
                                         {% endif %}
                                         <form action="{{ url_for('branch_reply_inquiry', inquiry_id=inq.id) }}"
                                               method="post" enctype="multipart/form-data">
+                                            {{ csrf_input() }}
                                             <textarea name="reply_text" class="form-control form-control-sm mb-2"
                                                       rows="3"
                                                       placeholder="مثال: نعم متوفر عندنا، تعال الفرع أو تواصل معنا."
@@ -406,6 +414,40 @@
                     {% endif %}
                 </div>
                 <!-- ══ نهاية طلبات العملاء ══ -->
+
+                <!-- طلبات بحث عن منتج من الشات (product_requests) -->
+                <div class="mb-2 mt-5" id="branch-product-requests-block">
+                    <h4 class="fw-bold mb-0">🔎 طلبات البحث عن منتج</h4>
+                    <p class="text-muted small mb-3">سُجّلت من محادثة العميل — قائمة موحّدة لكل الفروع (للمتابعة وإضافة المنتجات).</p>
+                </div>
+                <div class="stat-card mb-5" style="padding: 0; overflow: hidden;">
+                    {% if branch_product_requests %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:50px;">#</th>
+                                    <th>وصف الطلب</th>
+                                    <th>المستخدم</th>
+                                    <th class="text-nowrap">التاريخ</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            {% for pr in branch_product_requests %}
+                                <tr>
+                                    <td class="small text-muted">{{ pr.id }}</td>
+                                    <td class="small">{{ (pr.product_description or '') | truncate(200) }}</td>
+                                    <td><code class="small">{{ pr.user_id or '—' }}</code></td>
+                                    <td class="small text-muted">{{ (pr.requested_at or '—')[:16] }}</td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center text-muted py-4">لا توجد طلبات منتجات مسجّلة حديثاً.</div>
+                    {% endif %}
+                </div>
 
             </div><!-- /dash-main -->
         </div>

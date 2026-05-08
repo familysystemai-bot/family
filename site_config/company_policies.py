@@ -103,6 +103,28 @@ def _match_non_returnable_label(message: str) -> Optional[str]:
     return None
 
 
+def _mentions_return_or_exchange(message: str) -> bool:
+    """يتأكد أن السؤال فعلاً عن الاسترجاع/الاستبدال وليس مجرد ذكر الصنف."""
+    t = (message or "").strip()
+    if not t:
+        return False
+    return any(
+        w in t
+        for w in (
+            "استرجاع",
+            "أسترجع",
+            "استرجع",
+            "ارجاع",
+            "أرجع",
+            "استبدال",
+            "أبدل",
+            "تبديل",
+            "يرجع",
+            "ارجع",
+        )
+    )
+
+
 def _special_24h_item_in_policy(label_hint: str, p: Dict[str, Any]) -> bool:
     """يتحقق أن التصنيف مذكور في سياسة الأصناف ذات المهلة القصيرة."""
     special = [str(x).strip() for x in (p.get("special_items_24h") or []) if str(x).strip()]
@@ -227,19 +249,10 @@ def build_return_policy_chat_message(addressing: str = "", user_message: str = "
     if _user_wants_full_return_policy_text(msg):
         return _build_return_policy_full_paragraph(addressing)
 
+    asks_return_or_exchange = _mentions_return_or_exchange(msg)
+
     nr = _match_non_returnable_label(msg)
-    if nr and any(
-        w in msg
-        for w in (
-            "استرجاع",
-            "أسترجع",
-            "استرجع",
-            "ارجاع",
-            "أرجع",
-            "أبدل",
-            "استبدال",
-        )
-    ):
+    if nr and asks_return_or_exchange:
         return (
             f"{_opener_for_addressing(addressing)}"
             f"غالباً {nr} ما تُسترجع حسب سياسة المتجر. "
@@ -247,7 +260,8 @@ def build_return_policy_chat_message(addressing: str = "", user_message: str = "
         )
 
     cat = _match_24h_category_label(msg)
-    if cat and _special_24h_item_in_policy(cat, p):
+    # شرط صريح: لا نُرجع مهلة 24 ساعة لمجرد ذكر "فستان/فساتين" بدون سؤال سياسة.
+    if cat and asks_return_or_exchange and _special_24h_item_in_policy(cat, p):
         if cat == "الفساتين":
             cond = "بشرط تكون بحالتها الأصلية ومع الفاتورة"
         else:

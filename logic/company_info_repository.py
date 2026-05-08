@@ -1,9 +1,18 @@
 # -*- coding: utf-8 -*-
-"""معلومات الشركة وخدمات الفروع — للوحة الإدارة وللسياق في الذكاء الاصطناعي."""
+"""
+معلومات الشركة وخدمات الفروع — للوحة الإدارة وللسياق في الذكاء الاصطناعي.
+
+التحديثات في هذا الإصدار:
+- إضافة _safe_rollback_pg() واستدعائها في كل دالة عند الفشل.
+- نفس الواجهة العامة محفوظة بالكامل، لا تغيير في أي منطق.
+"""
 from __future__ import annotations
 
-import sqlite3
+import logging
 from typing import Any, Dict, List, Optional, Tuple
+from logic.db_adapter import DBAdapter
+
+logger = logging.getLogger(__name__)
 
 ALLOWED_COMPANY_INFO_KEYS = frozenset(
     {
@@ -14,6 +23,13 @@ ALLOWED_COMPANY_INFO_KEYS = frozenset(
         "payment_methods",
         "branches_info",
         "general_info",
+        # نص حر (أسئلة شائعة، تعريف، أي معلومات عامة للشات) — يُحقن في سياق الذكاء الاصطناعي
+        "chat_extra",
+        # قائمة JSON من روابط صور التوصيل/الشحن (تُرفَع من لوحة الإدارة)
+        "delivery_images",
+        # روابط التواصل والمتجر — يُعرَض للعميل عند طلب القناة أو الرابط
+        "social_media_links",
+        "online_store_url",
     }
 )
 
@@ -21,16 +37,53 @@ ALLOWED_COMPANY_INFO_KEYS = frozenset(
 POLICY_MISSING_FALLBACK_AR = "حالياً ما عندي تفاصيل، ممكن أوضح لك لاحقاً"
 
 
+def parse_delivery_image_urls(stored: Optional[str]) -> List[str]:
+    """يقرأ قائمة روابط صور التوصيل من JSON أو سطر لكل رابط."""
+    s = (stored or "").strip()
+    if not s:
+        return []
+    try:
+        import json
+
+        data = json.loads(s)
+        if isinstance(data, list):
+            return [
+                str(x).strip()
+                for x in data
+                if str(x).strip() and len(str(x).strip()) < 2000
+            ][:24]
+    except Exception:
+        pass
+    out: List[str] = []
+    for line in s.splitlines():
+        u = line.strip()
+        if u and (
+            u.startswith("http://")
+            or u.startswith("https://")
+            or u.startswith("/")
+        ):
+            out.append(u)
+    return out[:24]
+
+
 class CompanyInfoRepositoryMixin:
     """Mixin لـ DatabaseManager — يستخدم self._get_connection() فقط."""
 
-    def get_all_company_info_rows(self) -> Dict[str, str]:
-        conn = self._get_connection()
+    def _db_adapter(self) -> DBAdapter:
+        return DBAdapter(sqlite_path=getattr(self, "db_path", None))
+
+    def _safe_rollback_pg(self, conn) -> None:
+        """rollback آمن للـ PostgreSQL فقط."""
+        if getattr(self, "db_type", None) != "postgres":
+            return
         try:
-            cur = conn.execute("SELECT key, value FROM company_info ORDER BY key")
-            return {str(r["key"]): (r["value"] or "") for r in cur.fetchall()}
-        finally:
-            conn.close()
+            conn.rollback()
+        except Exception as e:
+            logger.warning("rollback failed in company_info_repository: %s", e)
+
+    def get_all_company_info_rows(self) -> Dict[str, str]:
+        rows = self._db_adapter().fetch_all("SELECT key, value FROM company_info ORDER BY key")
+        return {str(r["key"]): (r["value"] or "") for r in rows}
 
     def set_company_info_key(self, key: str, value: str) -> bool:
         k = (key or "").strip()
@@ -41,14 +94,16 @@ class CompanyInfoRepositoryMixin:
         try:
             conn.execute(
                 """
-                INSERT INTO company_info (key, value) VALUES (?, ?)
+                INSERT INTO company_info (key, value) VALUES (%s, %s)
                 ON CONFLICT(key) DO UPDATE SET value = excluded.value
                 """,
                 (k, v),
             )
             conn.commit()
             return True
-        except Exception:
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("set_company_info_key: %s", e)
             return False
         finally:
             conn.close()
@@ -66,12 +121,16 @@ class CompanyInfoRepositoryMixin:
                 """
                 SELECT service_title, details, sort_order, id
                 FROM company_branch_services
-                WHERE branch_id = ?
+                WHERE branch_id = %s
                 ORDER BY sort_order, id
                 """,
                 (int(branch_id),),
             )
             return [dict(r) for r in cur.fetchall()]
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("list_services_for_branch: %s", e)
+            return []
         finally:
             conn.close()
 
@@ -88,6 +147,10 @@ class CompanyInfoRepositoryMixin:
                 """
             ).fetchall()
             return [dict(r) for r in rows]
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("list_branch_services_with_branches: %s", e)
+            return []
         finally:
             conn.close()
 
@@ -106,24 +169,25 @@ class CompanyInfoRepositoryMixin:
         conn = self._get_connection()
         try:
             conn.execute(
-                "DELETE FROM company_branch_services WHERE branch_id = ?", (bid,)
+                "DELETE FROM company_branch_services WHERE branch_id = %s", (bid,)
             )
             for i, (t, d) in enumerate(cleaned):
                 conn.execute(
                     """
                     INSERT INTO company_branch_services
                     (branch_id, service_title, details, sort_order)
-                    VALUES (?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s)
                     """,
                     (bid, t, d, i),
                 )
             conn.commit()
             return True
-        except Exception:
+        except Exception as e:
             try:
                 conn.rollback()
             except Exception:
                 pass
+            logger.exception("replace_branch_services: %s", e)
             return False
         finally:
             conn.close()
@@ -139,6 +203,10 @@ class CompanyInfoRepositoryMixin:
             "payment": (rows.get("payment_methods") or "").strip(),
             "branches_blurb": (rows.get("branches_info") or "").strip(),
             "general": (rows.get("general_info") or "").strip(),
+            "chat_extra": (rows.get("chat_extra") or "").strip(),
+            "social_media": (rows.get("social_media_links") or "").strip(),
+            "online_store": (rows.get("online_store_url") or "").strip(),
+            "delivery_image_urls": parse_delivery_image_urls(rows.get("delivery_images")),
             "branch_services": [],
         }
         by_branch: Dict[int, Dict[str, Any]] = {}
@@ -161,7 +229,7 @@ class CompanyInfoRepositoryMixin:
 
     def get_policy_answer_exact(self, user_message: str) -> Optional[str]:
         """
-        عند وجود كلمات سياسة في الرسالة: يُعاد النص المخزَّن كما هو من company_info (بدون تحرير).
+        عند وجود كلمات سياسة في الرسالة: يُعاد النص المخزَّن كما هو من company_info (بدون تحرير).
         إن وُجدت المواضيع لكن الحقول فارغة → POLICY_MISSING_FALLBACK_AR.
         إن لم تُذكر مواضيع سياسة → None (يُكمَل المسار العادي مثل site_config).
         """
@@ -232,6 +300,7 @@ class CompanyInfoRepositoryMixin:
             "hours",
             "branches_blurb",
             "general",
+            "chat_extra",
         )
         parts = [(ci.get(k) or "").strip() for k in order if (ci.get(k) or "").strip()]
         return "\n\n".join(parts) if parts else ""

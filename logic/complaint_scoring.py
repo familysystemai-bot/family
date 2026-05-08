@@ -9,15 +9,22 @@ from config import (
     INTENT_SCORE_THRESHOLD_DIRECT,
 )
 from logic import keywords as kw
+from logic import keywords as kw
 
 COMPLAINT_NEGATIVE_TONE_MARKERS = (
     "زعلان",
     "مو راضي",
     "موراضي",
     "خايس",
+    "خايسة",
     "سيء",
     "سيئة",
     "منزعج",
+    "غاضب",
+    "غضبان",
+    "غضوب",
+    "ساخط",
+    "مستاء",
     "أسوأ",
     "اسوأ",
     "ما وصل",
@@ -49,6 +56,12 @@ def compute_complaint_score(
         score += COMPLAINT_SCORE_PRIMARY_WEIGHT
     if negative:
         score += COMPLAINT_SCORE_NEGATIVE_WEIGHT
+        # نبرة سلبية مع ذكر منتج/قسم — شكوى على سلعة لا بيع جديد
+        if any(
+            len((h or "").strip()) >= 3 and (h or "").strip() in normalized_message
+            for h in kw.PRODUCT_HINTS
+        ):
+            score += 1
     # ذكر مدينة/فرع وحده استفسار موقع شائع — لا يُعد شكوى إلا مع نبرة أو عبارة شكوى
     if has_known_branch and (primary or negative):
         score += COMPLAINT_SCORE_BRANCH_WEIGHT

@@ -6,7 +6,7 @@
 
 الذكاء الاصطناعي في المشروع:
 - OpenAI (عند وجود OPENAI_API_KEY): استخراج حقول بحث قبل SQLite عبر logic.ai_fallback — لا يغيّر نية التوجيه القائمة على القواعد.
-- Ollama (اختياري): logic.llm_analyzer عند LLM_ENABLED — تصنيف مساعد فقط.
+- محلل LLM اختياري (logic.llm_analyzer عند LLM_ENABLED) — بدون مزوّد محلي منسوخ.
 - عرض المنتجات يبقى من بيانات قاعدة البيانات فعلياً (انظر logic.product_repository و logic.product_service).
 - ردود الشات للمستخدم تُبنى من بيانات حقيقية أو قوالب ثابتة، وليس من توليد يصف مخزوناً غير مؤكد.
 """
@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 from typing import Optional
 
-from flask import session
+from flask import has_request_context, session
 
 from logic.chat_rules import is_acceptable_display_name
 from logic.database import DatabaseManager
@@ -96,11 +96,43 @@ def extract_branch_name(message):
 _CHAT_PENDING_BRANCH = "await_branch_for_location"
 
 
+def _name_likely_female(display_name: str) -> bool:
+    """تخمين بسيط للتذكير بلقب أنثوي — دون ضمان."""
+    n = (display_name or "").strip()
+    if len(n) < 2:
+        return False
+    if n.endswith("ة") and len(n) >= 3:
+        return True
+    return n in (
+        "فاطمة", "سارة", "نورة", "مريم", "هدى", "رنا", "لينا", "هند", "أمل", "نجلاء",
+    )
+
+
+def personalized_service_offer() -> str:
+    """
+    سطر خدمة مهذب — بدون سرد فروع ولا صيغة «أساعدك فيه».
+    """
+    nm = _display_name().strip()
+    if not nm or nm in ("عميلنا", "العميل", "زائر", "ضيف"):
+        return "تفضل."
+    if nm in ("أخوي", "أستاذ"):
+        return f"تفضل يا {nm}."
+    hon = "أستاذة" if _name_likely_female(nm) else "أستاذ"
+    return f"تفضل يا {hon} {nm}."
+
+
+def branch_clarify_block(heading: str) -> str:
+    """عنوان قصير (مثل: أي فرع تقصد؟) + سطر خدمة مخصص."""
+    h = (heading or "").strip()
+    tail = personalized_service_offer()
+    return f"{h}\n{tail}" if h else tail
+
+
 def _branch_selection_prompt() -> str:
-    """سؤال واحد مختصر — بدون سرد طويل إلا عند الحاجة."""
-    if session.get("chat_last_branch") or session.get("chat_selected_branch"):
-        return "أي فرع تقصد بالضبط؟ (جدة، مكة، المدينة، خميس مشيط، قلوة)"
-    return "أي مدينة؟ جدة، مكة، المدينة، خميس مشيط، أو قلوة."
+    """
+    توافق رجعي مع الكود القديم: نفس personalized_service_offer دون قوائم مدن.
+    """
+    return personalized_service_offer()
 
 
 def _ensure_chat_user_session():
@@ -109,6 +141,8 @@ def _ensure_chat_user_session():
 
 
 def _display_name():
+    if not has_request_context():
+        return "أخوي"
     if _chat_context.has_declined_name():
         return "أخوي"
     return (session.get("user_name") or "").strip() or "أخوي"

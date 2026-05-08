@@ -1,18 +1,21 @@
 {% extends "founder/base.html" %}
-{% block title %}الرئيسية{% endblock %}
+{% block title %}الرئيسية — لوحة تحكم النظام{% endblock %}
 {% block fd_top_header %}
-<header class="fd-dash-hero" aria-label="هوية لوحة المؤسس">
+<header class="fd-dash-hero" aria-label="هوية العلامة — العائلة">
     {% if founder_logo_url %}
-    <img src="{{ founder_logo_url }}" class="fd-dash-hero__site-img" alt="" decoding="async" onerror="this.classList.add('site-logo-hidden');">
+    <img src="{{ founder_logo_url }}" class="fd-dash-hero__site-img" alt="شعار العائلة" decoding="async" onerror="this.classList.add('site-logo-hidden');">
     {% endif %}
-    <h1 class="fd-dash-hero__name">كاظم المطحني</h1>
+    <h1 class="fd-dash-hero__name">العائلة</h1>
 </header>
 {% endblock %}
 {% block content %}
+{% from "macros/csrf.html" import csrf_input %}
 <div class="fd-page-head">
-    <h2 class="fd-page-title">لوحة المؤسس</h2>
-    <span class="fd-page-sub">تحكم كامل بجميع الفروع والمنتجات</span>
+    <h2 class="fd-page-title">لوحة تحكم النظام</h2>
+    <span class="fd-page-sub">إدارة موحّدة للفروع والمنتجات والإعدادات</span>
 </div>
+
+{% include 'partials/company_info_global_block.html' %}
 
 <div class="row g-3 mb-4">
     <div class="col-md-4">
@@ -34,6 +37,123 @@
         </div>
     </div>
 </div>
+
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="fd-card">
+            <h2 class="fd-card-title">تقارير الطلبات والاستفسارات (حسب الفرع)</h2>
+            <p class="small text-muted mb-3">
+                هذه اللوحة تعرض هنا <strong>ملخصات وتقارير</strong>؛ تفاصيل الردود والمعالجة اليومية تظهر في لوحة الفرع أو الإدارة.
+            </p>
+            <div class="row g-2 mb-3">
+                <div class="col-md-4 col-6">
+                    <div class="border rounded p-2 bg-light">
+                        <div class="small text-muted">طلبات بحث عن منتج (كل المحادثات)</div>
+                        <div class="fs-5 fw-semibold">{{ founder_product_request_total | default(0) }}</div>
+                        <div class="small text-muted">جدول product_requests — غير مرتبط بفرع محدد</div>
+                    </div>
+                </div>
+            </div>
+            <h3 class="h6 mb-2">استفسارات «منتج غير مسجّل» حسب الفرع</h3>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>الفرع</th>
+                            <th class="text-center">معلّقة</th>
+                            <th class="text-center">تم الرد</th>
+                            <th class="text-center">الإجمالي</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in founder_inquiry_report|default([]) %}
+                        <tr>
+                            <td>{{ row.branch_name }}</td>
+                            <td class="text-center">{{ row.pending_cnt }}</td>
+                            <td class="text-center">{{ row.answered_cnt }}</td>
+                            <td class="text-center fw-semibold">{{ row.total_cnt }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center text-muted py-3">لا توجد استفسارات مسجّلة بعد.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% set acct = founder_accounting if founder_accounting is defined else none %}
+{% if acct %}
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="fd-card">
+            <h2 class="fd-card-title">الذكاء الاصطناعي والواتساب (إحصاء فعلي)</h2>
+            <p class="small text-muted mb-3">الفترة: آخر {{ acct.days }} يوماً (من {{ acct.period_start }} إلى {{ acct.period_end }}). رسائل الصندوق من جدول الرسائل؛ استهلاك LLM من سجل كل استدعاء مع ربط جلسة واتساب عند توفرها.</p>
+            <div class="row g-2 mb-3">
+                <div class="col-md-3 col-6">
+                    <div class="border rounded p-2 h-100 bg-light">
+                        <div class="small text-muted">واتساب — وارد</div>
+                        <div class="fs-5 fw-semibold">{{ acct.wa_messages_inbound }}</div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6">
+                    <div class="border rounded p-2 h-100 bg-light">
+                        <div class="small text-muted">واتساب — صادر</div>
+                        <div class="fs-5 fw-semibold">{{ acct.wa_messages_outbound }}</div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6">
+                    <div class="border rounded p-2 h-100 bg-light">
+                        <div class="small text-muted">LLM عبر واتساب</div>
+                        <div class="small">{{ acct.llm_wa.calls }} استدعاء</div>
+                        <div class="small">مدخلات {{ acct.llm_wa.prompt_tokens }} · مخرجات {{ acct.llm_wa.completion_tokens }} · إجمالي {{ acct.llm_wa.total_tokens }}</div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6">
+                    <div class="border rounded p-2 h-100 bg-light">
+                        <div class="small text-muted">LLM عبر الموقع / الشات</div>
+                        <div class="small">{{ acct.llm_web.calls }} استدعاء</div>
+                        <div class="small">مدخلات {{ acct.llm_web.prompt_tokens }} · مخرجات {{ acct.llm_web.completion_tokens }} · إجمالي {{ acct.llm_web.total_tokens }}</div>
+                    </div>
+                </div>
+            </div>
+            {% if acct.llm_system.calls %}
+            <p class="small text-muted mb-2">استدعاءات بلا سياق متصفح (مهام/Cron): {{ acct.llm_system.calls }} — توكنز {{ acct.llm_system.total_tokens }}</p>
+            {% endif %}
+            {% if acct.wa_top_contacts and acct.wa_top_contacts|length > 0 %}
+            <h3 class="h6 mt-3 mb-2">أعلى استهلاكاً على واتساب (حسب التوكنز)</h3>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>الرقم</th>
+                            <th>استدعاءات</th>
+                            <th>مدخلات</th>
+                            <th>مخرجات</th>
+                            <th>إجمالي توكنز</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in acct.wa_top_contacts %}
+                        <tr>
+                            <td><code>{{ row.contact_number }}</code></td>
+                            <td>{{ row.ai_calls }}</td>
+                            <td>{{ row.ai_prompt_tokens }}</td>
+                            <td>{{ row.ai_completion_tokens }}</td>
+                            <td class="fw-semibold">{{ row.ai_total_tokens }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <div class="row g-3 mb-4">
     <div class="col-12">
@@ -113,6 +233,7 @@
                             <td>
                                 {% if not is_resolved %}
                                 <form action="{{ url_for('founder_resolve_complaint', complaint_id=c.id) }}" method="post" class="d-flex flex-column gap-2">
+                                    {{ csrf_input() }}
                                     <textarea name="resolution_notes" class="form-control form-control-sm" rows="2" placeholder="ملاحظات الحل (تظهر للعميل)"></textarea>
                                     <button type="submit" class="btn fd-btn fd-btn--accent btn-sm">تم الحل (Resolved)</button>
                                 </form>
@@ -139,7 +260,7 @@
 <div class="row g-4 mt-2">
     <div class="col-12">
         <h2 class="fd-card-title mb-3">الهوية البصرية</h2>
-        <p class="small text-muted mb-3">شعاران منفصلان: <strong>عام</strong> للواجهة العامة ولوحات الفرع والإدارة، و<strong>خاص</strong> بلوحة المؤسس فقط.</p>
+        <p class="small text-muted mb-3">شعاران منفصلان: <strong>عام</strong> للواجهة العامة ولوحات الفرع والإدارة، و<strong>خاص</strong> بلوحة تحكم النظام فقط.</p>
     </div>
     <div class="col-12 col-lg-6">
         <div class="fd-identity-glass">
@@ -147,7 +268,7 @@
             <p class="fd-identity-glass__hint">واجهة العملاء، لوحة الفرع، لوحة الإدارة، والحملات — ملف واحد: <code class="text-success">uploads/logo.png</code></p>
             <div class="fd-identity-preview" data-label="معاينة الشعار العام">
                 {% if logo_url %}
-                <img src="{{ logo_url }}?v={{ site_logo_cache_bust }}" alt="" class="fd-identity-preview__img">
+                <img src="{{ logo_url }}?v={{ site_logo_cache_bust }}" alt="شعار العائلة — الواجهة العامة" class="fd-identity-preview__img">
                 {% else %}
                 <div class="fd-identity-preview__empty">
                     <span>لا يوجد شعار مرفوع — ارفع شعاراً من النموذج أدناه.</span>
@@ -155,35 +276,39 @@
                 {% endif %}
             </div>
             <form action="{{ url_for('founder_upload_site_logo') }}" method="post" enctype="multipart/form-data" class="fd-identity-form">
+                {{ csrf_input() }}
                 <label class="form-label small fw-bold mb-1">تغيير الشعار</label>
                 <input type="file" name="logo" class="form-control fd-identity-file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" required>
                 <button type="submit" class="btn fd-btn w-100 mt-2">رفع وحفظ</button>
             </form>
-            <form action="{{ url_for('founder_delete_site_logo') }}" method="post" class="mt-2" onsubmit="return confirm('حذف الشعار العام من كل الواجهات (عدا لوحة المؤسس)؟');">
+            <form action="{{ url_for('founder_delete_site_logo') }}" method="post" class="mt-2" onsubmit="return confirm('حذف الشعار العام من كل الواجهات (عدا لوحة تحكم النظام)؟');">
+                {{ csrf_input() }}
                 <button type="submit" class="btn btn-outline-danger w-100">حذف الشعار العام</button>
             </form>
         </div>
     </div>
     <div class="col-12 col-lg-6">
         <div class="fd-identity-glass fd-identity-glass--accent">
-            <h3 class="fd-identity-glass__title">شعار لوحة المؤسس</h3>
-            <p class="fd-identity-glass__hint">يظهر في الشريط الجانبي، ترويسة الصفحات، وبطل الرئيسية فقط — ملف: <code class="text-success">uploads/founder_logo.png</code></p>
-            <div class="fd-identity-preview" data-label="معاينة شعار المؤسس">
+            <h3 class="fd-identity-glass__title">شعار لوحة تحكم النظام</h3>
+            <p class="fd-identity-glass__hint">يظهر في الشريط الجانبي، ترويسة الصفحات، وبطاقة الترحيب فقط — ملف: <code class="text-success">uploads/founder_logo.png</code></p>
+            <div class="fd-identity-preview" data-label="معاينة شعار لوحة النظام">
                 {% if founder_logo_url %}
-                <img src="{{ founder_logo_url }}" alt="" class="fd-identity-preview__img">
+                <img src="{{ founder_logo_url }}" alt="شعار العائلة — لوحة النظام" class="fd-identity-preview__img">
                 {% else %}
                 <div class="fd-identity-preview__empty">
-                    <span>لا يوجد شعار خاص — ارفع شعاراً من النموذج أدناه.</span>
+                    <span>لا يوجد شعار لهذه اللوحة — ارفع شعاراً من النموذج أدناه.</span>
                 </div>
                 {% endif %}
             </div>
             <form action="{{ url_for('founder_upload_founder_logo') }}" method="post" enctype="multipart/form-data" class="fd-identity-form">
+                {{ csrf_input() }}
                 <label class="form-label small fw-bold mb-1">تغيير الشعار</label>
                 <input type="file" name="logo" class="form-control fd-identity-file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" required>
                 <button type="submit" class="btn fd-btn w-100 mt-2">رفع وحفظ</button>
             </form>
-            <form action="{{ url_for('founder_delete_founder_logo') }}" method="post" class="mt-2" onsubmit="return confirm('حذف شعار لوحة المؤسس؟');">
-                <button type="submit" class="btn btn-outline-danger w-100">حذف شعار المؤسس</button>
+            <form action="{{ url_for('founder_delete_founder_logo') }}" method="post" class="mt-2" onsubmit="return confirm('حذف شعار لوحة تحكم النظام؟');">
+                {{ csrf_input() }}
+                <button type="submit" class="btn btn-outline-danger w-100">حذف شعار لوحة النظام</button>
             </form>
         </div>
     </div>

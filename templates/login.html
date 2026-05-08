@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    {% include "partials/pwa_head.html" %}
     <title>تسجيل دخول | لوحة التحكم</title>
     <link href="{{ url_for('static', filename='css/site-brand.css') }}" rel="stylesheet">
     {% from "macros/site_logo.html" import site_logo_pair %}
@@ -229,6 +230,9 @@
             </div>
 
             <form method="POST" action="{{ url_for('login') }}" novalidate>
+                {% if csrf_token is defined %}
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                {% endif %}
                 <div class="field">
                     <label class="field-label" for="username">اسم المستخدم</label>
                     <div class="input-wrap">

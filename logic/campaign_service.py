@@ -1,15 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-حملات إعلانية: تخزين، جدولة، استهداف ذكي (موافقون + فترة تهدئة 24 ساعة)، إرسال بريد.
+حملات إعلانية: تخزين، جدولة، استهداف ذكي (موافقون + فترة تهدئة 24 ساعة)، إرسال بريد وواتساب.
 """
 from __future__ import annotations
 
-import sqlite3
+import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from logic.dialect_responses import dialect_message
+from logic.integrations.base import read_setting
+from logic.integrations.whatsapp_meta import normalize_whatsapp_recipient, send_test_text_message
 from logic.mail_service import send_email
+
+logger = logging.getLogger(__name__)
 
 
 def resolve_public_url_root(request_url_root: Optional[str]) -> str:
@@ -155,6 +159,56 @@ def _sort_recipients_by_interest(rows: List[Dict[str, Any]]) -> List[Dict[str, A
     return with_i + without
 
 
+def get_eligible_whatsapp_campaign_recipients(
+    db, branch_id: Optional[int] = None
+) -> List[Dict[str, Any]]:
+    """
+    مستهدفو واتساب: موافقة تسويق + هاتف + عدم إرسال حملة خلال آخر 24 ساعة (نفس منطق البريد).
+    """
+    conn = db._get_connection()
+    try:
+        if branch_id is not None:
+            cur = conn.execute(
+                """
+                SELECT id, name, email, phone, branch_id, prefers_marketing, created_at,
+                       dialect, last_product_interest, last_product_interest_at,
+                       last_campaign_sent_at
+                FROM customers
+                WHERE prefers_marketing = 1
+                  AND branch_id = ?
+                  AND phone IS NOT NULL
+                  AND TRIM(phone) != ''
+                  AND (
+                    last_campaign_sent_at IS NULL
+                    OR datetime(last_campaign_sent_at) < datetime('now', '-1 day')
+                  )
+                ORDER BY id
+                """,
+                (int(branch_id),),
+            )
+        else:
+            cur = conn.execute(
+                """
+                SELECT id, name, email, phone, branch_id, prefers_marketing, created_at,
+                       dialect, last_product_interest, last_product_interest_at,
+                       last_campaign_sent_at
+                FROM customers
+                WHERE prefers_marketing = 1
+                  AND phone IS NOT NULL
+                  AND TRIM(phone) != ''
+                  AND (
+                    last_campaign_sent_at IS NULL
+                    OR datetime(last_campaign_sent_at) < datetime('now', '-1 day')
+                  )
+                ORDER BY id
+                """
+            )
+        rows = [dict(row) for row in cur.fetchall()]
+    finally:
+        conn.close()
+    return _sort_recipients_by_interest(rows)
+
+
 def get_target_customers_with_phone(db, branch_id: Optional[int] = None) -> List[Dict[str, Any]]:
     conn = db._get_connection()
     try:
@@ -288,7 +342,8 @@ def create_campaign(
         )
         conn.commit()
         return int(cur.lastrowid)
-    except sqlite3.Error:
+    except Exception as e:
+        logger.exception("create_campaign: %s", e)
         return None
     finally:
         conn.close()
@@ -297,7 +352,10 @@ def create_campaign(
 def _public_image_url(image_url: Optional[str], url_root: str) -> Optional[str]:
     if not image_url:
         return None
-    p = str(image_url).lstrip("/").replace("\\", "/")
+    raw = str(image_url).strip()
+    if raw.startswith(("http://", "https://")):
+        return raw
+    p = raw.lstrip("/").replace("\\", "/")
     if p.startswith("static/"):
         path = p
     else:
@@ -337,6 +395,36 @@ def build_campaign_email_body(
     return "\n".join(lines).strip()
 
 
+def build_campaign_whatsapp_text(
+    *,
+    whatsapp_message: str,
+    image_url: Optional[str],
+    request_url_root: str,
+    customer_name: str,
+    dialect: Optional[str],
+    product_interest: Optional[str],
+) -> str:
+    """نص حملة واتساب: تخصيص بالاسم/اللهجة كالبريد، مع حد آمن أقل من سقف Meta."""
+    root = resolve_public_url_root(request_url_root)
+    name = (customer_name or "").strip() or "عميلنا"
+    d = (dialect or "default").strip() or "default"
+    parts: List[str] = [dialect_message(d, "campaign_opening", name=name)]
+    prod = (product_interest or "").strip()
+    if prod:
+        parts.append(
+            dialect_message(d, "campaign_product_teaser", product=prod)
+        )
+    wmsg = (whatsapp_message or "").strip()
+    if wmsg:
+        parts.append(wmsg)
+    parts.append("📍 العرض متوفر الآن")
+    pub = _public_image_url(image_url, root)
+    if pub:
+        parts.append(pub)
+    text = "\n".join(p for p in parts if p).strip()
+    return text[:4000]
+
+
 def send_campaign(
     db, campaign_id: int, request_url_root: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -352,10 +440,14 @@ def send_campaign(
             "targeted": 0,
             "sent": 0,
             "failed": 0,
+            "wa_targeted": 0,
+            "wa_sent": 0,
+            "wa_failed": 0,
         }
 
     title = (row.get("title") or "").strip()
     message = (row.get("message") or "").strip()
+    wa_template = (row.get("whatsapp_message") or "").strip()
     image_raw = (row.get("image_url") or "").strip() or None
     bid = row.get("branch_id")
     branch_scope: Optional[int]
@@ -365,6 +457,7 @@ def send_campaign(
         branch_scope = None
 
     targets = get_eligible_campaign_recipients(db, branch_id=branch_scope)
+    wa_targets = get_eligible_whatsapp_campaign_recipients(db, branch_id=branch_scope)
     subject = title or "حملة من العائلة FAMILY"
 
     sent = 0
@@ -395,6 +488,49 @@ def send_campaign(
         except Exception:
             failed += 1
 
+    wa_sent = 0
+    wa_failed = 0
+    wa_targeted = len(wa_targets)
+    if wa_template and wa_targets:
+        wa_pid = read_setting("WA_PHONE_NUMBER_ID", "").strip()
+        wa_token = read_setting("WA_ACCESS_TOKEN", "").strip()
+        if not wa_pid or not wa_token:
+            logger.warning(
+                "send_campaign: نص واتساب موجود لكن WA_PHONE_NUMBER_ID أو WA_ACCESS_TOKEN ناقص"
+            )
+            wa_failed = wa_targeted
+        else:
+            url_root = resolve_public_url_root(request_url_root)
+            for cust in wa_targets:
+                phone_raw = str(cust.get("phone") or "")
+                ok_norm, _digits = normalize_whatsapp_recipient(phone_raw)
+                if not ok_norm:
+                    wa_failed += 1
+                    continue
+                text = build_campaign_whatsapp_text(
+                    whatsapp_message=wa_template,
+                    image_url=image_raw,
+                    request_url_root=url_root,
+                    customer_name=str(cust.get("name") or ""),
+                    dialect=str(cust.get("dialect") or "default"),
+                    product_interest=str(cust.get("last_product_interest") or "") or None,
+                )
+                try:
+                    ok_wa, _detail = send_test_text_message(
+                        wa_pid, wa_token, phone_raw, body=text
+                    )
+                    if ok_wa:
+                        wa_sent += 1
+                        try:
+                            db.customer_mark_last_campaign_sent(int(cust["id"]))
+                        except (KeyError, TypeError, ValueError):
+                            pass
+                    else:
+                        wa_failed += 1
+                except Exception:
+                    logger.exception("send_campaign: فشل إرسال واتساب للعميل")
+                    wa_failed += 1
+
     targeted = len(targets)
     mark_campaign_dispatch_completed(db, int(campaign_id))
     return {
@@ -403,6 +539,9 @@ def send_campaign(
         "targeted": targeted,
         "sent": sent,
         "failed": failed,
+        "wa_targeted": wa_targeted if wa_template else 0,
+        "wa_sent": wa_sent,
+        "wa_failed": wa_failed,
     }
 
 
@@ -431,7 +570,7 @@ def send_campaign_now(
     if cid is None:
         return {"ok": False, "error": "لم يُحفظ سجل الحملة.", "campaign_id": None}
 
-    wa_targets = get_target_customers_with_phone(db, branch_id=branch_scope)
+    wa_eligible = get_eligible_whatsapp_campaign_recipients(db, branch_id=branch_scope)
 
     if schedule_is_future(scheduled_at):
         return {
@@ -439,7 +578,7 @@ def send_campaign_now(
             "campaign_id": cid,
             "scheduled_only": True,
             "email_targets": 0,
-            "whatsapp_targets": len(wa_targets),
+            "whatsapp_targets": len(wa_eligible),
             "emails_sent": 0,
             "emails_failed": 0,
         }
@@ -452,7 +591,7 @@ def send_campaign_now(
             "error": send_result.get("error"),
             "campaign_id": cid,
             "email_targets": 0,
-            "whatsapp_targets": len(wa_targets),
+            "whatsapp_targets": len(wa_eligible),
             "emails_sent": 0,
             "emails_failed": 0,
         }
@@ -461,8 +600,10 @@ def send_campaign_now(
         "ok": True,
         "campaign_id": cid,
         "email_targets": send_result["targeted"],
-        "whatsapp_targets": len(wa_targets),
+        "whatsapp_targets": send_result.get("wa_targeted", len(wa_eligible)),
         "emails_sent": send_result["sent"],
         "emails_failed": send_result["failed"],
+        "wa_sent": send_result.get("wa_sent", 0),
+        "wa_failed": send_result.get("wa_failed", 0),
         "scheduled_only": False,
     }

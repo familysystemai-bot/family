@@ -12,7 +12,7 @@ from logic import keywords as kw
 
 # رد السلام — منفصلان في الواجهة عبر message + followup_message
 SALAM_REPLY_FIRST = "وعليكم السلام ورحمة الله وبركاته"
-SALAM_REPLY_SECOND = "حياك الله، بوش تامرني؟"
+SALAM_REPLY_SECOND = "هلا، تفضل."
 NAME_PROMPT_AFTER_SERVICE = "إذا حاب، وش تحب نناديك؟"
 
 
@@ -20,24 +20,22 @@ def build_logged_in_islamic_salam_reply(name: str, *, returning_visitor: bool) -
     """رد سلام موحّد لزائر مسجّل الدخول بالبريد/الجوال (اسم من الجلسة)."""
     nm = (name or "").strip()
     if returning_visitor:
-        return f"نورتنا من جديد يا {nm}، بوش تامرني؟"
-    return (
-        f"وعليكم السلام ورحمة الله وبركاته، حياك الله يا {nm}، بوش تامرني؟"
-    )
+        return f"نورتنا من جديد يا {nm}."
+    return f"وعليكم السلام ورحمة الله وبركاته، هلا {nm}."
 
 
 def build_logged_in_casual_greeting_reply(name: str, *, returning_visitor: bool) -> str:
     """تحية عامة (هلا، مرحبا، …) لزائر مسجّل الدخول دون سطر السلام الإسلامي."""
     nm = (name or "").strip()
     if returning_visitor:
-        return f"نورتنا من جديد يا {nm}، بوش تامرني؟"
-    return f"حياك الله يا {nm}، بوش تامرني؟"
+        return f"نورتنا من جديد يا {nm}."
+    return f"هلا {nm}، تفضل."
 
 
 _SMALL_TALK_REPLIES = (
-    "بخير والحمد لله، وأنت كيف حالك؟ بوش تامرني؟",
-    "الحمد لله بخير، وش أخبارك؟ بوش تامرني؟",
-    "تمام والحمد لله — ونسأل عنك؟ تفضل، وش تحتاج؟",
+    "بخير والحمد لله، وأنت كيف حالك؟",
+    "الحمد لله بخير، وش أخبارك؟",
+    "تمام والحمد لله — تفضل، وش تحتاج؟",
 )
 
 
@@ -54,8 +52,8 @@ def build_personalized_salam_followup(display_name: str, *, prior_salam_count: i
     if not dn or dn in ("أخوي", "حضرتك"):
         return SALAM_REPLY_SECOND
     if prior_salam_count <= 0:
-        return f"حياك الله يا {dn}"
-    return f"نورتنا من جديد يا {dn}"
+        return f"هلا {dn}."
+    return f"نورتنا من جديد يا {dn}."
 
 # كلمات تدل على استفسار وليست اسم شخص
 INQUIRY_TOKENS = frozenset(
@@ -304,3 +302,9 @@ def is_islamic_salam_message(message: str) -> bool:
     if s in ("سلام", "سلام.", "سلام؟", "سلام عليكم"):
         return True
     return False
+
+
+def is_simple_hello(message: str) -> bool:
+    """الو / هلو / hello — تحية بسيطة بدون طلب."""
+    s = (message or "").strip().lower()
+    return s in ("الو", "هلو", "هلا", "hello", "hi", "hey", "ألو", "آلو", "مرحبا", "مرحبا.")

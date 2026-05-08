@@ -18,8 +18,55 @@ from config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_ORCH_DEBUG
 from logic.chat_semantic_expand import all_product_search_needles
 from site_config.company_policies import policies_text_for_ai_context
 
+# ── الدفعة 3-ج: بنية موحّدة للمزوّدات + قواعد صارمة + scope filter ──
+try:
+    from logic import llm_provider
+    from logic import strict_prompts
+    from logic.scope_filter import is_out_of_scope, build_out_of_scope_reply
+    from logic.ai_usage_tracker import track_llm_call
+    _LLM_PROVIDER_AVAILABLE = True
+except ImportError as _e:
+    logger.warning("llm_provider/strict_prompts not available: %s", _e)
+    _LLM_PROVIDER_AVAILABLE = False
+    llm_provider = None  # type: ignore
+    strict_prompts = None  # type: ignore
+    def is_out_of_scope(_msg): return None  # type: ignore
+    def build_out_of_scope_reply(_t, _n=""): return ""  # type: ignore
+    def track_llm_call(**_kw): pass  # type: ignore
+
+
+def _any_openai_key_configured() -> bool:
+    """مفتاح OpenAI من config أو من llm_provider (بيئة أو لوحة التحكم)."""
+    if (OPENAI_API_KEY or "").strip():
+        return True
+    if _LLM_PROVIDER_AVAILABLE and llm_provider is not None:
+        try:
+            return bool((llm_provider.get_openai_api_key() or "").strip())
+        except Exception:
+            pass
+    return False
+
+
+_ORCHESTRATOR_ACTION_ALIASES = {
+    # النموذج أو strict_prompts قد يعيدان اسم عملية قديم/بديل
+    "complaint_routing": "complaint",
+    "complaint_route": "complaint",
+}
+
+
+def _canonical_orchestrator_action(data: dict) -> str:
+    """يوحّد حقل action مع المخطط المعتمد في allowed_actions."""
+    if not isinstance(data, dict):
+        return ""
+    raw = str(data.get("action") or "").strip().lower()
+    canon = _ORCHESTRATOR_ACTION_ALIASES.get(raw, raw)
+    if canon != raw:
+        data["action"] = canon
+    return canon
+
+
 # حدّ استجابة النموذج (تقريباً كما طُلب)
-_MAX_COMPLETION_TOKENS = 300
+_MAX_COMPLETION_TOKENS = 500
 # حدّ حجم سياق JSON المُرسَل في البرومبت
 _MAX_CONTEXT_CHARS = 7500
 
@@ -92,35 +139,37 @@ _MAX_ORCHESTRATOR_TOKENS = 900
 _ORCH_ENV_LOGGED_ONCE = False
 _ORCH_DISABLED_WARNED = False
 
-_ORCHESTRATOR_SYSTEM = """أنت موظف خدمة عملاء حقيقي في منسّق محادثة متجر أزياء؛ تتحدث بشكل طبيعي ومباشر، بعيداً عن الصياغة الروبوتية.
+_ORCHESTRATOR_SYSTEM = """أنت موظف خدمة عملاء حقيقي في منسّق محادثة متجر أزياء؛ تتحدث بشكل طبيعي ومرن، بعيداً عن الصياغة الروبوتية الجافة.
 
-قواعد إلزامية لحقل message (وللصياغة عموماً):
-- جملة أو جملتان فقط؛ لا إطالة ولا شرح زائد.
-- رد فقط على طلب العميل؛ لا معلومات لم تُطلب ولا مواضيع جانبية.
+قواعد حقل message (وللصياغة عموماً):
+- الطول: جمل قصيرة ومرتبة — غالباً 2–3 جمل؛ يصل إلى 4 جمل قصيرة فقط عند الحاجة في: complaint، general_response، general_reply، return_policy، أو عند شرح لطيف بعد سؤال عام. في مسار product_search وcategory_suggestion فضّل 2 جمل كحد أعلى ما أمكن (وضوح + سرعة).
+- رد على طلب العميل؛ لا توسّع بمواضيع جانبية لا صلة لها.
 - نفس لهجة العميل إن تبيّنت (سعودي / مصري / خليجي / فصحى)، وإلا خليجية بسيطة.
-- أسلوب بشري (مو رسمي بزيادة)، بدون قوائم طويلة أو فقرات أو تكرار.
-- معلومات المنتجات والأقسام والفروع فقط من database_context؛ لا تخمن ولا تخترع منتجات أو أقساماً غير موجودة في العينة.
-- عند عدم اليقين: لا تقل "وضّح" أو "وضح لي" أبداً. بدلاً من ذلك قل "لحظة، بأكد لك من الفرع 🙏" واجعل action = "product_search" ليتم التصعيد للفرع.
-- ممنوع نهائياً هذه العبارات: "وضّح لي"، "وضح لي"، "ما لقطت عليك"، "ما لقيت هذا"، "ما لقيت المنتج"، "وش تدور"، "جرب تشوف"، "تتفرج على"، "أقسام قريبة من طلبك"، "أقسام قد تناسبك".
-- ممنوع تماماً: ذكر بطء النظام أو أعطال تقنية أو "جرّب بعد لحظة" — لا تخترع أعذاراً تقنية أبداً.
-- ممنوع تماماً: قول "ما لقيت" أو "لا يوجد" أو "غير موجود" في حقل message — بدلاً من ذلك اجعل action = "product_search" وسيتولى النظام التصعيد للفرع تلقائياً.
-- ممنوع «الهبد»: لا اقتراح أقسام عشوائية بعيدة عن طلب العميل (مثل أقسام لا صلة لها بالرسالة).
+- أسلوب بشري (مو رسمي بزيادة)، بدون قوائم مرقّمة طويلة أو فقرات ضخمة أو تكرار.
+- **حقائق** المنتجات والأقسام والفروع والأسعار والتوفر: فقط من database_context؛ لا تخمن ولا تخترع أسماء أقسام أو منتجات غير ظاهرة في العينة.
+- عند عدم اليقين في الكتالوج: لا تقل "وضّح لي" أو "وضح لي". فضّل سؤالاً محدداً (مثل: رجالي ولا نسائي؟) أو قل بلطف إنك بتأكد من الفرع واضبط action = "product_search" للتصعيد.
+  مثال: BAD "وضّح لي وش تدور" — GOOD "تبغى رجالي ولا نسائي؟"
+- تجنّب عبارات فارغة مثل: "ما لقطت عليك"، "ما لقيت المنتج"، "وش تدور"، "جرب تشوف"، "تتفرج على"، "أقسام قريبة من طلبك".
+- ممنوع: ذكر بطء النظام أو أعطال تقنية أو "جرّب بعد لحظة" — لا أعذار تقنية وهمية.
+- ممنوع في message صياغة «ما لقيت / لا يوجد / غير موجود» **كإنك تغلق الموضوع نهائياً** عن منتج قد يكون عند الفرع — بدلاً من ذلك action = "product_search" ليتم التصعيد؛ يجوز أن تعتذر بلطف مع التصعيد في نفس الجملة.
+- ممنوع اقتراح أقسام عشوائية بلا صلة بالرسالة.
 - لا تذكر فروعاً أو مدناً أو مواقع أو دواماً إلا إذا سأل العميل عن الفرع/الموقع/الأقرب/الزيارة صراحة — **استثناء**: إذا كان الرد مأخوذاً حصراً من database_context.company_info (نص رسمي مُدخل من الإدارة) فيُسمح بذكر ما ورد هناك.
 
 database_context.company_info (سياسات وخدمات رسمية):
 - المصدر الوحيد للإجابة عند سؤال العميل عن: التوصيل، الشحن، الاسترجاع، الدفع، الدوام، معلومات عامة عن الفروع، أو «خدمات» فرع معيّن — إن وُجدت في الحقول أو في branch_services.
+- حقل «chat_extra» و«general»: نص يحدده المتجر (أسئلة شائعة، تعريف، أي معلومات عامة مسموح ذكرها للعملاء) — تلتزم به حرفياً عند الصلة ولا تخترع فوقه.
 - لا تخترع شروطاً أو مدداً أو طرق دفع؛ إذا كان الحقل فارغاً أو لا يغطي السؤال: قل «حالياً ما عندنا توصيل، تواصل مع الفرع مباشرة للاستفسار» — ثم اضبط action على general_response لا category_suggestion.
 - عند سؤال التوصيل: لا تقترح أقسام أو منتجات أبداً — action يجب أن يكون general_response فقط.
-- أجب باختصار شديد؛ لا تكرر سياسات كاملة إلا إذا طلب العميل صراحة تلخيصاً.
+- أجب باختصار معقول؛ لا تكرر سياسات كاملة إلا إذا طلب العميل صراحة تلخيصاً.
 
-يمكنك أحياناً صيغاً قصيرة مثل: «ممكن يناسبك…»، «جرّب…» — بلا مبالغة.
+صيغ طبيعية مسموحة بلا مبالغة: «ممكن يناسبك…»، «جرّب…»، «يا هلا» — طالما لا تُضف حقائق وهمية.
 
 المصدر الوحيد لأسماء الأقسام والمنتجات: database_context — ممنوع اقتراح قسم أو منتج غير موجود في العينة.
 لا تخترع أسعاراً ولا توفراً.
 
 أعد JSON فقط بهذا الشكل:
 {
-  "action": "product_search" | "category_suggestion" | "branch_request" | "general_response" | "complaint" | "return_policy",
+  "action": "product_search" | "category_suggestion" | "branch_request" | "general_response" | "general_reply" | "location_info" | "complaint" | "return_policy",
   "filters": {
     "search_query": "نص عربي للبحث — من كلمات العميل فقط",
     "gender": "male" | "female" | "",
@@ -131,13 +180,14 @@ database_context.company_info (سياسات وخدمات رسمية):
     "target": "self" | "other" | null,
     "style": "casual" | "formal" | "luxury" | null
   },
-  "message": "جملة أو جملتان فقط؛ رد واضح وعملي؛ سؤال توضيحي واحد في النهاية إن لزم.",
+  "message": "2–4 جمل قصيرة حسب الحاجة؛ رد واضح؛ سؤال توضيحي واحد في النهاية إن لزم (أقل في مسار المنتج).",
   "needs_branch": true أو false,
   "needs_details": true أو false
 }
 
-عند product_search ووجود مناسبة في الرسالة: اجعل message ترشيحياً باختصار (لماذا قد يناسب العميل) ضمن جملة أو جملتين، لا وصفاً تقنياً للقائمة.
+عند product_search ووجود مناسبة في الرسالة: اجعل message ترشيحياً باختصار (لماذا قد يناسب العميل) ضمن جملتين تقريباً، لا وصفاً تقنياً للقائمة.
 database_context.extracted_user_context: سياق مستخرج قواعدياً — التزم به ولا تتجاهله.
+database_context.conversation_history: ملخص آخر المحادثة (آخر 8 رسائل تقريباً) — استخدمه لتجنب تكرار نفس السؤال/نفس التحية، ولتذكر ما قرره العميل قبل قليل (مثلاً: المقاس/اللون/الفرع/الغرض)، لكن لا تخترع معلومات غير موجودة فيه.
 
 إن وُجد intent_scoring في database_context:
 - هو تلميح من نظام نقاط داخلي (كلمات مفتاحية + أوزان) وليس حقائق من قاعدة البيانات.
@@ -146,8 +196,15 @@ database_context.extracted_user_context: سياق مستخرج قواعدياً 
 
 أولوية الإجراء (إلزامية):
 - إذا كان واضحاً أن العميل يتسوّق (يبغى/أبغى/عرض/سعر/متوفر/هدية/ملابس/مقاس/لون…): action يجب أن يكون product_search وليس general_response.
+- إذا طلب العميل منتجاً/قسماً واضحاً وموجوداً في categories_sample: لا ترد بصياغة عامة مثل «عندنا منتجات متنوعة». الرد المطلوب يكون مباشرًا مثل:
+  «ايوة عندنا قسم [اسم القسم]. تبغى موديل معين أو ترشيح؟ وهل الاستخدام لشيء معين مثل زواج أو طلعة؟»
+- عند سؤال العميل عن قسم: اربط الطلب بأقسام database_context.categories_sample أولاً (sections) قبل أي فئة عامة، واجعل filters.suggested_categories من الأقسام المطابقة فقط.
+- إذا طلب العميل صورة منتج محدد: وجّه المسار إلى product_search برسالة واضحة تطلب عرض الصور المتاحة الآن (لا تكتفِ برد عام).
+- إذا لا توجد صور متاحة حالياً: أخبره بوضوح «حالياً ما عندي صور»، ثم اعرض خيار رفع استفسار للفرع بصياغة مباشرة (مثال: «إذا تبغى أرسل استفسار للفرع أبشر»).
+- إذا وافق العميل على الإرسال للفرع: message يؤكد الرفع للفرع وأن الطلب سيظهر لديهم في لوحة التحكم، مع action = "product_search" و needs_branch = true.
 - إذا سأل العميل عن التوصيل أو الشحن أو يوصلون أو توصلون أو يصلهم: action يجب أن يكون general_response فقط — ممنوع category_suggestion أو product_search.
-- إذا سأل عن سياسات (استرجاع/دفع/دوام): action يجب أن يكون general_response.
+- إذا سأل عن استرجاع/استبدال صريح: فضّل return_policy إن وُجد مرجع في السياق؛ وإلا general_response مع تصعيد لطيف للفرع عند الحاجة.
+- إذا سأل عن دفع/دوام/خدمات عامة: general_response أو location_info حسب السؤال.
 - إذا كانت رسالة العميل مجرد "نعم" أو "ايوه" أو موافقة قصيرة بعد سؤال من البوت: action يجب general_response مع سؤال توضيحي — لا تبحث عن منتج.
 - category_suggestion فقط عندما لا يمكن استنتاج بحث منتج معقول، أو بعد افتراض أن البحث لن يجد شيئاً — ولا تقترح أقساماً خارج العينة أو خارج سياق الرسالة.
 - general_response: ترحيب صافٍ، شكر، سؤال عن خدمة، أو استفسار لا علاقة له بالتسوق.
@@ -160,7 +217,7 @@ database_context.extracted_user_context: سياق مستخرج قواعدياً 
 
 الشكوى (complaint):
 - إذا action = complaint: اضبط needs_branch = true إذا لم يُذكر فرع واضح؛ needs_details = true إذا النص قصير جداً أو ناقص.
-- message يطلب الفرع وتفاصيل المشكلة بلطف، ويستخدم اسم العميل إن وُجد في السياق (إن وُجد في الرسالة).
+- message: اعتذر بلطف، خفّف التوتر بلهجة هادئة، ثم اطلب الفرع وتفاصيل المشكلة دون إطالة؛ يجوز حتى 4 جمل قصيرة هنا.
 
 الفروع:
 - branch_request فقط لطلب موقع/مدينة/تواصل بدون طلب منتج.
@@ -673,6 +730,34 @@ def enrich_product_recommendation_message(
     if os.getenv(_RECOMMEND_MSG_ENV, "true").lower() not in ("1", "true", "yes"):
         return fallback or draft_message
 
+    payload = {
+        "user_message": (user_message or "").strip()[:2000],
+        "user_context": uc,
+        "draft_assistant_message": (draft_message or "").strip()[:1200],
+        "product_names_shown": titles,
+    }
+    user_txt = json.dumps(payload, ensure_ascii=False)
+
+    # ── الدفعة 3-ج: استدعاء عبر llm_provider (يدعم تبديل المزوّد + tracking) ──
+    if _LLM_PROVIDER_AVAILABLE:
+        # نُحقِن القواعد الصارمة في الـ system prompt
+        system_with_rules = (
+            (strict_prompts.build_recommendation_system_prompt() if strict_prompts else _RECOMMEND_MSG_SYSTEM)
+        )
+        result = llm_provider.chat(
+            messages=[
+                {"role": "system", "content": system_with_rules},
+                {"role": "user", "content": user_txt},
+            ],
+            max_tokens=_MAX_REC_MSG_TOKENS,
+            temperature=0.38,
+            intent_label="product_recommendation",
+        )
+        if result.success and len(result.text) >= 12:
+            return result.text
+        return fallback or draft_message
+
+    # ── المسار القديم (fallback لو llm_provider غير متاح) ──
     key = (OPENAI_API_KEY or "").strip()
     if not key:
         return fallback or draft_message
@@ -681,14 +766,7 @@ def enrich_product_recommendation_message(
     except ImportError:
         return fallback or draft_message
 
-    model = (OPENAI_MODEL or "gpt-4o-mini").strip() or "gpt-4o-mini"
-    payload = {
-        "user_message": (user_message or "").strip()[:2000],
-        "user_context": uc,
-        "draft_assistant_message": (draft_message or "").strip()[:1200],
-        "product_names_shown": titles,
-    }
-    user_txt = json.dumps(payload, ensure_ascii=False)
+    model = (OPENAI_MODEL or "gpt-4o").strip() or "gpt-4o"
     try:
         client = OpenAI(api_key=key)
         response = client.chat.completions.create(
@@ -703,6 +781,22 @@ def enrich_product_recommendation_message(
         text = (response.choices[0].message.content or "").strip()
         if len(text) < 12:
             return fallback or draft_message
+        # tracking للمسار القديم
+        try:
+            u = response.usage
+            tokens = int(getattr(u, "total_tokens", 0) or 0) if u is not None else 0
+            pt = int(getattr(u, "prompt_tokens", 0) or 0) if u is not None else 0
+            ct = int(getattr(u, "completion_tokens", 0) or 0) if u is not None else 0
+            track_llm_call(
+                provider="openai",
+                model=model,
+                tokens=tokens,
+                intent="product_recommendation",
+                prompt_tokens=pt,
+                completion_tokens=ct,
+            )
+        except Exception:
+            pass
         return text
     except Exception:
         logger.exception("OpenAI recommendation message enrichment failed")
@@ -723,7 +817,7 @@ def contextualize_no_product_message(
 
 
 def is_ai_fallback_enabled() -> bool:
-    if not (OPENAI_API_KEY or "").strip():
+    if not _any_openai_key_configured():
         return False
     return os.getenv(_FALLBACK_ENV, "true").lower() in ("1", "true", "yes")
 
@@ -752,8 +846,8 @@ def is_ai_fallback_allowed(message: str, intent: str) -> bool:
 
 
 def is_openai_presearch_enabled() -> bool:
-    """تحليل ما قبل البحث عبر OpenAI — يعتمد على OPENAI_API_KEY و OPENAI_PRESEARCH."""
-    if not (OPENAI_API_KEY or "").strip():
+    """تحليل ما قبل البحث عبر OpenAI — يعتمد على مفتاح OpenAI (بيئة أو لوحة) و OPENAI_PRESEARCH."""
+    if not _any_openai_key_configured():
         return False
     return os.getenv(_PRESEARCH_ENV, "true").lower() in ("1", "true", "yes")
 
@@ -843,11 +937,41 @@ def _merge_search_analysis_into_query(original: str, data: Dict[str, Any]) -> st
 
 def extract_search_analysis_openai(message: str) -> Optional[Dict[str, Any]]:
     """
-    يستدعي OpenAI لاستخراج حقول بحث فقط. يعيد dict أو None عند الفشل.
+    يستدعي LLM لاستخراج حقول بحث فقط. يعيد dict أو None عند الفشل.
     لا يُستخدم للرد على العميل.
     """
     if not is_openai_presearch_enabled():
         return None
+
+    user_text = (message or "").strip()[:_MAX_PRESEARCH_USER_CHARS]
+    if len(user_text) < 2:
+        return None
+
+    # ── الدفعة 3-ج: عبر llm_provider ──
+    if _LLM_PROVIDER_AVAILABLE:
+        system_with_rules = (
+            strict_prompts.build_search_analysis_system_prompt()
+            if strict_prompts else _SEARCH_ANALYSIS_SYSTEM
+        )
+        result = llm_provider.chat(
+            messages=[
+                {"role": "system", "content": system_with_rules},
+                {"role": "user", "content": user_text},
+            ],
+            max_tokens=_MAX_PRESEARCH_COMPLETION_TOKENS,
+            temperature=0.15,
+            json_mode=True,
+            intent_label="search_analysis",
+        )
+        if not result.success or not result.text:
+            return None
+        try:
+            data = json.loads(result.text)
+            return data if isinstance(data, dict) else None
+        except (json.JSONDecodeError, ValueError):
+            return None
+
+    # ── المسار القديم (fallback) ──
     key = (OPENAI_API_KEY or "").strip()
     if not key:
         return None
@@ -856,11 +980,7 @@ def extract_search_analysis_openai(message: str) -> Optional[Dict[str, Any]]:
     except ImportError:
         return None
 
-    user_text = (message or "").strip()[:_MAX_PRESEARCH_USER_CHARS]
-    if len(user_text) < 2:
-        return None
-
-    model = (OPENAI_MODEL or "gpt-4o-mini").strip() or "gpt-4o-mini"
+    model = (OPENAI_MODEL or "gpt-4o").strip() or "gpt-4o"
     try:
         client = OpenAI(api_key=key)
         response = client.chat.completions.create(
@@ -876,6 +996,11 @@ def extract_search_analysis_openai(message: str) -> Optional[Dict[str, Any]]:
         raw = (response.choices[0].message.content or "").strip()
         if not raw:
             return None
+        try:
+            tokens = int(getattr(response.usage, "total_tokens", 0) or 0)
+            track_llm_call(provider="openai", model=model, tokens=tokens, intent="search_analysis")
+        except Exception:
+            pass
         data = json.loads(raw)
         if not isinstance(data, dict):
             return None
@@ -887,10 +1012,17 @@ def extract_search_analysis_openai(message: str) -> Optional[Dict[str, Any]]:
 
 def _orchestrator_env_allowed() -> bool:
     """نفس شرط التشغيل الفعلي — يُستخدم للتشخيص دون تعارض."""
-    if not (OPENAI_API_KEY or "").strip():
-        return False
     v = os.getenv(ORCHESTRATOR_ENV, "true")
-    return str(v).strip().lower() in ("1", "true", "yes")
+    if str(v).strip().lower() not in ("1", "true", "yes"):
+        return False
+    if _LLM_PROVIDER_AVAILABLE and llm_provider is not None:
+        try:
+            prov = llm_provider.get_active_provider()
+            if llm_provider.is_available(prov):
+                return True
+        except Exception:
+            pass
+    return _any_openai_key_configured()
 
 
 def _orch_debug_prints() -> None:
@@ -931,13 +1063,15 @@ def is_chat_orchestrator_enabled() -> bool:
     ok = _orchestrator_env_allowed()
     if not ok and not _ORCH_DISABLED_WARNED:
         _ORCH_DISABLED_WARNED = True
-        if not (OPENAI_API_KEY or "").strip():
+        has_key = _any_openai_key_configured()
+        if not has_key:
             logger.warning(
-                "ORCHESTRATOR DISABLED: OPENAI_API_KEY missing or empty (check Render Environment)"
+                "ORCHESTRATOR DISABLED: لا يوجد مفتاح للمزوّد النشط "
+                "(لوحة المؤسس ← التكاملات، أو متغيرات البيئة)"
             )
         else:
             logger.warning(
-                "ORCHESTRATOR DISABLED: %s=%r — use string true/1/yes (not empty)",
+                "ORCHESTRATOR DISABLED: %s=%r — استخدم القيمة true أو 1 أو yes",
                 ORCHESTRATOR_ENV,
                 os.getenv(ORCHESTRATOR_ENV, "true"),
             )
@@ -988,6 +1122,34 @@ def build_orchestrator_context(
         "sections_sample": base.get("sections") or [],
         "company_info": base.get("company_info") or {},
     }
+    # ملخص المحادثة للمنسّق: جلسة chat_context إن وُجد؛ وإلا آخر أدوار من DB (_conv_history في الطلب)
+    try:
+        from logic import chat_context as _cc
+        from flask import has_request_context, session as _sess
+
+        summary = (_cc.get_conversation_summary(last_n=8) or "").strip()
+        if not summary and has_request_context():
+            hist = _sess.get("_conv_history") or []
+            if isinstance(hist, list) and hist:
+                lines: List[str] = []
+                for row in hist[-8:]:
+                    if not isinstance(row, dict):
+                        continue
+                    role = str(row.get("role") or "").strip().lower()
+                    content = (row.get("content") or "").strip()
+                    if not content:
+                        continue
+                    if role in ("user", "customer"):
+                        label = "العميل"
+                    elif role in ("bot", "assistant"):
+                        label = "البوت"
+                    else:
+                        label = role or "رسالة"
+                    lines.append(f"{label}: {content[:200]}")
+                summary = "\n".join(lines)
+        out["conversation_history"] = summary
+    except Exception:
+        out["conversation_history"] = ""
     if intent_decision:
         snap = intent_decision.get("score_snapshot") or {}
         scores = snap.get("scores") or intent_decision.get("scores") or {}
@@ -1128,13 +1290,6 @@ def enrich_complaint_policy_interaction(
     raw = (issue_text or "").strip()
     if len(raw) < 8:
         return None
-    key = (OPENAI_API_KEY or "").strip()
-    if not key:
-        return None
-    try:
-        from openai import OpenAI
-    except ImportError:
-        return None
     try:
         pol = policies_text_for_ai_context(2800)
     except Exception:
@@ -1152,23 +1307,70 @@ def enrich_complaint_policy_interaction(
         'إذا policy_relevant=false اجعل reply_paragraph "" فارغاً.\n'
         "لا تخترع أرقاماً أو شروطاً غير واردة في مرجع السياسات."
     )
+
+    system_msg = (
+        "أنت مساعد خدمة عملاء متجر ملابس. التزم بمرجع السياسات التالي ولا تخترع شروطاً.\n\n"
+        + (pol or "(لا يوجد مرجع سياسات محمّل)")
+    )
+
+    # ── الدفعة 3-ج: عبر llm_provider ──
+    if _LLM_PROVIDER_AVAILABLE:
+        # نضيف القواعد الصارمة للسطر العلوي
+        if strict_prompts:
+            system_msg = strict_prompts.STRICT_RULES_BLOCK + "\n\n" + system_msg
+        result = llm_provider.chat(
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_instr},
+            ],
+            max_tokens=_MAX_COMPLAINT_POLICY_TOKENS,
+            temperature=0.35,
+            json_mode=True,
+            intent_label="complaint_policy",
+        )
+        if not result.success or not result.text:
+            return None
+        try:
+            data = json.loads(result.text)
+        except (json.JSONDecodeError, ValueError):
+            return None
+        if not isinstance(data, dict):
+            return None
+        out = {
+            "classification_ar": str(data.get("classification_ar") or "").strip(),
+            "reply_paragraph": str(data.get("reply_paragraph") or "").strip(),
+        }
+        pr = data.get("policy_relevant")
+        if pr is False:
+            out["reply_paragraph"] = ""
+        return out
+
+    # ── المسار القديم ──
+    key = (OPENAI_API_KEY or "").strip()
+    if not key:
+        return None
+    try:
+        from openai import OpenAI
+    except ImportError:
+        return None
     try:
         client = OpenAI(api_key=key)
-        model = (OPENAI_MODEL or "gpt-4o-mini").strip() or "gpt-4o-mini"
+        model = (OPENAI_MODEL or "gpt-4o").strip() or "gpt-4o"
         response = client.chat.completions.create(
             model=model,
             max_tokens=_MAX_COMPLAINT_POLICY_TOKENS,
             temperature=0.35,
             response_format={"type": "json_object"},
             messages=[
-                {
-                    "role": "system",
-                    "content": "أنت مساعد خدمة عملاء متجر ملابس. التزم بمرجع السياسات التالي ولا تخترع شروطاً.\n\n"
-                    + (pol or "(لا يوجد مرجع سياسات محمّل)"),
-                },
+                {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_instr},
             ],
         )
+        try:
+            tokens = int(getattr(response.usage, "total_tokens", 0) or 0)
+            track_llm_call(provider="openai", model=model, tokens=tokens, intent="complaint_policy")
+        except Exception:
+            pass
         txt = (response.choices[0].message.content or "").strip()
         if not txt:
             return None
@@ -1192,11 +1394,9 @@ def friendly_orchestrator_fallback_plan(message: str, context: Dict[str, Any]) -
     """
     خطة آمنة عند تعطيل OpenAI أو فشل الاستدعاء — رد قواعدي بلهجة الجلسة (لا صمت).
     """
-    d = (context or {}).get("user_dialect") or "default"
-    from logic.dialect_responses import dialect_message
     from logic import chat_service as _cs
 
-    text = dialect_message(d, "unknown_fallback", name=_cs._display_name())
+    text = _cs.personalized_service_offer()
     return {
         "action": "general_response",
         "message": text,
@@ -1220,12 +1420,23 @@ def _company_info_policy_reference_block(
         "hours": "الدوام وأوقات العمل",
         "payment": "طرق الدفع",
         "branches_blurb": "معلومات الفروع",
-        "general": "معلومات عامة",
+        "general": "معلومات عامة (رسمية)",
+        "chat_extra": "معلومات إضافية للشات (أسئلة شائعة، تفاصيل يحددها المتجر)",
+        "social_media": "حسابات التواصل والقنوات (روابط من لوحة الإدارة)",
+        "online_store": "المتجر الإلكتروني (رابط من لوحة الإدارة)",
     }
     for k, lab in labels.items():
         v = (ci.get(k) or "").strip()
         if v:
             parts.append(f"{lab}:\n{v}")
+    urls = ci.get("delivery_image_urls")
+    if isinstance(urls, list) and urls:
+        clean = [str(u).strip() for u in urls if str(u).strip()][:12]
+        if clean:
+            parts.append(
+                "صور التوصيل/الشحن (روابط جاهزة للعرض أو الإرسال):\n"
+                + "\n".join(clean)
+            )
     svc = ci.get("branch_services")
     if isinstance(svc, list) and svc:
         lines: List[str] = []
@@ -1261,17 +1472,37 @@ def run_chat_orchestrator_openai(message: str, context: Dict[str, Any], history:
 
     fallback = friendly_orchestrator_fallback_plan(message, context)
 
+    def _orchestrator_api_failure(reason: str, detail: str = "") -> Dict[str, Any]:
+        """بعد محاولة استدعاء المنسّق: اعتذار للعميل + تنبيه بريد/لوحة تحليلات."""
+        from logic import ai_orchestrator_alerts as _orch_al
+
+        _orch_al.notify_orchestrator_failure(
+            reason,
+            detail=detail,
+            user_message_preview=(message or "")[:500],
+        )
+        return _orch_al.orchestrator_failure_plan(reason=reason)
+
+    # ── الدفعة 3-ج: scope filter — رفض الرسائل خارج النطاق محلياً ──
+    if _LLM_PROVIDER_AVAILABLE:
+        scope_type = is_out_of_scope(message)
+        if scope_type:
+            logger.info("orchestrator: rejecting out-of-scope message (type=%s)", scope_type)
+            customer_name = ""
+            try:
+                customer_name = (context or {}).get("customer", {}).get("name", "")
+            except Exception:
+                pass
+            return {
+                "action": "general_response",
+                "message": build_out_of_scope_reply(scope_type, customer_name),
+                "filters": {},
+                "needs_branch": False,
+                "out_of_scope": True,
+            }
+
     if not is_chat_orchestrator_enabled():
         logger.info("orchestrator: using rule-based fallback (disabled or missing key)")
-        return fallback
-    key = (OPENAI_API_KEY or "").strip()
-    if not key:
-        logger.info("orchestrator: using rule-based fallback (empty API key)")
-        return fallback
-    try:
-        from openai import OpenAI
-    except ImportError as e:
-        logger.error("OpenAI SDK not installed: %s", e)
         return fallback
 
     payload = {
@@ -1281,27 +1512,39 @@ def run_chat_orchestrator_openai(message: str, context: Dict[str, Any], history:
     user_text = json.dumps(payload, ensure_ascii=False)
     if len(user_text) > _MAX_CONTEXT_CHARS:
         user_text = user_text[:_MAX_CONTEXT_CHARS] + "…"
-    model = (OPENAI_MODEL or "gpt-4o-mini").strip() or "gpt-4o-mini"
     policy_block = _company_info_policy_reference_block(context, 3200)
     if not policy_block.strip():
         try:
             policy_block = policies_text_for_ai_context(3200)
         except Exception:
             policy_block = ""
-    system_content = _ORCHESTRATOR_SYSTEM
-    if policy_block:
-        system_content = (
-            _ORCHESTRATOR_SYSTEM
-            + "\n\n--- مرجع سياسات المتجر (أولوية: ما سبق من لوحة الإدارة؛ ثم الملخص التالي إن وُجد) ---\n"
-            + policy_block
-        )
+
+    # ── الدفعة 3-ج: استخدام strict_prompts للقواعد الصارمة ──
+    if _LLM_PROVIDER_AVAILABLE and strict_prompts:
+        # نضيف قواعد صارمة شاملة + نُمرّر السياق الكامل للنموذج
+        system_content = strict_prompts.build_orchestrator_system_prompt(context)
+        if policy_block:
+            system_content += (
+                "\n\n--- مرجع سياسات المتجر (أولوية: ما سبق من لوحة الإدارة؛ ثم الملخص التالي إن وُجد) ---\n"
+                + policy_block
+            )
+        # نُلحِق التعليمات الأصلية لنحافظ على نفس السلوك
+        system_content += "\n\n--- التعليمات الإضافية ---\n" + _ORCHESTRATOR_SYSTEM
+    else:
+        system_content = _ORCHESTRATOR_SYSTEM
+        if policy_block:
+            system_content = (
+                _ORCHESTRATOR_SYSTEM
+                + "\n\n--- مرجع سياسات المتجر (أولوية: ما سبق من لوحة الإدارة؛ ثم الملخص التالي إن وُجد) ---\n"
+                + policy_block
+            )
+
     # ── تنظيف تاريخ المحادثة للصيغة الصحيحة ──
     clean_history = []
     for h in (history or []):
         if isinstance(h, dict):
             role = h.get("role", "")
             content = h.get("content", "")
-            # تحويل role "bot" أو "assistant" إلى "assistant"
             if role in ("bot", "assistant"):
                 role = "assistant"
             elif role == "user":
@@ -1309,7 +1552,6 @@ def run_chat_orchestrator_openai(message: str, context: Dict[str, Any], history:
             else:
                 continue
             if content and isinstance(content, str):
-                # إذا كان content هو JSON payload كبير → استخرج customer_message فقط
                 if content.strip().startswith("{") and "customer_message" in content:
                     try:
                         parsed = json.loads(content)
@@ -1318,6 +1560,71 @@ def run_chat_orchestrator_openai(message: str, context: Dict[str, Any], history:
                         pass
                 clean_history.append({"role": role, "content": str(content)[:800]})
 
+    # ── الدفعة 3-ج: استدعاء عبر llm_provider (يدعم تبديل المزوّد) ──
+    if _LLM_PROVIDER_AVAILABLE:
+        if OPENAI_ORCH_DEBUG:
+            logger.debug("orchestrator: calling via llm_provider (provider=%s)", llm_provider.get_active_provider())
+        result = llm_provider.chat(
+            messages=[
+                {"role": "system", "content": system_content},
+                *clean_history,
+                {"role": "user", "content": user_text},
+            ],
+            max_tokens=_MAX_ORCHESTRATOR_TOKENS,
+            temperature=0.38,
+            json_mode=True,
+            intent_label="orchestrator",
+        )
+        if not result.success or not result.text:
+            logger.warning("orchestrator (llm_provider): %s", result.error or "empty")
+            return _orchestrator_api_failure(
+                "llm_provider_error", detail=result.error or "empty_response"
+            )
+        raw = result.text
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as e:
+            logger.warning("orchestrator invalid JSON: %s", e)
+            return _orchestrator_api_failure("invalid_json", detail=str(e))
+        if not isinstance(data, dict):
+            logger.warning("orchestrator JSON root is not an object")
+            return _orchestrator_api_failure("invalid_json", detail="root_not_object")
+        action = _canonical_orchestrator_action(data)
+        allowed_actions = frozenset(
+            {
+                "product_search",
+                "category_suggestion",
+                "branch_request",
+                "general_response",
+                "general_reply",
+                "location_info",
+                "complaint",
+                "return_policy",
+            }
+        )
+        if action not in allowed_actions:
+            logger.warning("orchestrator unknown action: %r", action)
+            return _orchestrator_api_failure("unknown_action", detail=action)
+        plan = merge_gender_into_plan(message, data)
+        plan = merge_user_context_into_plan(message, plan)
+        plan = normalize_orchestrator_plan(plan, context, message)
+        plan = coerce_shopping_to_product_search(plan, message)
+        return plan
+
+    # ── المسار القديم (fallback لو llm_provider غير متاح) ──
+    key = (OPENAI_API_KEY or "").strip()
+    if _LLM_PROVIDER_AVAILABLE and llm_provider is not None:
+        key = (llm_provider.get_openai_api_key() or "").strip() or key
+    if not key:
+        logger.info("orchestrator: using rule-based fallback (empty API key)")
+        return fallback
+    try:
+        from openai import OpenAI
+    except ImportError as e:
+        logger.error("OpenAI SDK not installed: %s", e)
+        return _orchestrator_api_failure("openai_sdk_missing", detail=str(e))
+
+    model = (OPENAI_MODEL or "gpt-4o").strip() or "gpt-4o"
     try:
         if OPENAI_ORCH_DEBUG:
             logger.debug("orchestrator: calling OpenAI model=%s", model)
@@ -1325,7 +1632,7 @@ def run_chat_orchestrator_openai(message: str, context: Dict[str, Any], history:
         response = client.chat.completions.create(
             model=model,
             max_tokens=_MAX_ORCHESTRATOR_TOKENS,
-            temperature=0.25,
+            temperature=0.38,
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": system_content},
@@ -1333,32 +1640,39 @@ def run_chat_orchestrator_openai(message: str, context: Dict[str, Any], history:
                 {"role": "user", "content": user_text},
             ],
         )
+        try:
+            tokens = int(getattr(response.usage, "total_tokens", 0) or 0)
+            track_llm_call(provider="openai", model=model, tokens=tokens, intent="orchestrator")
+        except Exception:
+            pass
         raw = (response.choices[0].message.content or "").strip()
         if not raw:
             logger.warning("OpenAI orchestrator returned empty completion content")
-            return fallback
+            return _orchestrator_api_failure("empty_completion")
         try:
             data = json.loads(raw)
         except json.JSONDecodeError as e:
             logger.warning("OpenAI orchestrator invalid JSON: %s", e)
-            return fallback
+            return _orchestrator_api_failure("invalid_json", detail=str(e))
         if not isinstance(data, dict):
             logger.warning("OpenAI orchestrator JSON root is not an object")
-            return fallback
-        action = str(data.get("action") or "").strip().lower()
+            return _orchestrator_api_failure("invalid_json", detail="root_not_object")
+        action = _canonical_orchestrator_action(data)
         allowed_actions = frozenset(
             {
                 "product_search",
                 "category_suggestion",
                 "branch_request",
                 "general_response",
+                "general_reply",
+                "location_info",
                 "complaint",
                 "return_policy",
             }
         )
         if action not in allowed_actions:
             logger.warning("OpenAI orchestrator unknown action: %r", action)
-            return fallback
+            return _orchestrator_api_failure("unknown_action", detail=action)
         plan = merge_gender_into_plan(message, data)
         plan = merge_user_context_into_plan(message, plan)
         plan = normalize_orchestrator_plan(plan, context, message)
@@ -1366,7 +1680,7 @@ def run_chat_orchestrator_openai(message: str, context: Dict[str, Any], history:
         return plan
     except Exception as e:
         logger.exception("OpenAI chat orchestrator API failed: %s", e)
-        return fallback
+        return _orchestrator_api_failure("openai_api_exception", detail=str(e)[:1500])
 
 
 def enhance_search_query_with_openai(message: str, intent: str) -> str:
@@ -1465,19 +1779,11 @@ def build_fallback_db_data(db: Any, message: str) -> Dict[str, Any]:
 
 def generate_ai_response(message: str, db_data: Dict[str, Any], history: list = None) -> Optional[str]:
     """
-    يستدعي OpenAI مرة واحدة ويعيد نص الرد أو None عند التعذر.
+    يستدعي LLM مرة واحدة ويعيد نص الرد أو None عند التعذر.
     """
     if not is_ai_fallback_enabled():
         return None
-    key = (OPENAI_API_KEY or "").strip()
-    if not key:
-        return None
-    try:
-        from openai import OpenAI
-    except ImportError:
-        return None
 
-    model = (OPENAI_MODEL or "gpt-4o-mini").strip() or "gpt-4o-mini"
     payload = {
         "customer_message": (message or "").strip(),
         "database_context": db_data or {},
@@ -1486,6 +1792,36 @@ def generate_ai_response(message: str, db_data: Dict[str, Any], history: list = 
     if len(user_text) > _MAX_CONTEXT_CHARS:
         user_text = user_text[: _MAX_CONTEXT_CHARS] + "…"
 
+    # ── الدفعة 3-ج: عبر llm_provider ──
+    if _LLM_PROVIDER_AVAILABLE:
+        # نضيف القواعد الصارمة على النص الأصلي
+        system_with_rules = _SYSTEM_PROMPT
+        if strict_prompts:
+            system_with_rules = strict_prompts.STRICT_RULES_BLOCK + "\n\n" + _SYSTEM_PROMPT
+        result = llm_provider.chat(
+            messages=[
+                {"role": "system", "content": system_with_rules},
+                *(history or []),
+                {"role": "user", "content": user_text},
+            ],
+            max_tokens=_MAX_COMPLETION_TOKENS,
+            temperature=0.35,
+            intent_label="general_chat",
+        )
+        if result.success and result.text:
+            return result.text
+        return None
+
+    # ── المسار القديم ──
+    key = (OPENAI_API_KEY or "").strip()
+    if not key:
+        return None
+    try:
+        from openai import OpenAI
+    except ImportError:
+        return None
+
+    model = (OPENAI_MODEL or "gpt-4o").strip() or "gpt-4o"
     try:
         client = OpenAI(api_key=key)
         response = client.chat.completions.create(
@@ -1501,6 +1837,11 @@ def generate_ai_response(message: str, db_data: Dict[str, Any], history: list = 
                 },
             ],
         )
+        try:
+            tokens = int(getattr(response.usage, "total_tokens", 0) or 0)
+            track_llm_call(provider="openai", model=model, tokens=tokens, intent="general_chat")
+        except Exception:
+            pass
         choice = response.choices[0]
         content = (choice.message.content or "").strip()
         return content or None
@@ -1514,6 +1855,8 @@ def generate_ai_response(message: str, db_data: Dict[str, Any], history: list = 
 BOT_RESPONSE_SHAPING_SKIP_INTENTS = frozenset(
     {
         "complaint",
+        "complaint_ai",
+        "complaint_escalated",
         "complaint_rule",
         "complaint_wizard",
         "complaint_policy_precheck",
@@ -1529,6 +1872,10 @@ BOT_RESPONSE_SHAPING_SKIP_INTENTS = frozenset(
         "greeting",
         "thanks",
         "goodbye",
+        "inquiry_confirm",
+        "inquiry_sent",
+        "inquiry_error",
+        "founder_attribution",
         "silent",
     }
 )
@@ -1668,7 +2015,7 @@ def _remove_irrelevant_category_sentences(text: str, user_message: str) -> str:
     return out if out else raw
 
 
-def _truncate_long_reply(text: str, max_chars: int = 200) -> str:
+def _truncate_long_reply(text: str, max_chars: int = 360) -> str:
     t = (text or "").strip()
     if len(t) <= max_chars:
         return t
@@ -1686,7 +2033,7 @@ def _truncate_long_reply(text: str, max_chars: int = 200) -> str:
     return one[:max_chars].rstrip() + "…"
 
 
-def _first_sentence_only(text: str, max_chars: int = 200) -> str:
+def _first_sentence_only(text: str, max_chars: int = 280) -> str:
     sents = _split_sentences_for_shaping(text)
     if not sents:
         t = (text or "").strip()
@@ -1726,7 +2073,7 @@ def apply_bot_response_shaping(
     t = _remove_irrelevant_category_sentences(t, user_message)
     t = _remove_branch_info(t, user_message)
     if it in _VAGUE_SHAPING_INTENTS and _is_vague_user_message(user_message):
-        t = _first_sentence_only(t, max_chars=200)
+        t = _first_sentence_only(t, max_chars=280)
     else:
-        t = _truncate_long_reply(t, max_chars=200)
+        t = _truncate_long_reply(t, max_chars=360)
     return t.strip()

@@ -1,9 +1,11 @@
 <!DOCTYPE html>
+{% from "macros/csrf.html" import csrf_input %}
 {% from "macros/site_logo.html" import site_logo_pair %}
 <html lang="ar" dir="rtl" class="dash-html">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% include "partials/pwa_head.html" %}
     <title>لوحة الإدارة — العائلة FAMILY</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/dashboard-layout.css') }}" rel="stylesheet">
@@ -63,6 +65,8 @@
                 <a class="nav-link" href="{{ url_for('admin_users') }}">👤 المستخدمين</a>
                 <a class="nav-link" href="{{ url_for('admin_complaints') }}">📋 الشكاوى</a>
                 <a class="nav-link" href="{{ url_for('campaigns.admin_campaigns') }}">📢 الحملات الإعلانية</a>
+                <a class="nav-link" href="{{ url_for('wa_inbox.admin_messages_page') }}">💬 واتساب</a>
+                <a class="nav-link" href="#admin-inquiries-requests">🔔 طلبات واستفسارات</a>
                 <a class="nav-link" href="#liveAnalyticsOffcanvas" data-bs-toggle="offcanvas" data-bs-target="#liveAnalyticsOffcanvas" aria-controls="liveAnalyticsOffcanvas">📊 التحليلات الحية</a>
                 <hr class="mx-3">
                 <a class="nav-link text-danger" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
@@ -90,6 +94,8 @@
                 <h2 class="fw-bold">إدارة <span style="color: var(--accent-gold);">العائلة FAMILY</span></h2>
             </div>
 
+            {% include 'partials/company_info_global_block.html' %}
+
             {% set company_info_scope = 'admin' %}
             {% include 'partials/company_info_block.html' %}
 
@@ -98,6 +104,7 @@
                     <div class="stat-card">
                         <h5 class="mb-4 fw-bold">➕ إضافة فرع جديد</h5>
                         <form action="{{ url_for('create_branch') }}" method="POST">
+                            {{ csrf_input() }}
                             <div class="mb-3">
                                 <label class="small fw-bold">اسم المدينة</label>
                                 <input type="text" name="u_city" class="form-control" placeholder="مثلاً: جيزان" required>
@@ -144,6 +151,100 @@
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <div class="stat-card mt-4" id="admin-inquiries-requests">
+                <h5 class="mb-3 fw-bold">🔔 استفسارات منتج غير مسجّل — قيد الانتظار</h5>
+                <p class="small text-muted">عرض لكل الفروع. المعالجة من لوحة الفرع المعني.</p>
+                {% set apend = admin_pending_inquiries if admin_pending_inquiries is defined else [] %}
+                {% if apend and apend|length > 0 %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>الفرع</th>
+                                <th>العميل</th>
+                                <th>النص</th>
+                                <th>التاريخ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for inq in apend %}
+                            <tr>
+                                <td>{{ inq.id }}</td>
+                                <td>{{ inq.branch_name or '—' }}</td>
+                                <td class="small">{{ inq.customer_name or '—' }}<br><span class="text-muted">{{ inq.customer_contact or '' }}</span></td>
+                                <td class="small">{{ (inq.inquiry_text or '') | truncate(120) }}</td>
+                                <td class="small text-nowrap">{{ (inq.created_at or '')[:16] }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">لا توجد استفسارات معلّقة.</p>
+                {% endif %}
+
+                <h5 class="mb-3 fw-bold mt-4">📋 أحدث الاستفسارات (كل الحالات)</h5>
+                {% set arec = admin_all_inquiries_recent if admin_all_inquiries_recent is defined else [] %}
+                {% if arec and arec|length > 0 %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>الفرع</th>
+                                <th>الحالة</th>
+                                <th>نص مختصر</th>
+                                <th>التاريخ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for inq in arec %}
+                            <tr>
+                                <td>{{ inq.id }}</td>
+                                <td>{{ inq.branch_name or '—' }}</td>
+                                <td><span class="badge {{ 'bg-warning text-dark' if inq.status == 'pending' else 'bg-success' }}">{{ inq.status or '—' }}</span></td>
+                                <td class="small">{{ (inq.inquiry_text or '') | truncate(80) }}</td>
+                                <td class="small text-nowrap">{{ (inq.created_at or '')[:16] }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">لا توجد سجلات.</p>
+                {% endif %}
+
+                <h5 class="mb-3 fw-bold mt-4">🔎 طلبات البحث عن منتج (الشات)</h5>
+                {% set apr = admin_product_requests if admin_product_requests is defined else [] %}
+                {% if apr and apr|length > 0 %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>الوصف</th>
+                                <th>user_id</th>
+                                <th>التاريخ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for pr in apr %}
+                            <tr>
+                                <td>{{ pr.id }}</td>
+                                <td class="small">{{ (pr.product_description or '') | truncate(160) }}</td>
+                                <td><code class="small">{{ pr.user_id or '—' }}</code></td>
+                                <td class="small text-nowrap">{{ (pr.requested_at or '')[:16] }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">لا توجد طلبات بحث مسجّلة.</p>
+                {% endif %}
             </div>
 
             {% if main_categories and main_categories|length > 0 %}

@@ -1,0 +1,119 @@
+================================================================================
+خطة ترحيل المخطط (Schema): SQLite الحالي → PostgreSQL (قاعدة الاسم: family)
+================================================================================
+هذا الملف وصفي فقط؛ لا يغيّر الكود. المصدر الرئيسي للمخطط الحالي: منطق
+_init_db في logic/database.py + جدول branch_inquiries في logic/branch_inquiry_repository.py
+
+--------------------------------------------------------------------------------
+1) ملخص الفروقات العامة بين SQLite و PostgreSQL في هذا المشروع
+--------------------------------------------------------------------------------
+
+أ) المفاتيح التلقائية (AUTOINCREMENT)
+   - SQLite: INTEGER PRIMARY KEY AUTOINCREMENT
+   - PostgreSQL الموصى به:
+       * BIGSERIAL أو SERIAL (أو GENERATED { ALWAYS | BY DEFAULT } AS IDENTITY)
+   - ملاحظة: مع SERIAL يُنشأ تلقائياً SEQUENCE؛ دوال مثل lastval() تعتمد على ذلك
+     (كما يفترض غلاف الاتصال في database.py بعد INSERT).
+
+ب) الأنواع العددية
+   - INTEGER في SQLite → INTEGER أو BIGINT في PostgreSQL (يفضّل BIGINT للمفاتيح إن رغبت).
+   - REAL في SQLite (مثل price، gps_lat/lng) → DOUBLE PRECISION في PostgreSQL.
+
+ج) النصوص والتواريخ
+   - TEXT في SQLite يبقى غالباً TEXT أو VARCHAR(...) في PostgreSQL.
+   - أعمدة مثل created_at / resolved_at / scheduled_at مخزّنة في SQLite كنص TEXT مع
+     DEFAULT (datetime('now')) أو قيم نصية ISO؛ في PostgreSQL يُفضّل:
+       * TIMESTAMPTZ مع DEFAULT CURRENT_TIMESTAMP
+     أو الإبقاء على TEXT إن أردت مطابقة حرفية للبيانات الحالية (أقل فائدة للاستعلامات).
+
+د) القيم المنطقية (0/1)
+   - prefers_marketing، customer_reply_sent، is_active، إلخ مخزّنة كـ INTEGER 0/1
+   - في PostgreSQL يمكن: SMALLINT أو BOOLEAN مع DEFAULT مناسب.
+
+هـ) القيود والفهارس
+   - FOREIGN KEY: مدعوم في الاثنين؛ تأكد من ترتيب إنشاء الجداول (الوالد قبل الابن).
+   - UNIQUE (product_id, size, color) وغيرها: نفس الفكرة في PostgreSQL.
+   - فهرس جزئي (Partial index) في SQLite مثل:
+       UNIQUE (ticket_code) WHERE ticket_code IS NOT NULL ...
+     في PostgreSQL يُعبّر بـ CREATE UNIQUE INDEX ... WHERE ...
+
+و) صياغة SQL خاصة بـ SQLite ليست في PostgreSQL
+   - PRAGMA (مثل PRAGMA foreign_keys): خاص بـ SQLite؛ في PostgreSQL تُدار المفاتيح
+     الأجنبية افتراضياً عند إنشاء الجداول (ولا حاجة لـ PRAGMA في كل اتصال).
+   - INSERT OR IGNORE: استبداله بـ INSERT ... ON CONFLICT DO NOTHING مع تحديد
+     عمود/قيود التعارض (أجزاء من المشروع انتقلت لهذا النمط بالفعل في الـ repositories).
+   - datetime('now'): في PostgreSQL CURRENT_TIMESTAMP أو NOW() حسب السياق.
+   - IFNULL: في PostgreSQL COALESCE (تم توحيد جزء من الاستعلامات في المرحلة 3).
+
+ز) تنفيذ عدة جمل (executescript)
+   - يُستخدم في SQLite لإنشاء branch_inquiries؛ PostgreSQL لا يدعم executescript بنفس
+     الطريقة — يُفضّل ملف ترحيل SQL واحد أو أداة ترحيل (Alembic/Flyway/إلخ).
+
+--------------------------------------------------------------------------------
+2) جداول يُستنتج وجودها من logic/database.py (إنشاء أولي)
+--------------------------------------------------------------------------------
+(الأسماء كما في CREATE TABLE IF NOT EXISTS)
+
+  clients
+  branches
+  main_categories
+  sub_categories
+  products          (+ أعمدة لاحقة: section_id, sku عبر ALTER)
+  inventory
+  categories
+  sections
+  product_variants
+  product_images
+  complaints
+  product_requests
+  image_analysis
+  trend_data
+  working_hours     (+ أعمدة لاحقة عبر _migrate_working_hours_period_columns)
+  branch_locations
+  system_settings
+  customers         (+ أعمدة لاحقة عبر سلسلة ALTER في نفس الملف)
+  email_verification_codes
+  campaigns
+  customer_merge_audit
+  analytics_daily_chat
+  company_info
+  company_branch_services
+  conversation_history + INDEX idx_conv_session_time
+
+--------------------------------------------------------------------------------
+3) جدول إضافي من logic/branch_inquiry_repository.py
+--------------------------------------------------------------------------------
+  branch_inquiries
+  - يستخدم في DDL أنواع DATETIME في السكربت الأصلي؛ في PostgreSQL استخدم
+    TIMESTAMP أو TIMESTAMPTZ مع DEFAULT CURRENT_TIMESTAMP ليتوافق مع بقية الجداول.
+
+--------------------------------------------------------------------------------
+4) أعمدة تُضاف لاحقاً عبر ALTER (يجب تكرارها في سكربت PostgreSQL)
+--------------------------------------------------------------------------------
+يُنفّذ في SQLite عبر محاولات ALTER مع تجاهل الخطأ إن كان العمود موجوداً؛ في PostgreSQL
+يُفضّل: التحقق من information_schema ثم ADD COLUMN IF NOT EXISTS (PostgreSQL 11+)
+أو كتل DO $$ ... $$.
+
+أمثلة (غير حصرية) من database.py:
+  - complaints: customer_reply_*, ticket_code, resolution_notes, complaint_ai_classification، إلخ
+  - branches: complaint_email, phone
+  - clients: complaint_draft, gender_hint
+  - customers: dialect, last_product_*, declined_marketing_prompt, is_active, merged_into_id
+  - campaigns: scheduled_at, sent_at
+  - products: section_id, sku
+  - working_hours: start_time_1, end_time_1, start_time_2, end_time_2
+
+--------------------------------------------------------------------------------
+5) توصيات عملية لقاعدة family على PostgreSQL
+--------------------------------------------------------------------------------
+1) إنشاء قاعدة family وصلاحيات مستخدم مخصص (خارج نطاق هذا الملف).
+2) كتابة سكربت SQL واحد (أو ترحيلات متعددة) ينشئ الجداول بالترتيب الصحيح مع
+   المفاتيح الأجنبية والقيود UNIQUE/INDEX.
+3) ترحيل البيانات من SQLite (dump CSV أو أداة etl) ثم التحقق من الترميز UTF-8.
+4) مراجعة كل استعلام ما زال يعتمد على دوال SQLite فقط (مثل datetime، LIKE مع COLLATE)
+   واستبدالها تدريجياً بما يعادلها في PostgreSQL.
+5) تشغيل test_db_connection.py بعد ضبط DATABASE_URL للتحقق من الاتصال قبل أي ترحيل بيانات.
+
+================================================================================
+نهاية migration_plan.txt
+================================================================================

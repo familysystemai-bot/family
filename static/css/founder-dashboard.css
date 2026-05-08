@@ -1,5 +1,5 @@
 /**
- * لوحة المؤسس فقط — لا يُحمَّل في لوحة الإدارة
+ * لوحة تحكم النظام — لا يُحمَّل في لوحة الإدارة
  * Luxury UI: بيج فاتح + أخضر داكن + ذهبي
  */
 @import url("https://fonts.googleapis.com/css2?family=Tajawal:wght@500;600;700;800&display=swap");
@@ -9,7 +9,7 @@
   --fd-beige: #f5f5dc;
   --fd-beige-soft: #fafaf0;
   --fd-white-card: #fffef9;
-  /* هوية الشريط الفاخرة (لوحة المؤسس) */
+  /* هوية الشريط (لوحة تحكم النظام) */
   --fd-sidebar-luxury: #064e3b;
   --fd-sidebar-luxury-deep: #022c22;
   --fd-sidebar-hover: rgba(52, 211, 153, 0.35);
@@ -22,7 +22,8 @@
   --fd-gold-dim: #a88620;
   --fd-text: #141414;
   --fd-text-body: #2a2a2a;
-  --fd-text-soft: #4a4a4a;
+  --fd-text-soft: #3a3a3a;
+  --fd-title-accent: #6b5420;
   --fd-border: rgba(15, 81, 50, 0.18);
   --fd-border-gold: rgba(201, 162, 39, 0.35);
   --fd-shadow: 0 8px 28px rgba(15, 81, 50, 0.08);
@@ -189,7 +190,7 @@ body.fd-dashboard {
   filter: drop-shadow(0 3px 12px rgba(15, 81, 50, 0.15));
 }
 
-/* ——— لوحة المؤسس: هوية علوية (الشعار + الاسم) ——— */
+/* ——— لوحة النظام: هوية علوية (الشعار + الاسم) ——— */
 .fd-dash-hero {
   text-align: center;
   background: linear-gradient(145deg, rgba(15, 81, 50, 0.96) 0%, rgba(6, 42, 28, 0.94) 100%);
@@ -200,7 +201,7 @@ body.fd-dashboard {
   box-shadow: var(--fd-shadow);
 }
 
-/* صورة الشعار المرفوعة في بطل لوحة المؤسس */
+/* صورة الشعار المرفوعة في بطل لوحة النظام */
 .fd-dash-hero__site-img {
   display: block;
   margin: 20px auto 10px;
@@ -277,10 +278,10 @@ body.fd-dashboard {
 .fd-page-title {
   font-size: 1.65rem;
   font-weight: 800;
-  color: var(--fd-gold);
+  color: var(--fd-title-accent);
   margin: 0;
   letter-spacing: -0.02em;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
 .fd-page-sub {
@@ -302,7 +303,7 @@ body.fd-dashboard {
 .fd-card .fd-card-title {
   font-size: 1.25rem;
   font-weight: 800;
-  color: var(--fd-gold);
+  color: var(--fd-title-accent);
   margin-bottom: 1rem;
   letter-spacing: -0.01em;
 }
@@ -315,7 +316,7 @@ body.fd-dashboard {
 .fd-stat .fd-stat-label {
   font-size: 0.82rem;
   font-weight: 700;
-  color: var(--fd-text-soft);
+  color: var(--fd-text-body);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   margin-bottom: 0.4rem;

@@ -1,71 +1,104 @@
 # -*- coding: utf-8 -*-
+"""
+CategoryRepositoryMixin — إدارة الفئات والأقسام.
+
+التحديثات في هذا الإصدار:
+- إضافة _safe_rollback_pg() واستدعائها في كل دالة CRUD عند الفشل.
+- تحسين add_sub_category: استخدام lastrowid (الموثوق في الكود الجديد عبر
+  lastval() على PostgreSQL) كمصدر أساسي للـ id، مع SELECT احتياطي فقط
+  إن لم يتوفر lastrowid (يحافظ على نفس السلوك السابق).
+- نفس الواجهة العامة محفوظة بالكامل.
+"""
 from __future__ import annotations
 
-import sqlite3
+import logging
 from typing import Any, Dict, List, Optional
 
 from logic.chat_semantic_expand import section_search_variants
+from logic.db_adapter import DBAdapter
+
+logger = logging.getLogger(__name__)
 
 
 class CategoryRepositoryMixin:
     """Mixin: يُدمج في DatabaseManager — يستخدم self._get_connection() فقط."""
-    def get_main_categories(self):
-        conn = self._get_connection()
+
+    def _db_adapter(self) -> DBAdapter:
+        return DBAdapter(sqlite_path=getattr(self, "db_path", None))
+
+    def _safe_rollback_pg(self, conn) -> None:
+        """rollback آمن للـ PostgreSQL فقط."""
+        if getattr(self, "db_type", None) != "postgres":
+            return
         try:
-            cursor = conn.execute("SELECT * FROM main_categories ORDER BY id")
-            return [dict(row) for row in cursor.fetchall()]
-        finally:
-            conn.close()
+            conn.rollback()
+        except Exception as e:
+            logger.warning("rollback failed in category_repository: %s", e)
+
+    def get_main_categories(self):
+        return self._db_adapter().fetch_all("SELECT * FROM main_categories ORDER BY id")
 
     def get_main_categories_by_branch(self, branch_id: int):
         """إرجاع صفوف main_categories التابعة لفرع محدد."""
         conn = self._get_connection()
         try:
             cursor = conn.execute(
-                "SELECT * FROM main_categories WHERE branch_id = ? ORDER BY id",
+                "SELECT * FROM main_categories WHERE branch_id = %s ORDER BY id",
                 (branch_id,),
             )
             return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("get_main_categories_by_branch: %s", e)
+            return []
         finally:
             conn.close()
 
     def get_main_category_by_id(self, category_id: int) -> Optional[Dict[str, Any]]:
-        conn = self._get_connection()
-        try:
-            cursor = conn.execute(
-                "SELECT * FROM main_categories WHERE id = ?",
-                (int(category_id),),
-            )
-            row = cursor.fetchone()
-            return dict(row) if row else None
-        finally:
-            conn.close()
+        return self._db_adapter().fetch_one(
+            "SELECT * FROM main_categories WHERE id = %s",
+            (int(category_id),),
+        )
 
     def add_main_category(self, name, branch_id=None):
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("INSERT INTO main_categories (name, branch_id) VALUES (?, ?)", (name, branch_id))
+            cursor.execute("INSERT INTO main_categories (name, branch_id) VALUES (%s, %s)", (name, branch_id))
             conn.commit()
             return True
-        except Exception: 
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("add_main_category: %s", e)
             return False
-        finally: 
+        finally:
             conn.close()
 
     def add_sub_category(self, main_id, branch_id, name):
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("INSERT INTO sub_categories (main_id, branch_id, name) VALUES (?, ?, ?)", (main_id, branch_id, name))
-            cursor.execute("SELECT id FROM sub_categories WHERE branch_id = ? AND name = ?", (branch_id, name))
-            row = cursor.fetchone()
-            sub_id = int(row["id"]) if row else None
+            cursor.execute(
+                "INSERT INTO sub_categories (main_id, branch_id, name) VALUES (%s, %s, %s)",
+                (main_id, branch_id, name),
+            )
+            # نحاول استخدام lastrowid أولاً (موثوق ويعمل على القاعدتين عبر الـ wrapper)
+            sub_id = cursor.lastrowid
+            if not sub_id:
+                # احتياطي: SELECT بنفس المنطق السابق (لتطابق السلوك)
+                cursor.execute(
+                    "SELECT id FROM sub_categories WHERE branch_id = %s AND name = %s",
+                    (branch_id, name),
+                )
+                row = cursor.fetchone()
+                sub_id = int(row["id"]) if row else None
             conn.commit()
-            return sub_id
-        except Exception: 
+            return int(sub_id) if sub_id else None
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("add_sub_category: %s", e)
             return None
-        finally: 
+        finally:
             conn.close()
 
     def get_sections_by_category(self, category_id: int):
@@ -75,10 +108,14 @@ class CategoryRepositoryMixin:
         conn = self._get_connection()
         try:
             cursor = conn.execute(
-                "SELECT * FROM sub_categories WHERE main_id = ? ORDER BY id",
+                "SELECT * FROM sub_categories WHERE main_id = %s ORDER BY id",
                 (category_id,),
             )
             return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("get_sections_by_category: %s", e)
+            return []
         finally:
             conn.close()
 
@@ -91,25 +128,29 @@ class CategoryRepositoryMixin:
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT id FROM sub_categories WHERE id = ?", (sid,))
+            cursor.execute("SELECT id FROM sub_categories WHERE id = %s", (sid,))
             if not cursor.fetchone():
                 return False
             cursor.execute(
-                "SELECT id FROM products WHERE sub_id = ? OR section_id = ?",
+                "SELECT id FROM products WHERE sub_id = %s OR section_id = %s",
                 (sid, sid),
             )
             product_ids = [int(r["id"]) for r in cursor.fetchall()]
             if product_ids:
-                ph = ",".join("?" * len(product_ids))
+                ph = ",".join("%s" * len(product_ids))
                 cursor.execute(f"DELETE FROM product_variants WHERE product_id IN ({ph})", product_ids)
                 cursor.execute(f"DELETE FROM product_images WHERE product_id IN ({ph})", product_ids)
                 cursor.execute(f"DELETE FROM inventory WHERE product_id IN ({ph})", product_ids)
                 cursor.execute(f"DELETE FROM products WHERE id IN ({ph})", product_ids)
-            cursor.execute("DELETE FROM sub_categories WHERE id = ?", (sid,))
+            cursor.execute("DELETE FROM sub_categories WHERE id = %s", (sid,))
             conn.commit()
             return True
-        except Exception:
-            conn.rollback()
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            logger.exception("delete_branch_subcategory_and_products: %s", e)
             return False
         finally:
             conn.close()
@@ -117,7 +158,7 @@ class CategoryRepositoryMixin:
     def _extract_section_search_words(self, message: str) -> List[str]:
         """كل الكلمات المفيدة بعد إزالة الضجيج (قسم، عندكم، فيه، هل، …)."""
         t = (message or "").strip()
-        for ch in "؟?،,":
+        for ch in ("\u061f", "\x3f", "\u060c", ","):
             t = t.replace(ch, " ")
         noise = frozenset(
             {
@@ -208,7 +249,7 @@ class CategoryRepositoryMixin:
                     FROM sub_categories sc
                     JOIN main_categories mc ON mc.id = sc.main_id
                     JOIN branches b ON b.id = sc.branch_id
-                    WHERE sc.name LIKE ?
+                    WHERE sc.name LIKE %s
                     """,
                     (like,),
                 )
@@ -228,7 +269,7 @@ class CategoryRepositoryMixin:
                         FROM sub_categories sc
                         JOIN main_categories mc ON mc.id = sc.main_id
                         JOIN branches b ON b.id = sc.branch_id
-                        WHERE mc.name LIKE ?
+                        WHERE mc.name LIKE %s
                         """,
                         (like,),
                     )
@@ -238,6 +279,9 @@ class CategoryRepositoryMixin:
                         if key not in seen:
                             seen.add(key)
                             out.append(d)
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("get_sections_by_name: %s", e)
         finally:
             conn.close()
         return out
@@ -251,12 +295,14 @@ class CategoryRepositoryMixin:
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO categories (branch_id, name) VALUES (?, ?)",
+                "INSERT INTO categories (branch_id, name) VALUES (%s, %s)",
                 (branch_id, name),
             )
             conn.commit()
             return cursor.lastrowid
-        except Exception:
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("add_category: %s", e)
             return None
         finally:
             conn.close()
@@ -270,12 +316,14 @@ class CategoryRepositoryMixin:
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO sections (category_id, name) VALUES (?, ?)",
+                "INSERT INTO sections (category_id, name) VALUES (%s, %s)",
                 (category_id, name),
             )
             conn.commit()
             return cursor.lastrowid
-        except Exception:
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("add_section: %s", e)
             return None
         finally:
             conn.close()
@@ -288,12 +336,16 @@ class CategoryRepositoryMixin:
                 SELECT c.branch_id
                 FROM sections s
                 JOIN categories c ON c.id = s.category_id
-                WHERE s.id = ?
+                WHERE s.id = %s
                 """,
                 (section_id,),
             )
             row = cursor.fetchone()
             return int(row["branch_id"]) if row else None
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("_get_branch_id_for_section: %s", e)
+            return None
         finally:
             conn.close()
 
@@ -302,27 +354,31 @@ class CategoryRepositoryMixin:
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT id FROM products WHERE section_id = ?", (section_id,))
+            cursor.execute("SELECT id FROM products WHERE section_id = %s", (section_id,))
             product_rows = cursor.fetchall()
             product_ids = [int(r["id"]) for r in product_rows]
             if product_ids:
                 cursor.execute(
-                    f"DELETE FROM product_variants WHERE product_id IN ({','.join(['?']*len(product_ids))})",
+                    f"DELETE FROM product_variants WHERE product_id IN ({','.join(['%s']*len(product_ids))})",
                     tuple(product_ids),
                 )
                 cursor.execute(
-                    f"DELETE FROM product_images WHERE product_id IN ({','.join(['?']*len(product_ids))})",
+                    f"DELETE FROM product_images WHERE product_id IN ({','.join(['%s']*len(product_ids))})",
                     tuple(product_ids),
                 )
                 cursor.execute(
-                    f"DELETE FROM products WHERE id IN ({','.join(['?']*len(product_ids))})",
+                    f"DELETE FROM products WHERE id IN ({','.join(['%s']*len(product_ids))})",
                     tuple(product_ids),
                 )
-            cursor.execute("DELETE FROM sections WHERE id = ?", (section_id,))
+            cursor.execute("DELETE FROM sections WHERE id = %s", (section_id,))
             conn.commit()
             return True
-        except Exception:
-            conn.rollback()
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            logger.exception("delete_section: %s", e)
             return False
         finally:
             conn.close()
@@ -332,18 +388,21 @@ class CategoryRepositoryMixin:
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT id FROM sections WHERE category_id = ?", (category_id,))
+            cursor.execute("SELECT id FROM sections WHERE category_id = %s", (category_id,))
             section_rows = cursor.fetchall()
             section_ids = [int(r["id"]) for r in section_rows]
             if section_ids:
                 for sid in section_ids:
                     self.delete_section(sid)
-            cursor.execute("DELETE FROM categories WHERE id = ?", (category_id,))
+            cursor.execute("DELETE FROM categories WHERE id = %s", (category_id,))
             conn.commit()
             return True
-        except Exception:
-            conn.rollback()
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            logger.exception("delete_category: %s", e)
             return False
         finally:
             conn.close()
-

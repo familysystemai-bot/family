@@ -1,4 +1,5 @@
 {# company_info_scope: "admin" | "branch" — خدمات الفروع فقط (الدوام/الموقع من صفحة بيانات الفرع) #}
+{% from "macros/csrf.html" import csrf_input %}
 {% set is_admin = (company_info_scope == 'admin') %}
 <div class="stat-card mt-4 mb-4">
     <h5 class="mb-2 fw-bold">{% if is_admin %}خدمات الفروع (للشات){% else %}خدمات فرعك{% endif %}</h5>
@@ -7,6 +8,7 @@
         الدوام والموقع ووسائل التواصل تُحدَّث من <strong>معلومات الفرع</strong> وليست هنا.
     </p>
     <form method="post" action="{{ url_for('admin_company_info') }}">
+        {{ csrf_input() }}
         {% for branch in branches %}
         <div class="border rounded p-3 mb-3 bg-light company-branch-block">
             <div class="fw-bold mb-2">{{ branch.city_name }}</div>

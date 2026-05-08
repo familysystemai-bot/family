@@ -1,6 +1,7 @@
 {% extends "founder/base.html" %}
 {% block title %}إعدادات الدخول{% endblock %}
 {% block content %}
+{% from "macros/csrf.html" import csrf_input %}
 <div class="fd-page-head">
     <h1 class="fd-page-title">إعدادات بيانات الدخول</h1>
     <p class="small text-muted mb-0">تُحفظ في ملف <code class="text-success">.env</code> — كلمات المرور تُخزَّن مشفّرة.</p>
@@ -11,6 +12,7 @@
         <div class="fd-card h-100">
             <h2 class="h5 fw-bold mb-3">🛡️ حساب الإدارة العامة</h2>
             <form action="{{ url_for('admin_settings') }}" method="POST" class="settings-form">
+                {{ csrf_input() }}
                 <input type="hidden" name="which" value="admin">
                 <div class="mb-3">
                     <label class="form-label small fw-bold">اسم المستخدم</label>
@@ -30,8 +32,9 @@
     </div>
     <div class="col-12 col-lg-6">
         <div class="fd-card h-100">
-            <h2 class="h5 fw-bold mb-3">🔐 حساب المؤسس</h2>
+            <h2 class="h5 fw-bold mb-3">🔐 حساب لوحة تحكم النظام</h2>
             <form action="{{ url_for('admin_settings') }}" method="POST" class="settings-form">
+                {{ csrf_input() }}
                 <input type="hidden" name="which" value="founder">
                 <div class="mb-3">
                     <label class="form-label small fw-bold">اسم المستخدم</label>
@@ -45,7 +48,7 @@
                     <label class="form-label small fw-bold">تأكيد كلمة المرور</label>
                     <input type="password" name="founder_confirm_password" class="form-control" placeholder="نفس كلمة المرور الجديدة" autocomplete="new-password">
                 </div>
-                <button type="submit" class="btn fd-btn w-100">حفظ إعدادات المؤسس</button>
+                <button type="submit" class="btn fd-btn w-100">حفظ إعدادات النظام</button>
             </form>
         </div>
     </div>

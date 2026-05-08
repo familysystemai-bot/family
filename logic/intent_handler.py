@@ -17,12 +17,14 @@ from config import (
     INTENT_SECOND_SCORE_AMBIGUOUS_FLOOR,
 )
 from logic.complaint_scoring import (
+    complaint_score_is_direct,
     complaint_score_to_intent_score,
     compute_complaint_score,
     has_negative_complaint_tone,
     has_primary_complaint_signal,
 )
 from logic import keywords as kw
+from logic.chat_rules import looks_like_direct_request
 from logic.chat_service import normalize_message_for_branch_search
 
 # إعادة تصدير لبقية المشروع
@@ -312,6 +314,8 @@ def _continuation_message_looks_like_product_query(raw: str, t: str) -> bool:
     tl = (t or "").strip().lower()
     if tl in kw.ACK_GENERAL or (len(tl) <= 4 and tl in kw.ACK_GENERAL):
         return False
+    if has_negative_complaint_tone(t) or has_primary_complaint_signal(t):
+        return False
     return True
 
 
@@ -334,7 +338,10 @@ def message_signals_category_browse_correction(message: str) -> bool:
 
 
 def _legacy_early_intent_fixed(
-    t: str, tl: str, resolve_branch: Callable[[str], Optional[str]]
+    raw: str,
+    t: str,
+    tl: str,
+    resolve_branch: Callable[[str], Optional[str]],
 ) -> Optional[str]:
     if not tl:
         return "unknown"
@@ -343,7 +350,7 @@ def _legacy_early_intent_fixed(
         or any(p in t for p in kw.COMPLAINT_NATURAL_PHRASES)
     ):
         return "complaint"
-    if any(k in t for k in kw.GREETING_KEYWORDS):
+    if any(k in t for k in kw.GREETING_KEYWORDS) and not looks_like_direct_request(raw):
         return "greeting"
     if any(x in t for x in kw.BRANCH_PHONE_CONTACT_TRIGGERS):
         return "branch_phone"
@@ -410,7 +417,7 @@ def get_intent_routing_decision(
             "score_snapshot": snap,
         }
 
-    early = _legacy_early_intent_fixed(t, tl, resolve_branch)
+    early = _legacy_early_intent_fixed(raw, t, tl, resolve_branch)
     if early is not None:
         return {
             "route": "rule_based",
@@ -437,6 +444,38 @@ def get_intent_routing_decision(
     )
     has_product_phrase = any((p in t) for p in kw.PRODUCT_QUERY_PHRASES)
     has_product_signal = has_product_word or has_product_phrase
+
+    # أولوية الشكوى على المنتج: نبرة سلبية أو عبارة شكوى مع ذكر منتج — لا نعرض كتالوج
+    if not _complaint_signals_negated(t):
+        br_c = resolve_branch(t)
+        cscore = compute_complaint_score(t, has_known_branch=bool(br_c))
+        if complaint_score_is_direct(cscore):
+            return {
+                "route": "score_direct",
+                "legacy_intent": "complaint",
+                "score_intent": "complaint",
+                "scores": scores,
+                "detected_keywords": snap["detected_keywords"],
+                "possible_intents": snap["possible_intents"],
+                "top_score": max(top_score, INTENT_SCORE_THRESHOLD_DIRECT),
+                "needs_clarification": False,
+                "score_snapshot": snap,
+            }
+        if (has_negative_complaint_tone(t) or has_primary_complaint_signal(t)) and (
+            has_product_signal or has_request
+        ):
+            return {
+                "route": "score_direct",
+                "legacy_intent": "complaint",
+                "score_intent": "complaint",
+                "scores": scores,
+                "detected_keywords": snap["detected_keywords"],
+                "possible_intents": snap["possible_intents"],
+                "top_score": max(top_score, INTENT_SCORE_THRESHOLD_DIRECT),
+                "needs_clarification": False,
+                "score_snapshot": snap,
+            }
+
     if has_request and has_context_word:
         return {
             "route": "score_direct",
@@ -664,3 +703,258 @@ def decision_meets_global_rule_threshold(
     decision: Dict[str, Any], mapped_intent: Optional[str] = None
 ) -> bool:
     return decision_rule_confidence(decision, mapped_intent) >= GLOBAL_RULE_THRESHOLD
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# تحسينات الدفعة 3: تقليل تكلفة LLM
+# ═══════════════════════════════════════════════════════════════════════
+# هذه الدوال إضافات لا تُغيّر السلوك القائم — يمكن لـ chat_router استدعاؤها
+# قبل/بعد get_intent_routing_decision لتحقيق تدرج ذكي وتقليل استدعاءات LLM.
+
+
+def _message_looks_like_product_shopping(t: str) -> bool:
+    """طلب منتج صريح أو ذكر بند كتالوج — لا يُصنَّف كسؤال عام عن المتجر فقط."""
+    s = (t or "").strip()
+    if not s:
+        return False
+    if any(w in s for w in kw.PRODUCT_REQUEST_WORDS):
+        return True
+    return any(
+        len((h or "").strip()) >= 3 and (h or "").strip() in s
+        for h in kw.PRODUCT_HINTS
+    )
+
+
+def detect_simple_local_intent(message: str) -> Optional[str]:
+    """
+    التقاط نوايا واضحة جداً تُحسم محلياً 100% بدون أي LLM.
+
+    يُرجع نية واحدة من:
+        - "policy_inquiry"  : أسئلة سياسات (استرجاع/استبدال/توصيل/دفع/ضمان)
+        - "payment_inquiry" : أسئلة طرق الدفع
+        - "delivery_inquiry": أسئلة التوصيل
+        - "general_company" : معلومات عامة عن المتجر (من لوحة الإدارة)
+        - "human_agent"     : طلب التحدث لموظف
+        - "repeat_request"  : طلب إعادة الشرح/التوضيح
+        - "simple_yes"      : تأكيد بسيط (نعم، أيوه...)
+        - "simple_no"       : نفي بسيط (لا، مو...)
+        - None              : لم نلتقط شيئاً → دع المسار العادي يقرر
+
+    ملاحظة: لا تستبدل score_message_intents؛ هذه طبقة سريعة فوقها.
+    """
+    raw = (message or "").strip()
+    if not raw or len(raw) > 200:
+        return None
+
+    t = raw.replace("ٱ", "ا").replace("ى", "ي")
+    tl = t.lower().strip()
+
+    # تأكيد/نفي بسيط (كلمة واحدة فقط)
+    if len(tl) <= 8:
+        if tl in kw.SIMPLE_AFFIRMATION:
+            return "simple_yes"
+        if tl in kw.SIMPLE_NEGATION:
+            return "simple_no"
+
+    # طلب موظف بشري
+    for phrase in kw.HUMAN_AGENT_REQUEST:
+        if phrase in t:
+            return "human_agent"
+
+    # طلب إعادة/توضيح
+    for phrase in kw.REPEAT_REQUEST_PHRASES:
+        if phrase in t:
+            return "repeat_request"
+
+    # سياسات
+    for phrase in kw.POLICY_INQUIRY_PHRASES:
+        if phrase in t:
+            return "policy_inquiry"
+
+    # دفع
+    for phrase in kw.PAYMENT_INQUIRY_PHRASES:
+        if phrase in t:
+            return "payment_inquiry"
+
+    # توصيل
+    for phrase in kw.DELIVERY_INQUIRY_PHRASES:
+        if phrase in t:
+            return "delivery_inquiry"
+
+    # معلومات عامة عن المتجر (لوحة الإدارة: general_info + chat_extra)
+    for phrase in kw.GENERAL_COMPANY_INFO_PHRASES:
+        if phrase in t and not _message_looks_like_product_shopping(t):
+            return "general_company"
+
+    return None
+
+
+def should_skip_llm(
+    message: str,
+    decision: Optional[Dict[str, Any]] = None,
+    *,
+    has_local_match: bool = False,
+) -> Dict[str, Any]:
+    """
+    نقطة قرار موحّدة: هل نتجنّب استدعاء LLM لهذه الرسالة؟
+
+    المعاملات:
+        message: نص رسالة العميل.
+        decision: قرار get_intent_routing_decision السابق (إن وُجد).
+        has_local_match: هل وجد المنطق المحلي (DB / rules) جواباً مناسباً؟
+
+    يُرجع:
+        {
+            "skip": bool,             # هل نتخطى LLM؟
+            "reason": str,            # سبب القرار (للتسجيل)
+            "local_intent": Optional[str],   # نية محلية مكتشفة
+            "confidence": float,      # ثقة القرار 0-100
+        }
+
+    منطق القرار (من الأقوى للأضعف):
+        1) detect_simple_local_intent() قطع → skip=True
+        2) decision route = "rule_based" أو "score_direct" → skip=True
+        3) has_local_match=True → skip=True
+        4) decision route = "needs_openai" → skip=False
+        5) رسالة فارغة/قصيرة جداً → skip=True (رد محلي بسيط أفضل من LLM)
+        6) الافتراضي → skip=False (اترك LLM يقرر)
+    """
+    raw = (message or "").strip()
+
+    # 1) النوايا المحلية القاطعة
+    simple = detect_simple_local_intent(raw)
+    if simple is not None:
+        return {
+            "skip": True,
+            "reason": f"simple_local_intent:{simple}",
+            "local_intent": simple,
+            "confidence": 95.0,
+        }
+
+    # 2) قرار التوجيه يقول محلياً
+    if decision:
+        route = decision.get("route", "")
+        if route == "rule_based":
+            return {
+                "skip": True,
+                "reason": "decision_rule_based",
+                "local_intent": decision.get("legacy_intent"),
+                "confidence": 90.0,
+            }
+        if route == "score_direct":
+            return {
+                "skip": True,
+                "reason": "decision_score_direct",
+                "local_intent": decision.get("score_intent") or decision.get("legacy_intent"),
+                "confidence": float(decision.get("top_score") or 70.0),
+            }
+
+    # 3) المنطق المحلي وجد جواباً
+    if has_local_match:
+        return {
+            "skip": True,
+            "reason": "local_match_provided",
+            "local_intent": "local_db",
+            "confidence": 85.0,
+        }
+
+    # 4) رسالة فارغة أو قصيرة جداً
+    if len(raw) < 2:
+        return {
+            "skip": True,
+            "reason": "message_too_short",
+            "local_intent": "general",
+            "confidence": 80.0,
+        }
+
+    # 5) قرار التوجيه يطلب LLM صراحةً
+    if decision and decision.get("route") == "needs_openai":
+        return {
+            "skip": False,
+            "reason": "decision_needs_openai",
+            "local_intent": None,
+            "confidence": 0.0,
+        }
+
+    # الافتراضي: اترك LLM يقرر
+    return {
+        "skip": False,
+        "reason": "default_allow_llm",
+        "local_intent": None,
+        "confidence": 0.0,
+    }
+
+
+def get_local_response_for_simple_intent(
+    simple_intent: str,
+    *,
+    company_info_provider: Optional[Callable[[], Dict[str, Any]]] = None,
+) -> Optional[str]:
+    """
+    يعطي رداً محلياً جاهزاً للنوايا البسيطة المُلتقَطة من detect_simple_local_intent.
+
+    لـ policy/payment/delivery: يحاول جلب النص من company_info (لوحة الإدارة)،
+    وإن لم يكن موجوداً يرد رد افتراضي مهذب.
+
+    يُرجع None لو لم يكن لدينا رد محلي جاهز.
+    """
+    if not simple_intent:
+        return None
+
+    # ردود ثابتة لا تحتاج قاعدة بيانات
+    static_replies = {
+        "simple_yes": "تمام، تفضل وش تحتاج؟",
+        "simple_no": "تمام، إذا تحتاج شي ثاني أنا موجود.",
+        "human_agent": (
+            "أكيد، تقدر تتواصل مع الفرع مباشرة، أو إذا حاب تترك رقمك "
+            "وموظف يتواصل معك ⬅️ اكتب رقم جوالك."
+        ),
+        "repeat_request": (
+            "أكيد، أوضح لك أكثر — وش الجزء اللي ما وضح؟"
+        ),
+    }
+    if simple_intent in static_replies:
+        return static_replies[simple_intent]
+
+    # ردود تعتمد على company_info (إن وُجد provider)
+    if company_info_provider is None:
+        return None
+
+    try:
+        ci = company_info_provider() or {}
+    except Exception:
+        ci = {}
+
+    if simple_intent == "policy_inquiry":
+        parts = []
+        for k, label in (
+            ("returns", "🔄 الاسترجاع"),
+            ("exchange", "🔁 الاستبدال"),
+            ("general", "ℹ️ ضمان"),
+        ):
+            v = (ci.get(k) or "").strip()
+            if v:
+                parts.append(f"{label}: {v}")
+        if parts:
+            return "\n\n".join(parts)
+        return "حالياً ما عندي تفاصيل السياسة، ممكن أوضح لك لاحقاً."
+
+    if simple_intent == "payment_inquiry":
+        v = (ci.get("payment") or "").strip()
+        return v or "نقبل وسائل دفع متعددة، تواصل مع الفرع لمعرفة المتاح."
+
+    if simple_intent == "delivery_inquiry":
+        v = (ci.get("delivery") or "").strip()
+        return v or "تفاصيل التوصيل تختلف حسب المدينة، تواصل مع الفرع للتأكد."
+
+    if simple_intent == "general_company":
+        parts = []
+        for key in ("general", "chat_extra", "hours", "branches_blurb", "payment"):
+            v = (ci.get(key) or "").strip()
+            if v:
+                parts.append(v)
+        if parts:
+            return "\n\n".join(parts)
+        return "المعلومات العامة قيد التحديث — تقدر تتواصل مع أقرب فرع للتفاصيل."
+
+    return None

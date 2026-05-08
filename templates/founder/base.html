@@ -4,7 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}لوحة المؤسس{% endblock %}</title>
+    {% include "partials/pwa_head.html" %}
+    <title>{% block title %}لوحة تحكم النظام{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800&display=swap" rel="stylesheet">
@@ -22,7 +23,7 @@
             <div class="dash-sidebar-panel">
             <div class="fd-logo fd-logo--compact">
                 {{ brand_logo_pair(founder_logo_url, 'fd-logo-sidebar-img', 'site-logo-k--sidebar-dash') }}
-                <span class="badge fd-badge mt-2">{% if session.get('role') == 'admin' %}الإدارة{% else %}المؤسس{% endif %}</span>
+                <span class="badge fd-badge mt-2">{% if session.get('role') == 'admin' %}الإدارة{% else %}النظام{% endif %}</span>
             </div>
             <nav class="fd-nav">
                 {% set ep = request.endpoint %}
@@ -31,10 +32,12 @@
                 <a class="nav-link {% if ep in ('founder_products', 'founder_add_product') %}active{% endif %}" href="{{ url_for('founder_products') }}">📦 المنتجات</a>
                 <a class="nav-link {% if ep == 'founder_accounts' %}active{% endif %}" href="{{ url_for('founder_accounts') }}">🔐 الحسابات</a>
                 <a class="nav-link {% if ep == 'admin_settings' %}active{% endif %}" href="{{ url_for('admin_settings') }}">⚙️ إعدادات الدخول</a>
+                <a class="nav-link {% if ep and ep.startswith('integrations.') %}active{% endif %}" href="{{ url_for('integrations.integrations_dashboard') }}">🔌 التكاملات</a>
                 <hr>
                 <a class="nav-link" href="{{ url_for('admin_users') }}">👤 مستخدمي الفروع</a>
                 <a class="nav-link" href="{{ url_for('admin_complaints') }}">📋 الشكاوى</a>
                 <a class="nav-link {% if ep == 'campaigns.founder_campaigns' %}active{% endif %}" href="{{ url_for('campaigns.founder_campaigns') }}">📢 الحملات</a>
+                <a class="nav-link {% if ep == 'wa_inbox.admin_messages_page' %}active{% endif %}" href="{{ url_for('wa_inbox.admin_messages_page') }}">💬 واتساب</a>
                 <hr>
                 <a class="nav-link text-danger" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
             </nav>

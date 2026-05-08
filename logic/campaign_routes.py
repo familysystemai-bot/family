@@ -4,34 +4,21 @@
 """
 from __future__ import annotations
 
-import os
-import uuid
 from typing import Optional
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
-from config import UPLOAD_FOLDER
 from logic import campaign_service as camp_svc
-
-
-def _allowed_image(filename: str) -> bool:
-    if not filename or "." not in filename:
-        return False
-    ext = filename.rsplit(".", 1)[1].lower()
-    return ext in {"png", "jpg", "jpeg", "gif", "webp"}
+from logic.media_uploads import file_storage_to_upload
 
 
 def _save_campaign_image(file_storage) -> Optional[str]:
     if not file_storage or not getattr(file_storage, "filename", None):
         return None
-    if not _allowed_image(file_storage.filename):
-        return None
-    ext = file_storage.filename.rsplit(".", 1)[1].lower()
-    unique = f"{uuid.uuid4().hex}.{ext}"
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-    dest = os.path.join(UPLOAD_FOLDER, unique)
-    file_storage.save(dest)
-    return f"uploads/{unique}"
+    ref, _err = file_storage_to_upload(
+        file_storage, folder="campaigns", require_validation=True
+    )
+    return ref
 
 
 def _can_actor_send_campaign(
@@ -62,11 +49,28 @@ def create_campaign_blueprint(db) -> Blueprint:
         sent = int(result.get("sent") or 0)
         targeted = int(result.get("targeted") or 0)
         failed = int(result.get("failed") or 0)
-        flash(f"تم إرسال الحملة إلى {sent} عميل", "success")
-        if targeted and sent < targeted:
-            flash(f"مستهدفون بالبريد: {targeted} — نجح الإرسال: {sent} — فشل: {failed}", "info")
+        wa_sent = int(result.get("wa_sent") or 0)
+        wa_targeted = int(result.get("wa_targeted") or 0)
+        wa_failed = int(result.get("wa_failed") or 0)
+        if targeted:
+            flash(
+                f"البريد: إرسال ناجح {sent} من {targeted}"
+                + (f" — فشل: {failed}" if failed else ""),
+                "success" if sent or not failed else "warning",
+            )
         elif failed:
-            flash(f"ملاحظة: فشل إرسال {failed} رسالة.", "warning")
+            flash(f"البريد: فشل إرسال {failed} رسالة.", "warning")
+        if wa_targeted:
+            flash(
+                f"واتساب: إرسال ناجح {wa_sent} من {wa_targeted}"
+                + (f" — فشل: {wa_failed}" if wa_failed else ""),
+                "success" if wa_sent or not wa_failed else "warning",
+            )
+        if not targeted and not wa_targeted and not failed and not wa_failed:
+            flash(
+                "لا يوجد مستهدفون مؤهلون حالياً (بريد/هاتف موافق + مرور 24 ساعة على آخر حملة).",
+                "info",
+            )
 
     def _handle_send_existing(
         *,
@@ -119,8 +123,11 @@ def create_campaign_blueprint(db) -> Blueprint:
             flash("أدخل عنواناً للحملة.", "warning")
             return redirect(url_for(redirect_endpoint))
 
-        if not email_message and not image_url:
-            flash("أضف نص البريد أو صورة لإنشاء الحملة.", "warning")
+        if not email_message and not image_url and not whatsapp_message:
+            flash(
+                "أضف نص البريد أو نص واتساب أو صورة لإنشاء الحملة.",
+                "warning",
+            )
             return redirect(url_for(redirect_endpoint))
 
         result = camp_svc.send_campaign_now(
@@ -141,28 +148,32 @@ def create_campaign_blueprint(db) -> Blueprint:
 
         if result.get("scheduled_only"):
             flash(
-                f"تم جدولة الحملة #{result.get('campaign_id')} — سيُرسل البريد تلقائياً في الوقت المحدد (مع احترام فترة عدم إزعاج 24 ساعة وترتيب الأولوية).",
+                f"تم جدولة الحملة #{result.get('campaign_id')} — سيُرسل البريد وواتساب (إن وُجد نص) تلقائياً في الوقت المحدد (مع احترام فترة 24 ساعة وترتيب الأولوية).",
                 "success",
             )
-            if whatsapp_message:
-                flash(
-                    "نص الواتساب محفوظ مع الحملة فقط (لا إرسال واتساب حالياً).",
-                    "info",
-                )
             return redirect(url_for(redirect_endpoint))
 
-        flash(
-            f"تم إرسال الحملة إلى {result.get('emails_sent', 0)} عميل",
-            "success",
-        )
-        if result.get("emails_failed"):
+        et = int(result.get("email_targets", 0) or 0)
+        es = int(result.get("emails_sent", 0) or 0)
+        ef = int(result.get("emails_failed", 0) or 0)
+        wt = int(result.get("whatsapp_targets", 0) or 0)
+        ws = int(result.get("wa_sent", 0) or 0)
+        wf = int(result.get("wa_failed", 0) or 0)
+        if et:
             flash(
-                f"مستهدفون: {result.get('email_targets', 0)} — فشل جزئي: {result.get('emails_failed')}",
-                "warning",
+                f"البريد: تم الإرسال إلى {es} من {et}"
+                + (f" — فشل: {ef}" if ef else ""),
+                "success" if es or not ef else "warning",
             )
-        if whatsapp_message:
+        if wt:
             flash(
-                "نص الواتساب محفوظ مع الحملة فقط (لا إرسال واتساب حالياً).",
+                f"واتساب: تم الإرسال إلى {ws} من {wt}"
+                + (f" — فشل: {wf}" if wf else ""),
+                "success" if ws or not wf else "warning",
+            )
+        if not et and not wt:
+            flash(
+                "لا مستهدفون مؤهلون لهذه الحملة في الوقت الحالي.",
                 "info",
             )
         return redirect(url_for(redirect_endpoint))

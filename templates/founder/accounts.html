@@ -1,6 +1,7 @@
 {% extends "founder/base.html" %}
 {% block title %}الحسابات{% endblock %}
 {% block content %}
+{% from "macros/csrf.html" import csrf_input %}
 <div class="fd-page-head">
     <h1 class="fd-page-title">إدارة كلمات المرور</h1>
 </div>
@@ -8,9 +9,10 @@
 <div class="row g-4">
     <div class="col-lg-6">
         <div class="fd-card">
-            <h2 class="h5 fw-bold mb-2">🔐 كلمة مرور المؤسس</h2>
+            <h2 class="h5 fw-bold mb-2">🔐 كلمة مرور حساب النظام</h2>
             <p class="small text-muted mb-3">يُحفظ في ملف <code class="text-success">.env</code> على الخادم.</p>
             <form action="{{ url_for('founder_change_password') }}" method="POST">
+                {{ csrf_input() }}
                 <div class="mb-3">
                     <label class="form-label small fw-bold">الحالية</label>
                     <input type="password" name="current_password" class="form-control" required autocomplete="current-password">
@@ -32,6 +34,7 @@
             <h2 class="h5 fw-bold mb-2">🛡️ كلمة مرور الإدارة</h2>
             <p class="small text-muted mb-3">المستخدم: <strong class="text-light">{{ admin_username }}</strong></p>
             <form action="{{ url_for('founder_admin_password') }}" method="POST">
+                {{ csrf_input() }}
                 <div class="mb-3">
                     <label class="form-label small fw-bold">كلمة المرور الجديدة</label>
                     <input type="password" name="new_password" class="form-control" required minlength="4" autocomplete="new-password">
@@ -67,6 +70,7 @@
                     <td>{{ br['username'] }}</td>
                     <td>
                         <form action="{{ url_for('founder_branch_password', branch_id=br['id']) }}" method="POST" class="row g-2 align-items-end">
+                            {{ csrf_input() }}
                             <div class="col-md-5">
                                 <input type="password" name="new_password" class="form-control form-control-sm" placeholder="جديدة" required minlength="4">
                             </div>

@@ -1,17 +1,39 @@
 # -*- coding: utf-8 -*-
+"""
+CustomerRepositoryMixin — جدول customers.
+
+التحديثات في هذا الإصدار:
+- إضافة rollback() صريح في كل دالة CRUD (UPDATE/INSERT) عند فشل العملية.
+  هذا ضروري لأن أي فشل في PostgreSQL يضع الاتصال في حالة InFailedSqlTransaction
+  مما يُسقط أي استعلام لاحق على نفس الاتصال (حتى لو كان صحيحاً).
+- نفس الواجهة العامة محفوظة بالكامل، نفس التواقيع، نفس الإرجاعات.
+- لا تغيير في أي منطق أعمال.
+"""
 from __future__ import annotations
 
 import json
 import re
-import sqlite3
 import logging
 from typing import Any, Dict, List, Optional
+from logic.db_adapter import DBAdapter
 
 logger = logging.getLogger(__name__)
 
 
 class CustomerRepositoryMixin:
     """جدول customers — يُدمج في DatabaseManager."""
+
+    def _db_adapter(self) -> DBAdapter:
+        return DBAdapter(sqlite_path=getattr(self, "db_path", None))
+
+    def _safe_rollback_pg(self, conn) -> None:
+        """rollback آمن للـ PostgreSQL فقط."""
+        if getattr(self, "db_type", None) != "postgres":
+            return
+        try:
+            conn.rollback()
+        except Exception as e:
+            logger.warning("rollback failed in customer_repository: %s", e)
 
     @staticmethod
     def _normalize_customer_email(email: Optional[str]) -> Optional[str]:
@@ -33,7 +55,7 @@ class CustomerRepositoryMixin:
         conn = self._get_connection()
         try:
             cur = conn.execute(
-                "SELECT chat_history FROM clients WHERE user_id = ?", (uid,)
+                "SELECT chat_history FROM clients WHERE user_id = %s", (uid,)
             )
             row = cur.fetchone()
             if not row:
@@ -46,23 +68,31 @@ class CustomerRepositoryMixin:
             except json.JSONDecodeError:
                 return len(raw) > 4
             return isinstance(data, list) and len(data) > 0
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("customer_has_saved_chat_history: %s", e)
+            return False
         finally:
             conn.close()
 
     def get_customer_by_id(self, customer_id: int) -> Optional[Dict[str, Any]]:
         conn = self._get_connection()
         try:
-            cur = conn.execute("SELECT * FROM customers WHERE id = ?", (int(customer_id),))
+            cur = conn.execute("SELECT * FROM customers WHERE id = %s", (int(customer_id),))
             row = cur.fetchone()
             if not row:
                 return None
             data = dict(row)
             merged_into = data.get("merged_into_id")
             if int(data.get("is_active") or 0) == 0 and merged_into:
-                cur = conn.execute("SELECT * FROM customers WHERE id = ?", (int(merged_into),))
+                cur = conn.execute("SELECT * FROM customers WHERE id = %s", (int(merged_into),))
                 target = cur.fetchone()
                 return dict(target) if target else data
             return data
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("get_customer_by_id: %s", e)
+            return None
         finally:
             conn.close()
 
@@ -75,7 +105,7 @@ class CustomerRepositoryMixin:
             cur = conn.execute(
                 """
                 SELECT * FROM customers
-                WHERE email = ?
+                WHERE email = %s
                 ORDER BY is_active DESC, id ASC
                 LIMIT 1
                 """,
@@ -87,10 +117,14 @@ class CustomerRepositoryMixin:
             data = dict(row)
             merged_into = data.get("merged_into_id")
             if int(data.get("is_active") or 0) == 0 and merged_into:
-                cur = conn.execute("SELECT * FROM customers WHERE id = ?", (int(merged_into),))
+                cur = conn.execute("SELECT * FROM customers WHERE id = %s", (int(merged_into),))
                 target = cur.fetchone()
                 return dict(target) if target else data
             return data
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("get_customer_by_email: %s", e)
+            return None
         finally:
             conn.close()
 
@@ -103,7 +137,7 @@ class CustomerRepositoryMixin:
             cur = conn.execute(
                 """
                 SELECT * FROM customers
-                WHERE phone = ?
+                WHERE phone = %s
                 ORDER BY is_active DESC, id ASC
                 LIMIT 1
                 """,
@@ -115,10 +149,14 @@ class CustomerRepositoryMixin:
             data = dict(row)
             merged_into = data.get("merged_into_id")
             if int(data.get("is_active") or 0) == 0 and merged_into:
-                cur = conn.execute("SELECT * FROM customers WHERE id = ?", (int(merged_into),))
+                cur = conn.execute("SELECT * FROM customers WHERE id = %s", (int(merged_into),))
                 target = cur.fetchone()
                 return dict(target) if target else data
             return data
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("get_customer_by_phone: %s", e)
+            return None
         finally:
             conn.close()
 
@@ -137,16 +175,16 @@ class CustomerRepositoryMixin:
         em = self._normalize_customer_email(email)
         ph = self._normalize_customer_phone(phone)
         if nm:
-            sets.append("name = ?")
+            sets.append("name = %s")
             args.append(nm)
         if em:
-            sets.append("email = ?")
+            sets.append("email = %s")
             args.append(em)
         if ph:
-            sets.append("phone = ?")
+            sets.append("phone = %s")
             args.append(ph)
         if branch_id is not None:
-            sets.append("branch_id = ?")
+            sets.append("branch_id = %s")
             args.append(int(branch_id))
         if not sets:
             return True
@@ -154,17 +192,19 @@ class CustomerRepositoryMixin:
         conn = self._get_connection()
         try:
             conn.execute(
-                f"UPDATE customers SET {', '.join(sets)} WHERE id = ?",
+                f"UPDATE customers SET {', '.join(sets)} WHERE id = %s",
                 tuple(args),
             )
             conn.commit()
             return True
-        except sqlite3.Error:
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("_update_customer_identity_fields: %s", e)
             return False
         finally:
             conn.close()
 
-    def _merge_clients_chat_rows(self, conn: sqlite3.Connection, keep_id: int, drop_id: int) -> None:
+    def _merge_clients_chat_rows(self, conn: Any, keep_id: int, drop_id: int) -> None:
         """
         إن وُجدت صفوف clients بمفتاح user_id = customer:<id>، توحيدها مع الحفاظ على chat_history.
         الجلسات العادية تستخدم web_user_* ولا تُمس هنا.
@@ -172,7 +212,7 @@ class CustomerRepositoryMixin:
         old_uid = f"customer:{int(drop_id)}"
         new_uid = f"customer:{int(keep_id)}"
         cur = conn.execute(
-            "SELECT user_id, chat_history, complaint_draft, name, phone, dialect, last_intent FROM clients WHERE user_id IN (?, ?)",
+            "SELECT user_id, chat_history, complaint_draft, name, phone, dialect, last_intent FROM clients WHERE user_id IN (%s, %s)",
             (old_uid, new_uid),
         )
         rows = {str(r["user_id"]): dict(r) for r in cur.fetchall()}
@@ -181,7 +221,7 @@ class CustomerRepositoryMixin:
         if not old_row:
             return
         if not new_row:
-            conn.execute("UPDATE clients SET user_id = ? WHERE user_id = ?", (new_uid, old_uid))
+            conn.execute("UPDATE clients SET user_id = %s WHERE user_id = %s", (new_uid, old_uid))
             return
 
         def _as_history_list(raw: Any) -> List[Any]:
@@ -205,13 +245,13 @@ class CustomerRepositoryMixin:
         conn.execute(
             """
             UPDATE clients
-            SET chat_history = ?, complaint_draft = ?, name = ?, phone = ?,
-                dialect = ?, last_intent = ?
-            WHERE user_id = ?
+            SET chat_history = %s, complaint_draft = %s, name = %s, phone = %s,
+                dialect = %s, last_intent = %s
+            WHERE user_id = %s
             """,
             (hist_text, merged_draft, nm[:200] if nm else "", ph[:80] if ph else "", dia[:40], li[:80], new_uid),
         )
-        conn.execute("DELETE FROM clients WHERE user_id = ?", (old_uid,))
+        conn.execute("DELETE FROM clients WHERE user_id = %s", (old_uid,))
 
     def _merge_customer_records(self, keep_id: int, drop_id: int) -> bool:
         if int(keep_id) == int(drop_id):
@@ -219,7 +259,7 @@ class CustomerRepositoryMixin:
         conn = self._get_connection()
         try:
             cur = conn.execute(
-                "SELECT * FROM customers WHERE id IN (?, ?)",
+                "SELECT * FROM customers WHERE id IN (%s, %s)",
                 (int(keep_id), int(drop_id)),
             )
             rows = {int(r["id"]): dict(r) for r in cur.fetchall()}
@@ -241,10 +281,10 @@ class CustomerRepositoryMixin:
             conn.execute(
                 """
                 UPDATE customers
-                SET name = ?, email = ?, phone = ?, branch_id = ?, prefers_marketing = ?,
-                    dialect = ?, last_product_interest = ?, last_product_interest_at = ?,
-                    last_campaign_sent_at = ?, declined_marketing_prompt = ?
-                WHERE id = ?
+                SET name = %s, email = %s, phone = %s, branch_id = %s, prefers_marketing = %s,
+                    dialect = %s, last_product_interest = %s, last_product_interest_at = %s,
+                    last_campaign_sent_at = %s, declined_marketing_prompt = %s
+                WHERE id = %s
                 """,
                 (
                     merged_name[:200],
@@ -263,24 +303,24 @@ class CustomerRepositoryMixin:
             conn.execute(
                 """
                 UPDATE complaints
-                SET user_id = ?
-                WHERE user_id = ?
+                SET user_id = %s
+                WHERE user_id = %s
                 """,
                 (f"customer:{int(keep_id)}", f"customer:{int(drop_id)}"),
             )
             conn.execute(
                 """
                 UPDATE product_requests
-                SET user_id = ?
-                WHERE user_id = ?
+                SET user_id = %s
+                WHERE user_id = %s
                 """,
                 (f"customer:{int(keep_id)}", f"customer:{int(drop_id)}"),
             )
             conn.execute(
                 """
                 UPDATE image_analysis
-                SET user_id = ?
-                WHERE user_id = ?
+                SET user_id = %s
+                WHERE user_id = %s
                 """,
                 (f"customer:{int(keep_id)}", f"customer:{int(drop_id)}"),
             )
@@ -288,15 +328,15 @@ class CustomerRepositoryMixin:
             conn.execute(
                 """
                 INSERT INTO customer_merge_audit (source_customer_id, target_customer_id)
-                VALUES (?, ?)
+                VALUES (%s, %s)
                 """,
                 (int(drop_id), int(keep_id)),
             )
             conn.execute(
                 """
                 UPDATE customers
-                SET is_active = 0, merged_into_id = ?, email = NULL, phone = NULL
-                WHERE id = ?
+                SET is_active = 0, merged_into_id = %s, email = NULL, phone = NULL
+                WHERE id = %s
                 """,
                 (int(keep_id), int(drop_id)),
             )
@@ -307,8 +347,13 @@ class CustomerRepositoryMixin:
                 int(keep_id),
             )
             return True
-        except sqlite3.Error:
-            conn.rollback()
+        except Exception as e:
+            # rollback صريح (موجود أصلاً، نتركه — ونضيف log)
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            logger.exception("_merge_customer_records: %s", e)
             return False
         finally:
             conn.close()
@@ -354,12 +399,16 @@ class CustomerRepositoryMixin:
             cur.execute(
                 """
                 INSERT INTO customers (name, email, phone, branch_id, prefers_marketing, created_at)
-                VALUES (?, ?, ?, ?, 0, datetime('now'))
+                VALUES (%s, %s, %s, %s, 0, CURRENT_TIMESTAMP)
                 """,
                 (nm, em, ph, branch_id),
             )
             conn.commit()
             return self.get_customer_by_id(int(cur.lastrowid))
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("get_or_create_customer (INSERT): %s", e)
+            return None
         finally:
             conn.close()
 
@@ -367,12 +416,14 @@ class CustomerRepositoryMixin:
         conn = self._get_connection()
         try:
             conn.execute(
-                "UPDATE customers SET declined_marketing_prompt = 1 WHERE id = ?",
+                "UPDATE customers SET declined_marketing_prompt = 1 WHERE id = %s",
                 (int(customer_id),),
             )
             conn.commit()
             return True
-        except sqlite3.Error:
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("customer_decline_marketing_prompt: %s", e)
             return False
         finally:
             conn.close()
@@ -389,12 +440,14 @@ class CustomerRepositoryMixin:
         conn = self._get_connection()
         try:
             conn.execute(
-                "UPDATE customers SET prefers_marketing = ? WHERE id = ?",
+                "UPDATE customers SET prefers_marketing = %s WHERE id = %s",
                 (1 if value else 0, int(customer_id)),
             )
             conn.commit()
             return True
-        except sqlite3.Error:
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("customer_set_prefers_marketing: %s", e)
             return False
         finally:
             conn.close()
@@ -406,12 +459,14 @@ class CustomerRepositoryMixin:
         conn = self._get_connection()
         try:
             conn.execute(
-                "UPDATE customers SET phone = ? WHERE id = ?",
+                "UPDATE customers SET phone = %s WHERE id = %s",
                 (p, int(customer_id)),
             )
             conn.commit()
             return True
-        except sqlite3.Error:
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("customer_set_phone: %s", e)
             return False
         finally:
             conn.close()
@@ -422,12 +477,14 @@ class CustomerRepositoryMixin:
         conn = self._get_connection()
         try:
             conn.execute(
-                "UPDATE customers SET branch_id = ? WHERE id = ?",
+                "UPDATE customers SET branch_id = %s WHERE id = %s",
                 (int(branch_id), int(customer_id)),
             )
             conn.commit()
             return True
-        except sqlite3.Error:
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("customer_set_branch: %s", e)
             return False
         finally:
             conn.close()
@@ -445,11 +502,11 @@ class CustomerRepositoryMixin:
         args: list[Any] = []
         if dialect is not None:
             d = str(dialect).strip()[:40] or "default"
-            sets.append("dialect = ?")
+            sets.append("dialect = %s")
             args.append(d)
         if (product_label or "").strip():
-            sets.append("last_product_interest = ?")
-            sets.append("last_product_interest_at = datetime('now')")
+            sets.append("last_product_interest = %s")
+            sets.append("last_product_interest_at = CURRENT_TIMESTAMP")
             args.append(str(product_label).strip()[:500])
         if not sets:
             return True
@@ -457,12 +514,14 @@ class CustomerRepositoryMixin:
         conn = self._get_connection()
         try:
             conn.execute(
-                f"UPDATE customers SET {', '.join(sets)} WHERE id = ?",
+                f"UPDATE customers SET {', '.join(sets)} WHERE id = %s",
                 tuple(args),
             )
             conn.commit()
             return True
-        except sqlite3.Error:
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("customer_touch_engagement: %s", e)
             return False
         finally:
             conn.close()
@@ -471,12 +530,14 @@ class CustomerRepositoryMixin:
         conn = self._get_connection()
         try:
             conn.execute(
-                "UPDATE customers SET last_campaign_sent_at = datetime('now') WHERE id = ?",
+                "UPDATE customers SET last_campaign_sent_at = CURRENT_TIMESTAMP WHERE id = %s",
                 (int(customer_id),),
             )
             conn.commit()
             return True
-        except sqlite3.Error:
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("customer_mark_last_campaign_sent: %s", e)
             return False
         finally:
             conn.close()

@@ -17,6 +17,11 @@ SUCCESS_REGISTERED = (
     "وراح يتم متابعتها بإذن الله."
 )
 
+# تصعيد فوري عند نبرة شكوى واضحة — قبل إكمال خطوات الجمع
+SUPERVISOR_HANDOFF_MESSAGE = (
+    "آسف لسماع ذلك، تم رفع شكواك للإدارة وسيتواصل معك المختص فوراً."
+)
+
 
 def random_opening_apology() -> str:
     return random.choice(APOLOGY_VARIANTS)

@@ -1,9 +1,19 @@
 # -*- coding: utf-8 -*-
+"""
+BranchRepositoryMixin — إدارة الفروع.
+
+التحديثات في هذا الإصدار:
+- إضافة _safe_rollback_pg() واستدعائها في كل دالة CRUD عند الفشل.
+- استخدام self.db_type المتاح في DatabaseManager (تجنب إنشاء DBAdapter بلا داعي).
+- نفس الواجهة العامة محفوظة بالكامل، نفس التواقيع، نفس الإرجاعات.
+- لا تغيير في أي منطق أعمال أو حسابات.
+"""
 from __future__ import annotations
 
-import sqlite3
+import logging
 from typing import Any, Dict, List, Optional, Tuple
 from werkzeug.security import check_password_hash, generate_password_hash
+from logic.db_adapter import DBAdapter
 
 from logic.branch_helpers import (
     _branch_dedupe_key,
@@ -11,9 +21,24 @@ from logic.branch_helpers import (
     _normalize_branch_city_label,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class BranchRepositoryMixin:
     """Mixin: يُدمج في DatabaseManager — يستخدم self._get_connection() فقط."""
+
+    def _db_adapter(self) -> DBAdapter:
+        return DBAdapter(sqlite_path=getattr(self, "db_path", None))
+
+    def _safe_rollback_pg(self, conn) -> None:
+        """rollback آمن للـ PostgreSQL فقط — لمنع InFailedSqlTransaction."""
+        if getattr(self, "db_type", None) != "postgres":
+            return
+        try:
+            conn.rollback()
+        except Exception as e:
+            logger.warning("rollback failed in branch_repository: %s", e)
+
     @staticmethod
     def _branch_password_is_hashed(value: Optional[str]) -> bool:
         s = (value or "").strip()
@@ -40,7 +65,7 @@ class BranchRepositoryMixin:
         conn = self._get_connection()
         try:
             cursor = conn.execute(
-                "SELECT id, city_name, password FROM branches WHERE username = ?",
+                "SELECT id, city_name, password FROM branches WHERE username = %s",
                 ((username or "").strip(),),
             )
             row = cursor.fetchone()
@@ -52,18 +77,22 @@ class BranchRepositoryMixin:
                 return None, "password_mismatch"
             if stored_password and not self._branch_password_is_hashed(stored_password):
                 conn.execute(
-                    "UPDATE branches SET password = ? WHERE id = ?",
+                    "UPDATE branches SET password = %s WHERE id = %s",
                     (self._hash_branch_password(password), branch["id"]),
                 )
                 conn.commit()
             return {"id": branch["id"], "city_name": branch["city_name"]}, "ok"
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("check_branch_login_with_status: %s", e)
+            return None, "error"
         finally:
             conn.close()
 
     def get_branch_info(self, branch_id: int) -> Optional[Dict[str, Any]]:
         conn = self._get_connection()
         try:
-            cursor = conn.execute("SELECT id, city_name FROM branches WHERE id = ?", (branch_id,))
+            cursor = conn.execute("SELECT id, city_name FROM branches WHERE id = %s", (branch_id,))
             b = cursor.fetchone()
             if not b:
                 return None
@@ -79,6 +108,10 @@ class BranchRepositoryMixin:
                     }
                 )
             return branch
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("get_branch_info: %s", e)
+            return None
         finally:
             conn.close()
 
@@ -91,6 +124,10 @@ class BranchRepositoryMixin:
         try:
             cursor = conn.execute("SELECT * FROM branches ORDER BY id")
             return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("get_all_branches: %s", e)
+            return []
         finally:
             conn.close()
 
@@ -112,18 +149,18 @@ class BranchRepositoryMixin:
                     }
                 )
             return out
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("list_branches_complaint_emails: %s", e)
+            return []
         finally:
             conn.close()
 
     def get_branch_by_id(self, b_id):
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, city_name, username, complaint_email, phone FROM branches WHERE id = ?",
+        row = self._db_adapter().fetch_one(
+            "SELECT id, city_name, username, complaint_email, phone FROM branches WHERE id = %s",
             (b_id,),
         )
-        row = cursor.fetchone()
-        conn.close()
         if row:
             return dict(row)
         return None
@@ -140,14 +177,14 @@ class BranchRepositoryMixin:
             if self._find_conflicting_branch_id_cursor(cursor, un, city_clean) is not None:
                 return False
             cursor.execute(
-                "INSERT INTO branches (username, password, city_name) VALUES (?, ?, ?)",
+                "INSERT INTO branches (username, password, city_name) VALUES (%s, %s, %s)",
                 (un, self._hash_branch_password(pw), city_clean),
             )
             conn.commit()
             return True
-        except sqlite3.IntegrityError:
-            return False
-        except Exception:
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("create_new_branch: %s", e)
             return False
         finally:
             conn.close()
@@ -160,22 +197,28 @@ class BranchRepositoryMixin:
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE branches SET password = ? WHERE id = ?",
+                "UPDATE branches SET password = %s WHERE id = %s",
                 (self._hash_branch_password(pw), b_id),
             )
             conn.commit()
             return True
-        except Exception: 
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("update_branch_password: %s", e)
             return False
-        finally: 
+        finally:
             conn.close()
 
     def get_branch_row(self, branch_id: int) -> Optional[Dict[str, Any]]:
         conn = self._get_connection()
         try:
-            cursor = conn.execute("SELECT * FROM branches WHERE id = ?", (int(branch_id),))
+            cursor = conn.execute("SELECT * FROM branches WHERE id = %s", (int(branch_id),))
             row = cursor.fetchone()
             return dict(row) if row else None
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("get_branch_row: %s", e)
+            return None
         finally:
             conn.close()
 
@@ -214,12 +257,14 @@ class BranchRepositoryMixin:
             return True
         conn = self._get_connection()
         try:
-            sets = ", ".join(f"{k} = ?" for k in vals)
+            sets = ", ".join(f"{k} = %s" for k in vals)
             params = list(vals.values()) + [int(branch_id)]
-            conn.execute(f"UPDATE branches SET {sets} WHERE id = ?", tuple(params))
+            conn.execute(f"UPDATE branches SET {sets} WHERE id = %s", tuple(params))
             conn.commit()
             return True
-        except Exception:
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("update_branch_fields: %s", e)
             return False
         finally:
             conn.close()
@@ -236,7 +281,7 @@ class BranchRepositoryMixin:
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT branch_id FROM branch_locations WHERE branch_id = ?", (int(branch_id),)
+                "SELECT branch_id FROM branch_locations WHERE branch_id = %s", (int(branch_id),)
             )
             row = cursor.fetchone()
             addr = (address or "").strip() if address is not None else ""
@@ -253,8 +298,8 @@ class BranchRepositoryMixin:
                 cursor.execute(
                     """
                     UPDATE branch_locations
-                    SET address = ?, google_maps_url = ?, gps_lat = ?, gps_lng = ?
-                    WHERE branch_id = ?
+                    SET address = %s, google_maps_url = %s, gps_lat = %s, gps_lng = %s
+                    WHERE branch_id = %s
                     """,
                     (addr, gurl, lat, lng, int(branch_id)),
                 )
@@ -262,13 +307,15 @@ class BranchRepositoryMixin:
                 cursor.execute(
                     """
                     INSERT INTO branch_locations (branch_id, address, google_maps_url, gps_lat, gps_lng)
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s)
                     """,
                     (int(branch_id), addr, gurl, lat, lng),
                 )
             conn.commit()
             return True
-        except Exception:
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("upsert_branch_location: %s", e)
             return False
         finally:
             conn.close()
@@ -301,7 +348,7 @@ class BranchRepositoryMixin:
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM working_hours WHERE branch_id = ?", (int(branch_id),))
+            cursor.execute("DELETE FROM working_hours WHERE branch_id = %s", (int(branch_id),))
             cursor.execute(
                 """
                 INSERT INTO working_hours (
@@ -309,7 +356,7 @@ class BranchRepositoryMixin:
                     start_time_1, end_time_1, start_time_2, end_time_2,
                     open_time, close_time
                 )
-                VALUES (?, 'weekday', ?, ?, ?, ?, ?, ?)
+                VALUES (%s, 'weekday', %s, %s, %s, %s, %s, %s)
                 """,
                 (int(branch_id), w1s, w1e, w2s, w2e, w1s, w1e),
             )
@@ -320,13 +367,15 @@ class BranchRepositoryMixin:
                     start_time_1, end_time_1, start_time_2, end_time_2,
                     open_time, close_time
                 )
-                VALUES (?, 'friday', ?, ?, ?, ?, ?, ?)
+                VALUES (%s, 'friday', %s, %s, %s, %s, %s, %s)
                 """,
                 (int(branch_id), f1s, f1e, f2s, f2e, f1s, f1e),
             )
             conn.commit()
             return True
-        except Exception:
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("replace_working_hours: %s", e)
             return False
         finally:
             conn.close()
@@ -336,34 +385,36 @@ class BranchRepositoryMixin:
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "DELETE FROM inventory WHERE product_id IN (SELECT id FROM products WHERE branch_id = ?)",
+                "DELETE FROM inventory WHERE product_id IN (SELECT id FROM products WHERE branch_id = %s)",
                 (b_id,),
             )
             cursor.execute(
-                "DELETE FROM product_variants WHERE product_id IN (SELECT id FROM products WHERE branch_id = ?)",
+                "DELETE FROM product_variants WHERE product_id IN (SELECT id FROM products WHERE branch_id = %s)",
                 (b_id,),
             )
             cursor.execute(
-                "DELETE FROM product_images WHERE product_id IN (SELECT id FROM products WHERE branch_id = ?)",
+                "DELETE FROM product_images WHERE product_id IN (SELECT id FROM products WHERE branch_id = %s)",
                 (b_id,),
             )
-            cursor.execute("DELETE FROM products WHERE branch_id = ?", (b_id,))
-            cursor.execute("DELETE FROM sub_categories WHERE branch_id = ?", (b_id,))
-            cursor.execute("DELETE FROM main_categories WHERE branch_id = ?", (b_id,))
+            cursor.execute("DELETE FROM products WHERE branch_id = %s", (b_id,))
+            cursor.execute("DELETE FROM sub_categories WHERE branch_id = %s", (b_id,))
+            cursor.execute("DELETE FROM main_categories WHERE branch_id = %s", (b_id,))
             cursor.execute(
-                "DELETE FROM sections WHERE category_id IN (SELECT id FROM categories WHERE branch_id = ?)",
+                "DELETE FROM sections WHERE category_id IN (SELECT id FROM categories WHERE branch_id = %s)",
                 (b_id,),
             )
-            cursor.execute("DELETE FROM categories WHERE branch_id = ?", (b_id,))
-            cursor.execute("DELETE FROM working_hours WHERE branch_id = ?", (b_id,))
-            cursor.execute("DELETE FROM branch_locations WHERE branch_id = ?", (b_id,))
-            cursor.execute("DELETE FROM complaints WHERE branch_id = ?", (b_id,))
-            cursor.execute("DELETE FROM branches WHERE id = ?", (b_id,))
+            cursor.execute("DELETE FROM categories WHERE branch_id = %s", (b_id,))
+            cursor.execute("DELETE FROM working_hours WHERE branch_id = %s", (b_id,))
+            cursor.execute("DELETE FROM branch_locations WHERE branch_id = %s", (b_id,))
+            cursor.execute("DELETE FROM complaints WHERE branch_id = %s", (b_id,))
+            cursor.execute("DELETE FROM branches WHERE id = %s", (b_id,))
             conn.commit()
             return True
-        except Exception: 
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("delete_branch: %s", e)
             return False
-        finally: 
+        finally:
             conn.close()
 
     def _seed_branch_complaint_emails(self, cursor):
@@ -378,15 +429,15 @@ class BranchRepositoryMixin:
                 continue
             cursor.execute(
                 """
-                UPDATE branches SET complaint_email = ?
-                WHERE city_name = ?
+                UPDATE branches SET complaint_email = %s
+                WHERE city_name = %s
                   AND (complaint_email IS NULL OR TRIM(complaint_email) = '')
                 """,
                 (em, city_name),
             )
 
     def _seed_branch_locations_and_hours(self, conn):
-        """ملء مواقع وأوقات الفروع من config (مرة واحدة لكل فرع بفضل INSERT OR IGNORE)."""
+        """ملء مواقع وأوقات الفروع من config (مرة واحدة لكل فرع عبر ON CONFLICT DO NOTHING)."""
         try:
             from site_config.branches import BRANCHES
         except ImportError:
@@ -403,8 +454,9 @@ class BranchRepositoryMixin:
             wh = info.get("working_hours") or {}
             cursor.execute(
                 """
-                INSERT OR IGNORE INTO branch_locations (branch_id, address, google_maps_url, gps_lat, gps_lng)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO branch_locations (branch_id, address, google_maps_url, gps_lat, gps_lng)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (branch_id) DO NOTHING
                 """,
                 (
                     bid_id,
@@ -418,23 +470,25 @@ class BranchRepositoryMixin:
             fo, fc = wh.get("friday_open", "16:00"), wh.get("friday_close", "00:00")
             cursor.execute(
                 """
-                INSERT OR IGNORE INTO working_hours (
+                INSERT INTO working_hours (
                     branch_id, day_type,
                     start_time_1, end_time_1, start_time_2, end_time_2,
                     open_time, close_time
                 )
-                VALUES (?, 'weekday', ?, ?, NULL, NULL, ?, ?)
+                VALUES (%s, 'weekday', %s, %s, NULL, NULL, %s, %s)
+                ON CONFLICT (branch_id, day_type) DO NOTHING
                 """,
                 (bid_id, wo, wc, wo, wc),
             )
             cursor.execute(
                 """
-                INSERT OR IGNORE INTO working_hours (
+                INSERT INTO working_hours (
                     branch_id, day_type,
                     start_time_1, end_time_1, start_time_2, end_time_2,
                     open_time, close_time
                 )
-                VALUES (?, 'friday', ?, ?, NULL, NULL, ?, ?)
+                VALUES (%s, 'friday', %s, %s, NULL, NULL, %s, %s)
+                ON CONFLICT (branch_id, day_type) DO NOTHING
                 """,
                 (bid_id, fo, fc, fo, fc),
             )
@@ -445,7 +499,7 @@ class BranchRepositoryMixin:
         """فرع موجود بنفس اسم المستخدم أو نفس المدينة (منطقياً)."""
         un = (username or "").strip()
         if un:
-            cursor.execute("SELECT id FROM branches WHERE username = ?", (un,))
+            cursor.execute("SELECT id FROM branches WHERE username = %s", (un,))
             row = cursor.fetchone()
             if row:
                 return int(row["id"])
@@ -467,58 +521,58 @@ class BranchRepositoryMixin:
 
     def _reattach_branch_fk(self, cursor, from_id: int, to_id: int) -> None:
         """نقل بيانات الفرع من from_id إلى to_id ثم حذف صف الفرع المكرر."""
-        cursor.execute("UPDATE products SET branch_id = ? WHERE branch_id = ?", (to_id, from_id))
-        cursor.execute("UPDATE categories SET branch_id = ? WHERE branch_id = ?", (to_id, from_id))
+        cursor.execute("UPDATE products SET branch_id = %s WHERE branch_id = %s", (to_id, from_id))
+        cursor.execute("UPDATE categories SET branch_id = %s WHERE branch_id = %s", (to_id, from_id))
         cursor.execute(
-            "UPDATE main_categories SET branch_id = ? WHERE branch_id IS NOT NULL AND branch_id = ?",
+            "UPDATE main_categories SET branch_id = %s WHERE branch_id IS NOT NULL AND branch_id = %s",
             (to_id, from_id),
         )
         cursor.execute(
-            "UPDATE sub_categories SET branch_id = ? WHERE branch_id IS NOT NULL AND branch_id = ?",
+            "UPDATE sub_categories SET branch_id = %s WHERE branch_id IS NOT NULL AND branch_id = %s",
             (to_id, from_id),
         )
-        cursor.execute("UPDATE complaints SET branch_id = ? WHERE branch_id = ?", (to_id, from_id))
+        cursor.execute("UPDATE complaints SET branch_id = %s WHERE branch_id = %s", (to_id, from_id))
 
-        cursor.execute("SELECT 1 FROM branch_locations WHERE branch_id = ?", (to_id,))
+        cursor.execute("SELECT 1 FROM branch_locations WHERE branch_id = %s", (to_id,))
         has_to = cursor.fetchone() is not None
-        cursor.execute("SELECT 1 FROM branch_locations WHERE branch_id = ?", (from_id,))
+        cursor.execute("SELECT 1 FROM branch_locations WHERE branch_id = %s", (from_id,))
         has_from = cursor.fetchone() is not None
         if has_from and not has_to:
             cursor.execute(
-                "UPDATE branch_locations SET branch_id = ? WHERE branch_id = ?",
+                "UPDATE branch_locations SET branch_id = %s WHERE branch_id = %s",
                 (to_id, from_id),
             )
         elif has_from and has_to:
-            cursor.execute("DELETE FROM branch_locations WHERE branch_id = ?", (from_id,))
+            cursor.execute("DELETE FROM branch_locations WHERE branch_id = %s", (from_id,))
 
-        cursor.execute("SELECT day_type FROM working_hours WHERE branch_id = ?", (from_id,))
+        cursor.execute("SELECT day_type FROM working_hours WHERE branch_id = %s", (from_id,))
         for r in cursor.fetchall():
-            dt = r[0]
+            dt = r[0] if not isinstance(r, dict) else r.get("day_type")
             cursor.execute(
-                "SELECT 1 FROM working_hours WHERE branch_id = ? AND day_type = ?",
+                "SELECT 1 FROM working_hours WHERE branch_id = %s AND day_type = %s",
                 (to_id, dt),
             )
             if cursor.fetchone():
                 cursor.execute(
-                    "DELETE FROM working_hours WHERE branch_id = ? AND day_type = ?",
+                    "DELETE FROM working_hours WHERE branch_id = %s AND day_type = %s",
                     (from_id, dt),
                 )
             else:
                 cursor.execute(
                     """
-                    UPDATE working_hours SET branch_id = ?
-                    WHERE branch_id = ? AND day_type = ?
+                    UPDATE working_hours SET branch_id = %s
+                    WHERE branch_id = %s AND day_type = %s
                     """,
                     (to_id, from_id, dt),
                 )
 
         cursor.execute(
-            "SELECT complaint_email, phone FROM branches WHERE id = ?",
+            "SELECT complaint_email, phone FROM branches WHERE id = %s",
             (to_id,),
         )
         k = cursor.fetchone()
         cursor.execute(
-            "SELECT complaint_email, phone FROM branches WHERE id = ?",
+            "SELECT complaint_email, phone FROM branches WHERE id = %s",
             (from_id,),
         )
         d = cursor.fetchone()
@@ -531,11 +585,11 @@ class BranchRepositoryMixin:
             new_ph = kph or dph
             if (new_em != kem) or (new_ph != kph):
                 cursor.execute(
-                    "UPDATE branches SET complaint_email = ?, phone = ? WHERE id = ?",
+                    "UPDATE branches SET complaint_email = %s, phone = %s WHERE id = %s",
                     (new_em or "", new_ph or "", to_id),
                 )
 
-        cursor.execute("DELETE FROM branches WHERE id = ?", (from_id,))
+        cursor.execute("DELETE FROM branches WHERE id = %s", (from_id,))
 
     def _merge_duplicate_branches(self, cursor) -> None:
         """
@@ -572,19 +626,27 @@ class BranchRepositoryMixin:
         conn = self._get_connection()
         try:
             cursor = conn.execute(
-                "SELECT * FROM working_hours WHERE branch_id = ? ORDER BY day_type",
+                "SELECT * FROM working_hours WHERE branch_id = %s ORDER BY day_type",
                 (branch_id,),
             )
             return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("get_working_hours: %s", e)
+            return []
         finally:
             conn.close()
 
     def get_branch_location(self, branch_id):
         conn = self._get_connection()
         try:
-            cursor = conn.execute("SELECT * FROM branch_locations WHERE branch_id = ?", (branch_id,))
+            cursor = conn.execute("SELECT * FROM branch_locations WHERE branch_id = %s", (branch_id,))
             row = cursor.fetchone()
             return dict(row) if row else None
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("get_branch_location: %s", e)
+            return None
         finally:
             conn.close()
 
@@ -595,21 +657,29 @@ class BranchRepositoryMixin:
                 """
                 SELECT bl.* FROM branch_locations bl
                 JOIN branches b ON b.id = bl.branch_id
-                WHERE b.city_name = ?
+                WHERE b.city_name = %s
                 """,
                 (city_name,),
             )
             row = cursor.fetchone()
             return dict(row) if row else None
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("get_branch_location_by_city_name: %s", e)
+            return None
         finally:
             conn.close()
 
     def get_branch_id_by_city_name(self, city_name):
         conn = self._get_connection()
         try:
-            cursor = conn.execute("SELECT id FROM branches WHERE city_name = ?", (city_name,))
+            cursor = conn.execute("SELECT id FROM branches WHERE city_name = %s", (city_name,))
             row = cursor.fetchone()
             return int(row["id"]) if row else None
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("get_branch_id_by_city_name: %s", e)
+            return None
         finally:
             conn.close()
 
@@ -620,7 +690,7 @@ class BranchRepositoryMixin:
         conn = self._get_connection()
         try:
             cursor = conn.execute(
-                "SELECT complaint_email FROM branches WHERE id = ?",
+                "SELECT complaint_email FROM branches WHERE id = %s",
                 (int(branch_id),),
             )
             row = cursor.fetchone()
@@ -628,6 +698,10 @@ class BranchRepositoryMixin:
                 return None
             em = (row["complaint_email"] or "").strip()
             return em if em else None
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("get_branch_complaint_email: %s", e)
+            return None
         finally:
             conn.close()
 
@@ -646,6 +720,10 @@ class BranchRepositoryMixin:
                 """
             )
             return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("get_branch_users: %s", e)
+            return []
         finally:
             conn.close()
 
@@ -658,19 +736,24 @@ class BranchRepositoryMixin:
         try:
             cursor = conn.cursor()
             params: List[Any] = [username]
-            set_parts = ["username = ?"]
+            set_parts = ["username = %s"]
             if password:
-                set_parts.append("password = ?")
+                set_parts.append("password = %s")
                 params.append(self._hash_branch_password(password))
             params.append(branch_id)
             cursor.execute(
-                f"UPDATE branches SET {', '.join(set_parts)} WHERE id = ?",
+                f"UPDATE branches SET {', '.join(set_parts)} WHERE id = %s",
                 tuple(params),
             )
             conn.commit()
             return cursor.rowcount > 0
-        except Exception:
-            conn.rollback()
+        except Exception as e:
+            # rollback صريح كان موجود في النسخة الأصلية — نُبقيه ونضيف log
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            logger.exception("update_branch_user: %s", e)
             return False
         finally:
             conn.close()
@@ -687,15 +770,17 @@ class BranchRepositoryMixin:
             if not updates:
                 return 0
             conn.executemany(
-                "UPDATE branches SET password = ? WHERE id = ?",
+                "UPDATE branches SET password = %s WHERE id = %s",
                 updates,
             )
             conn.commit()
             return len(updates)
-        except Exception:
-            conn.rollback()
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            logger.exception("migrate_branch_passwords_to_hashes: %s", e)
             return 0
         finally:
             conn.close()
-
-

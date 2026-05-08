@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from datetime import timedelta
 from pathlib import Path
 
@@ -45,9 +46,72 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 # ——— قاعدة البيانات ———
+# الأولوية:
+# 1) إن وُجد DB_TYPE في البيئة — يُستخدم بعد تطبيعه (sqlite | postgres).
+# 2) وإلا إن وُجد DATABASE_URL بصيغة PostgreSQL — يُفترض postgres (مناسب لـ Render وغيره).
+# 3) وإلا — sqlite محلي تحت data/ (للتطوير فقط؛ الإنتاج يجب أن يستخدم Postgres مُداراً).
 DATA_DIR = BASE_DIR / "data"
 DATABASE_FILENAME = os.getenv("DATABASE_FILENAME", "family_system.db")
 DATABASE_PATH = str(DATA_DIR / DATABASE_FILENAME)
+
+
+def _normalize_postgres_dsn(url: str) -> str:
+    """يحوّل postgres:// إلى postgresql:// لتوافق أفضل مع psycopg2."""
+    u = (url or "").strip()
+    if u.startswith("postgres://"):
+        return "postgresql://" + u[len("postgres://") :]
+    return u
+
+
+# الاتصال بـ PostgreSQL: DATABASE_URL — مثال: postgresql://user:password@host:5432/family
+DATABASE_URL = _normalize_postgres_dsn(os.getenv("DATABASE_URL") or "")
+
+
+def _normalize_db_type(raw: str | None) -> str:
+    """sqlite | postgres — قيمة DB_TYPE بعد التطبيع."""
+    v = (raw or "sqlite").strip().lower()
+    if v in ("postgres", "postgresql", "psycopg2", "pg"):
+        return "postgres"
+    if v in ("sqlite", "sqlite3", ""):
+        return "sqlite"
+    raise RuntimeError(
+        f"Unsupported DB_TYPE={raw!r}. Use 'sqlite' or 'postgres' (or DATABASE_URL-only setups)."
+    )
+
+
+_db_type_raw = os.getenv("DB_TYPE")
+if _db_type_raw is not None and str(_db_type_raw).strip():
+    DB_TYPE = _normalize_db_type(_db_type_raw)
+elif DATABASE_URL.startswith("postgresql://"):
+    DB_TYPE = "postgres"
+else:
+    DB_TYPE = "sqlite"
+
+# على Render (وبالبيئات التي تضع RENDER) لا يُسمح بملف SQLite محلي — قاعدة خارجية فقط.
+if os.getenv("RENDER") is not None:
+    if DB_TYPE != "postgres":
+        raise RuntimeError(
+            "Production (RENDER): managed PostgreSQL is required. "
+            "Add DATABASE_URL from your host's Postgres service and remove DB_TYPE=sqlite."
+        )
+    if not DATABASE_URL:
+        raise RuntimeError(
+            "Production (RENDER): DATABASE_URL is missing. Link a PostgreSQL database to this service."
+        )
+
+if DB_TYPE == "postgres" and not DATABASE_URL:
+    raise RuntimeError(
+        "When DB_TYPE is postgres, DATABASE_URL must be set (PostgreSQL connection URI, e.g. "
+        "postgresql://user:pass@host:5432/dbname)."
+    )
+
+# فرض قاعدة خارجية (PostgreSQL) حتى في بيئة غير Render — مثلاً: DATABASE_REQUIRE_POSTGRES=true في .env
+if os.getenv("DATABASE_REQUIRE_POSTGRES", "").strip().lower() in ("1", "true", "yes"):
+    if DB_TYPE != "postgres" or not DATABASE_URL:
+        raise RuntimeError(
+            "DATABASE_REQUIRE_POSTGRES is enabled: only managed PostgreSQL is allowed. "
+            "Set DATABASE_URL (postgresql://...) and remove DB_TYPE=sqlite."
+        )
 
 # ——— Flask ———
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -108,20 +172,23 @@ SYSTEM_ALERTS_EMAIL = (
 DIAGNOSTICS_ALERT_COOLDOWN_SECONDS = int(
     os.getenv("DIAGNOSTICS_ALERT_COOLDOWN_SECONDS", "3600")
 )
+# فشل منسّق الشات (OpenAI): أقصى معدل لإرسال بريد التنبيه (الثواني). 0 = بدون تهدئة.
+ORCHESTRATOR_FAILURE_ALERT_COOLDOWN_SECONDS = int(
+    os.getenv("ORCHESTRATOR_FAILURE_ALERT_COOLDOWN_SECONDS", "900")
+)
 
 # ——— نماذج ذكاء اصطناعي (اختياري، يُقرأ من البيئة) ———
 # Render: عيّن المفاتيح في Environment فقط — لا يُحمّل .env تلقائياً (انظر شرط RENDER أعلاه).
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if OPENAI_API_KEY is not None:
     OPENAI_API_KEY = OPENAI_API_KEY.strip() or None
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 # مرفقات الشات (Whisper + رؤية): يُعطّل بـ OPENAI_ATTACHMENTS=false
 OPENAI_ATTACHMENTS_ENABLED = os.getenv(
     "OPENAI_ATTACHMENTS", "true"
 ).strip().lower() in ("1", "true", "yes")
 OPENAI_WHISPER_MODEL = os.getenv("OPENAI_WHISPER_MODEL", "whisper-1")
-OPENAI_VISION_MODEL = os.getenv("OPENAI_VISION_MODEL", "gpt-4o-mini")
+OPENAI_VISION_MODEL = os.getenv("OPENAI_VISION_MODEL", "gpt-4o")
 # تشخيص منسّق الشات (طباعات/سجلات تفصيلية) — لا يُفعّل من مسار الطلب
 OPENAI_ORCH_DEBUG = os.getenv("OPENAI_ORCH_DEBUG", "").strip().lower() in ("1", "true", "yes")
 # تحليل استعلام البحث قبل SQLite (استخراج فقط) — يُعطّل بـ OPENAI_PRESEARCH=false
@@ -130,12 +197,33 @@ OPENAI_ORCH_DEBUG = os.getenv("OPENAI_ORCH_DEBUG", "").strip().lower() in ("1", 
 # تشخيص stdout على Render: OPENAI_ORCH_DEBUG=true (يطبع OPENAI_API_KEY / OPENAI_CHAT_ORCHESTRATOR / MODEL / …)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
+if os.getenv("RENDER") is not None:
+    _attachments_enabled = OPENAI_ATTACHMENTS_ENABLED
+    _has_openai = bool((OPENAI_API_KEY or "").strip())
+    _has_gemini = bool((GEMINI_API_KEY or "").strip())
+    if _attachments_enabled and not (_has_openai or _has_gemini):
+        print(
+            "CRITICAL CONFIG WARNING: WhatsApp media analysis is effectively disabled on Render. "
+            "OPENAI_ATTACHMENTS is enabled but no OPENAI_API_KEY or GEMINI_API_KEY is set. "
+            "Image/audio messages will not be analyzed.",
+            file=sys.stderr,
+        )
+
+# ——— WhatsApp Webhook Security (Meta App Secret) ———
+# يُستخدم للتحقق من توقيع X-Hub-Signature-256 لطلبات webhook.
+META_APP_SECRET = (os.getenv("META_APP_SECRET") or "").strip()
+if os.getenv("RENDER") is not None and not META_APP_SECRET:
+    print(
+        "CRITICAL CONFIG WARNING: META_APP_SECRET is NOT set on Render. "
+        "WhatsApp webhook signature verification will be skipped, which is insecure. "
+        "Set META_APP_SECRET in Render Environment Variables from Facebook Developer Console → "
+        "App Settings → Basic → App Secret.",
+        file=sys.stderr,
+    )
 
 # طبقة LLM كمحلل فقط (بدون ردود للمستخدم) داخل /chat_query
+# (سابقاً: دعم Ollama — أُزيل؛ الإبقاء على العلم للتوافق؛ لا يوجد استدعاء شبكة في المحلل حالياً)
 LLM_ENABLED = os.getenv("LLM_ENABLED", "false").lower() in ("1", "true", "yes")
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").strip().lower()
-LLM_MODEL = os.getenv("LLM_MODEL", OLLAMA_MODEL)
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
 LLM_REQUEST_TIMEOUT = int(os.getenv("LLM_REQUEST_TIMEOUT", "90"))
 
 # ——— عتبات القرار للشات (مركزية) ———
@@ -159,6 +247,13 @@ FLASK_DEBUG = os.getenv("FLASK_DEBUG", "true").lower() in ("1", "true", "yes")
 
 # ——— الحملات المجدولة (روابط الصور في البريد + خيط المجدول) ———
 PUBLIC_BASE_URL = (os.getenv("PUBLIC_BASE_URL") or "").strip().rstrip("/")
+
+# ——— SEO (ميتا وصف الموقع لجوجل ووسائل التواصل) ———
+SEO_SITE_NAME = (os.getenv("SEO_SITE_NAME") or "مجمع العائلة").strip()
+SEO_META_DESCRIPTION = (os.getenv("SEO_META_DESCRIPTION") or "").strip() or (
+    "خدمة عملاء ذكية لمجمع العائلة — استفسار عن المنتجات والفروع والشكاوى والتوصيل."
+)
+
 CAMPAIGN_SCHEDULER_ENABLED = os.getenv("CAMPAIGN_SCHEDULER_ENABLED", "true").lower() in (
     "1",
     "true",

@@ -1,0 +1,10 @@
+<link rel="manifest" href="{{ url_for('pwa_manifest') }}">
+<meta name="theme-color" content="#ff1744">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FAMILY">
+<link rel="apple-touch-icon" sizes="192x192" href="{{ url_for('static', filename='pwa/icon-192.png') }}">
+<link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='pwa/icon-192.png') }}">
+<link rel="icon" type="image/png" sizes="512x512" href="{{ url_for('static', filename='pwa/icon-512.png') }}">
+<script defer src="{{ url_for('static', filename='js/pwa-register.js') }}"></script>

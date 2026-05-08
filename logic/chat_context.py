@@ -19,9 +19,37 @@ KEY_NEXT_OPEN_ISO = "chat_last_next_open_iso"
 KEY_AWAIT_OPTIONAL_NAME = "chat_awaiting_optional_name"
 KEY_CONVERSATION_HISTORY = "chat_conversation_history"
 KEY_CURRENT_REQUEST = "chat_current_request"
+# آخر رسالة عميل عن دوام/موقع/… قبل سؤال «أي فرع؟» — لدمجها مع رد المدينة القصير
+KEY_PENDING_BRANCH_KIND_SOURCE = "chat_pending_branch_kind_source"
 
 # ─── حد أقصى لعدد الرسائل المحفوظة في الجلسة ───
 _MAX_HISTORY_TURNS = 20
+
+
+def set_pending_branch_kind_source(user_message: str) -> None:
+    """يُحفظ عند طلب توضيح الفرع ليعاد استخدام النص مع ردّ المدينة لاحقاً (دوام لا يُفسَّر كموقع)."""
+    t = (user_message or "").strip()
+    if t:
+        session[KEY_PENDING_BRANCH_KIND_SOURCE] = t[:500]
+
+
+def peek_pending_branch_kind_source() -> Optional[str]:
+    v = session.get(KEY_PENDING_BRANCH_KIND_SOURCE)
+    return (str(v).strip() if v else None) or None
+
+
+def pop_pending_branch_kind_source() -> Optional[str]:
+    v = session.pop(KEY_PENDING_BRANCH_KIND_SOURCE, None)
+    return (str(v).strip() if v else None) or None
+
+
+def merged_message_with_pending_branch_kind(current_message: str) -> str:
+    """يدمج آخر استفسار (مثل: متى تفتحون) مع رد المدينة القصير لاحقاً."""
+    p = peek_pending_branch_kind_source()
+    c = (current_message or "").strip()
+    if not p:
+        return c
+    return f"{p} {c}".strip()
 
 
 def remember_branch_by_name(city_name: Optional[str]) -> None:

@@ -78,7 +78,14 @@ def run_orchestrator(message: str, context: dict, history: list) -> dict:
 def openai_available() -> bool:
     """هل OpenAI API مفعّل؟"""
     try:
+        from logic.llm_provider import is_available
+
+        return bool(is_available("openai"))
+    except Exception:
+        pass
+    try:
         from config import OPENAI_API_KEY
+
         return bool((OPENAI_API_KEY or "").strip())
     except Exception:
         return False

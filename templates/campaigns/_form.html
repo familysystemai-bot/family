@@ -1,4 +1,5 @@
 {# نموذج حملة — واجهة لوحة تسويق (نفس الحقول وأسماء الحقول للخادم) #}
+{% from "macros/csrf.html" import csrf_input %}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -21,6 +22,7 @@
         <div class="mkt-dash__card-main">
             <h2 class="mkt-dash__card-title">إنشاء حملة جديدة</h2>
             <form method="post" enctype="multipart/form-data" action="{{ request.path }}" id="campaignCreateForm">
+                {{ csrf_input() }}
                 <input type="hidden" name="action" value="create_send">
 
                 <div class="mkt-dash__field">
@@ -35,7 +37,7 @@
                 </div>
 
                 <div class="mkt-dash__field">
-                    <label class="mkt-dash__label" for="campaign_field_whatsapp">نص واتساب (مُخزَّن فقط)</label>
+                    <label class="mkt-dash__label" for="campaign_field_whatsapp">نص واتساب (يُرسل مع تشغيل الحملة)</label>
                     <textarea name="whatsapp_message" id="campaign_field_whatsapp" class="mkt-dash__input mkt-dash__textarea" style="min-height:110px;" rows="4" placeholder="للربط لاحقاً — لا يُرسل حالياً"></textarea>
                 </div>
 
@@ -138,6 +140,7 @@
                         </td>
                         <td class="text-nowrap">
                             <form method="post" action="{{ request.path }}" class="d-inline">
+                                {{ csrf_input() }}
                                 <input type="hidden" name="action" value="send">
                                 <input type="hidden" name="campaign_id" value="{{ c.id }}">
                                 <button type="submit" class="mkt-dash__btn-send">إرسال</button>
