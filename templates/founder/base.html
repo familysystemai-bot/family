@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+{% from "macros/site_logo.html" import brand_logo_pair, site_logo_pair %}
+<html lang="ar" dir="rtl" class="fd-dashboard dash-html">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% include "partials/pwa_head.html" %}
+    <title>{% block title %}لوحة تحكم النظام{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/dashboard-layout.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/founder-dashboard.css') }}" rel="stylesheet">
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="fd-dashboard dash-body">
+<div class="container-fluid dash-layout">
+    <button type="button" class="dash-menu-btn" aria-label="فتح القائمة" aria-controls="fd-dash-sidebar" aria-expanded="false">☰</button>
+    <div class="dash-backdrop sidebar-overlay" data-dash-close="true" aria-hidden="true"></div>
+    <div class="row g-0 dash-row">
+        <aside id="fd-dash-sidebar" class="col-md-2 fd-sidebar p-0 dash-sidebar-col">
+            <div class="dash-sidebar-panel">
+            <div class="fd-logo fd-logo--compact">
+                {{ brand_logo_pair(founder_logo_url, 'fd-logo-sidebar-img', 'site-logo-k--sidebar-dash') }}
+                <span class="badge fd-badge mt-2">{% if session.get('role') == 'admin' %}الإدارة{% else %}النظام{% endif %}</span>
+            </div>
+            <nav class="fd-nav">
+                {% set ep = request.endpoint %}
+                <a class="nav-link {% if ep == 'founder_dashboard' %}active{% endif %}" href="{{ url_for('founder_dashboard') }}">🏠 الرئيسية</a>
+                <a class="nav-link {% if ep in ('founder_branches', 'founder_branch_edit', 'founder_branch_view') %}active{% endif %}" href="{{ url_for('founder_branches') }}">🏢 الفروع</a>
+                <a class="nav-link {% if ep in ('founder_products', 'founder_add_product') %}active{% endif %}" href="{{ url_for('founder_products') }}">📦 المنتجات</a>
+                <a class="nav-link {% if ep == 'founder_accounts' %}active{% endif %}" href="{{ url_for('founder_accounts') }}">🔐 الحسابات</a>
+                <a class="nav-link {% if ep == 'admin_settings' %}active{% endif %}" href="{{ url_for('admin_settings') }}">⚙️ إعدادات الدخول</a>
+                <a class="nav-link {% if ep and ep.startswith('integrations.') %}active{% endif %}" href="{{ url_for('integrations.integrations_dashboard') }}">🔌 التكاملات</a>
+                <hr>
+                <a class="nav-link" href="{{ url_for('admin_users') }}">👤 مستخدمي الفروع</a>
+                <a class="nav-link" href="{{ url_for('admin_complaints') }}">📋 الشكاوى</a>
+                <a class="nav-link {% if ep == 'campaigns.founder_campaigns' %}active{% endif %}" href="{{ url_for('campaigns.founder_campaigns') }}">📢 الحملات</a>
+                <a class="nav-link {% if ep == 'wa_inbox.admin_messages_page' %}active{% endif %}" href="{{ url_for('wa_inbox.admin_messages_page') }}">💬 واتساب</a>
+                <hr>
+                <a class="nav-link text-danger" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+            </nav>
+            </div>
+        </aside>
+        <div class="col-md-10 fd-main dash-main">
+            {% block fd_top_header %}
+            <header class="fd-main-header">
+                {{ brand_logo_pair(founder_logo_url, 'fd-header-logo', 'site-logo-k--header') }}
+            </header>
+            {% endblock %}
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="mb-3">
+                {% for category, message in messages %}
+                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="إغلاق"></button>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endwith %}
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='js/dashboard-layout.js') }}" defer></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

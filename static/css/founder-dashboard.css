@@ -1,0 +1,877 @@
+/**
+ * لوحة تحكم النظام — لا يُحمَّل في لوحة الإدارة
+ * Luxury UI: بيج فاتح + أخضر داكن + ذهبي
+ */
+@import url("https://fonts.googleapis.com/css2?family=Tajawal:wght@500;600;700;800&display=swap");
+
+:root {
+  /* أساس */
+  --fd-beige: #f5f5dc;
+  --fd-beige-soft: #fafaf0;
+  --fd-white-card: #fffef9;
+  /* هوية الشريط (لوحة تحكم النظام) */
+  --fd-sidebar-luxury: #064e3b;
+  --fd-sidebar-luxury-deep: #022c22;
+  --fd-sidebar-hover: rgba(52, 211, 153, 0.35);
+  --fd-sidebar-active: rgba(16, 185, 129, 0.45);
+  --fd-green-dark: #0f5132;
+  --fd-green-mid: #157a52;
+  --fd-green-btn: #1a6b4a;
+  --fd-green-btn-hover: #0d4028;
+  --fd-gold: #c9a227;
+  --fd-gold-dim: #a88620;
+  --fd-text: #141414;
+  --fd-text-body: #2a2a2a;
+  --fd-text-soft: #3a3a3a;
+  --fd-title-accent: #6b5420;
+  --fd-border: rgba(15, 81, 50, 0.18);
+  --fd-border-gold: rgba(201, 162, 39, 0.35);
+  --fd-shadow: 0 8px 28px rgba(15, 81, 50, 0.08);
+  --fd-shadow-sm: 0 4px 16px rgba(0, 0, 0, 0.06);
+  --fd-radius: 14px;
+  --fd-radius-lg: 18px;
+  --fd-green-glow: rgba(26, 107, 74, 0.18);
+}
+
+html.fd-dashboard {
+  font-family: "Tajawal", "Segoe UI", system-ui, sans-serif;
+  font-size: 1rem;
+  line-height: 1.6;
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+}
+
+body.fd-dashboard {
+  background: var(--fd-beige);
+  background-image: radial-gradient(ellipse 100% 60% at 100% 0%, rgba(201, 162, 39, 0.06) 0%, transparent 55%),
+    radial-gradient(ellipse 80% 50% at 0% 100%, rgba(15, 81, 50, 0.04) 0%, transparent 50%);
+  color: var(--fd-text-body);
+  min-height: 100vh;
+}
+
+/* ——— Sidebar ——— */
+.fd-sidebar {
+  background: linear-gradient(
+    180deg,
+    var(--fd-sidebar-luxury) 0%,
+    var(--fd-green-dark) 48%,
+    var(--fd-sidebar-luxury-deep) 100%
+  );
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+  min-height: 100vh;
+  min-height: 100dvh;
+  position: sticky;
+  top: 0;
+  box-shadow: 4px 0 24px rgba(2, 44, 34, 0.35);
+}
+
+.fd-logo {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 1.35rem 1rem;
+  text-align: center;
+}
+
+.fd-logo--compact {
+  padding: 0.9rem 0.65rem;
+}
+
+.fd-logo-sidebar-img {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  width: 50px;
+  max-width: 50px;
+  max-height: 50px;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.28));
+}
+
+.fd-badge {
+  background: linear-gradient(135deg, var(--fd-gold) 0%, var(--fd-gold-dim) 100%);
+  color: #1a1508;
+  font-weight: 800;
+  font-size: 0.7rem;
+  padding: 0.4em 0.7rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.fd-badge--outline {
+  background: rgba(245, 245, 220, 0.12);
+  color: #f5e6a8;
+  border: 1px solid rgba(201, 162, 39, 0.45);
+}
+
+.fd-nav {
+  padding: 0.5rem 0 1rem;
+}
+
+.fd-nav a,
+.fd-nav .nav-link {
+  display: block;
+  color: #ffffff;
+  text-decoration: none;
+  padding: 0.85rem 1.1rem;
+  margin: 0.2rem 0.4rem;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 1.05rem;
+  line-height: 1.45;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.12s ease;
+  border: 1px solid transparent;
+}
+
+/* إبراز الإيموجي في القائمة */
+.fd-nav a,
+.fd-nav .nav-link {
+  font-variant-emoji: emoji;
+}
+
+.fd-nav a:hover,
+.fd-nav .nav-link:hover {
+  background: var(--fd-sidebar-hover);
+  color: #ffffff;
+}
+
+.fd-nav a.active,
+.fd-nav .nav-link.active {
+  background: var(--fd-sidebar-active);
+  color: #ecfdf5;
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.fd-nav hr {
+  border-color: rgba(255, 255, 255, 0.15);
+  opacity: 1;
+  margin: 0.65rem 0.75rem;
+}
+
+.fd-nav a.text-danger {
+  color: #ffb4b4 !important;
+}
+
+.fd-nav a.text-danger:hover {
+  background: rgba(220, 53, 69, 0.2);
+  color: #fff !important;
+}
+
+/* ——— Main ——— */
+.fd-main {
+  padding: 1.25rem 1.5rem 2rem;
+}
+
+@media (min-width: 992px) {
+  .fd-main {
+    padding: 1.5rem 2rem 2.5rem;
+  }
+}
+
+.fd-main-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0.65rem 0 1.15rem;
+  margin: -0.35rem 0 1.35rem;
+  border-bottom: 2px solid var(--fd-border-gold);
+  background: linear-gradient(180deg, rgba(201, 162, 39, 0.08) 0%, transparent 92%);
+  border-radius: 0 0 var(--fd-radius) var(--fd-radius);
+}
+
+/* شعار الهيدر: بارز، 60–80px، بدون تشويه */
+.fd-header-logo {
+  height: auto;
+  max-height: 72px;
+  min-height: 60px;
+  width: auto;
+  max-width: min(320px, 78vw);
+  object-fit: contain;
+  object-position: right center;
+  filter: drop-shadow(0 3px 12px rgba(15, 81, 50, 0.15));
+}
+
+/* ——— لوحة النظام: هوية علوية (الشعار + الاسم) ——— */
+.fd-dash-hero {
+  text-align: center;
+  background: linear-gradient(145deg, rgba(15, 81, 50, 0.96) 0%, rgba(6, 42, 28, 0.94) 100%);
+  border: 1px solid rgba(201, 162, 39, 0.38);
+  border-radius: var(--fd-radius-lg);
+  padding: 0 1rem 1.2rem;
+  margin: -0.35rem 0 1.35rem;
+  box-shadow: var(--fd-shadow);
+}
+
+/* صورة الشعار المرفوعة في بطل لوحة النظام */
+.fd-dash-hero__site-img {
+  display: block;
+  margin: 20px auto 10px;
+  width: min(240px, 58vw);
+  max-height: 240px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 10px rgba(34, 197, 94, 0.5));
+  animation: fdDashHeroAvatar 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fd-dash-hero__site-img {
+    animation: none;
+  }
+}
+
+/* تمت إزالة أفاتار الحرف من القالب — احتياطي إخفاء */
+.fd-founder-avatar {
+  display: none !important;
+}
+
+.fd-dash-hero__name {
+  font-family: "Cairo", "Tajawal", system-ui, sans-serif;
+  font-size: clamp(1.45rem, 4.2vw, 1.8rem);
+  font-weight: 800;
+  letter-spacing: 0.045em;
+  color: #f8fafc;
+  text-shadow: 0 0 10px rgba(34, 197, 94, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2);
+  margin: 0;
+  line-height: 1.35;
+  animation: fdDashHeroName 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.12s both;
+}
+
+@keyframes fdDashHeroAvatar {
+  from {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes fdDashHeroName {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fd-dash-hero__name {
+    animation: none;
+  }
+}
+
+/* ——— Page title ——— */
+.fd-page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.1rem;
+  border-bottom: 1px solid var(--fd-border);
+}
+
+.fd-page-title {
+  font-size: 1.65rem;
+  font-weight: 800;
+  color: var(--fd-title-accent);
+  margin: 0;
+  letter-spacing: -0.02em;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.fd-page-sub {
+  font-size: 0.95rem;
+  color: var(--fd-text-soft);
+  font-weight: 600;
+}
+
+/* ——— Cards ——— */
+.fd-card {
+  background: var(--fd-white-card);
+  border: 1px solid var(--fd-border-gold);
+  border-radius: var(--fd-radius-lg);
+  padding: 1.45rem 1.55rem;
+  box-shadow: var(--fd-shadow);
+}
+
+.fd-card h2,
+.fd-card .fd-card-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--fd-title-accent);
+  margin-bottom: 1rem;
+  letter-spacing: -0.01em;
+}
+
+.fd-stat {
+  border-right: 4px solid var(--fd-gold);
+  padding-right: 1rem;
+}
+
+.fd-stat .fd-stat-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--fd-text-body);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 0.4rem;
+}
+
+.fd-stat .fd-stat-value {
+  font-size: 2.15rem;
+  font-weight: 800;
+  color: var(--fd-green-dark);
+  line-height: 1.15;
+}
+
+/* ——— Tables ——— */
+.fd-table-wrap {
+  border-radius: var(--fd-radius);
+  border: 1px solid var(--fd-border);
+  overflow: hidden;
+  background: var(--fd-beige-soft);
+}
+
+.table.fd-table {
+  --bs-table-bg: transparent;
+  --bs-table-striped-bg: rgba(15, 81, 50, 0.04);
+  --bs-table-hover-bg: rgba(201, 162, 39, 0.08);
+  color: var(--fd-text);
+  margin-bottom: 0;
+}
+
+.table.fd-table thead th {
+  background: linear-gradient(180deg, #0f5132 0%, #0c4229 100%);
+  color: #fff8e7;
+  font-weight: 700;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-color: rgba(255, 255, 255, 0.1);
+  padding: 0.9rem 1rem;
+  white-space: nowrap;
+}
+
+.table.fd-table tbody td {
+  border-color: rgba(15, 81, 50, 0.1);
+  padding: 0.8rem 1rem;
+  vertical-align: middle;
+  color: var(--fd-text-body);
+  font-weight: 500;
+}
+
+.table.fd-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* ——— Forms ——— */
+.fd-dashboard .form-control,
+.fd-dashboard .form-select {
+  background: #fff;
+  border: 1px solid var(--fd-border);
+  color: var(--fd-text);
+  border-radius: 10px;
+  padding: 0.62rem 0.9rem;
+  font-weight: 500;
+}
+
+.fd-dashboard .form-control::placeholder {
+  color: #6b6b6b;
+  opacity: 1;
+}
+
+.fd-dashboard .form-control:focus,
+.fd-dashboard .form-select:focus {
+  background: #fff;
+  border-color: var(--fd-green-mid);
+  color: var(--fd-text);
+  box-shadow: 0 0 0 3px var(--fd-green-glow);
+}
+
+.fd-dashboard .form-label {
+  color: var(--fd-text);
+  font-weight: 700;
+  font-size: 0.88rem;
+}
+
+/* ——— Buttons ——— */
+.fd-btn {
+  background: linear-gradient(180deg, var(--fd-green-btn) 0%, var(--fd-green-dark) 100%);
+  color: #fff;
+  border: none;
+  font-weight: 700;
+  padding: 0.55rem 1.35rem;
+  border-radius: 10px;
+  transition: background 0.18s ease, filter 0.15s ease, transform 0.1s ease;
+}
+
+.fd-btn:hover {
+  background: linear-gradient(180deg, var(--fd-green-btn-hover) 0%, #062a1c 100%);
+  color: #fff;
+  filter: none;
+}
+
+.fd-btn:active {
+  transform: scale(0.98);
+}
+
+.fd-dashboard .btn-outline-success {
+  --bs-btn-color: var(--fd-green-dark);
+  --bs-btn-border-color: var(--fd-green-mid);
+  --bs-btn-hover-bg: rgba(15, 81, 50, 0.12);
+  --bs-btn-hover-color: var(--fd-green-dark);
+  --bs-btn-hover-border-color: var(--fd-green-dark);
+  --bs-btn-active-bg: rgba(15, 81, 50, 0.18);
+  font-weight: 700;
+}
+
+.fd-dashboard .btn-outline-light {
+  --bs-btn-color: var(--fd-text);
+  --bs-btn-border-color: var(--fd-border);
+  --bs-btn-hover-bg: rgba(15, 81, 50, 0.08);
+  --bs-btn-hover-color: var(--fd-green-dark);
+  --bs-btn-hover-border-color: var(--fd-green-mid);
+  font-weight: 600;
+}
+
+.fd-dashboard .btn-outline-danger {
+  --bs-btn-color: #b02a37;
+  --bs-btn-border-color: rgba(176, 42, 55, 0.45);
+  --bs-btn-hover-bg: rgba(176, 42, 55, 0.1);
+  font-weight: 600;
+}
+
+.fd-dashboard .btn-outline-secondary {
+  --bs-btn-color: var(--fd-text-soft);
+  --bs-btn-border-color: #b8b8b8;
+  --bs-btn-hover-bg: rgba(0, 0, 0, 0.05);
+  --bs-btn-hover-color: var(--fd-text);
+  font-weight: 600;
+}
+
+.fd-dashboard .btn-sm {
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+/* ——— Alerts (وضع فاتح) ——— */
+.fd-dashboard .alert {
+  border-radius: 12px;
+  border-width: 1px;
+  font-weight: 600;
+}
+
+.fd-dashboard .alert-success {
+  background: rgba(15, 81, 50, 0.1);
+  border-color: rgba(15, 81, 50, 0.35);
+  color: #0a3d28;
+}
+
+.fd-dashboard .alert-danger {
+  background: rgba(220, 53, 69, 0.1);
+  border-color: rgba(220, 53, 69, 0.35);
+  color: #842029;
+}
+
+.fd-dashboard .alert-warning {
+  background: rgba(201, 162, 39, 0.15);
+  border-color: rgba(201, 162, 39, 0.45);
+  color: #5c4810;
+}
+
+.fd-dashboard .alert-info {
+  background: rgba(13, 110, 253, 0.08);
+  border-color: rgba(13, 110, 253, 0.3);
+  color: #084298;
+}
+
+.fd-dashboard .btn-close {
+  filter: none;
+  opacity: 0.65;
+}
+
+/* ——— Badges ——— */
+.fd-dashboard .badge.bg-secondary {
+  background: #e8e8e0 !important;
+  color: var(--fd-text) !important;
+  border: 1px solid var(--fd-border);
+  font-weight: 700;
+}
+
+.fd-dashboard .badge.bg-primary {
+  background: rgba(15, 81, 50, 0.15) !important;
+  color: var(--fd-green-dark) !important;
+  border: 1px solid rgba(15, 81, 50, 0.35);
+  font-weight: 700;
+}
+
+.fd-dashboard .list-group-item {
+  background: transparent;
+  border-color: var(--fd-border);
+  color: var(--fd-text-body);
+}
+
+/* ——— Utilities ——— */
+.fd-dashboard .text-muted {
+  color: var(--fd-text-soft) !important;
+  font-weight: 500;
+}
+
+.fd-dashboard hr {
+  border-color: var(--fd-border);
+  opacity: 1;
+}
+
+.fd-dashboard .border-bottom {
+  border-color: var(--fd-border) !important;
+}
+
+.fd-thumb-img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--fd-border);
+}
+
+.fd-accent-title {
+  color: var(--fd-green-dark);
+  font-weight: 800;
+}
+
+.fd-scroll-table {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.fd-dashboard code {
+  color: var(--fd-green-dark);
+  background: var(--fd-beige-soft);
+  padding: 0.15em 0.45em;
+  border-radius: 6px;
+  font-size: 0.88em;
+  font-weight: 600;
+  border: 1px solid var(--fd-border);
+}
+
+.fd-dashboard .btn-success {
+  background: linear-gradient(180deg, var(--fd-green-btn) 0%, var(--fd-green-dark) 100%);
+  border: none;
+  color: #fff;
+  font-weight: 700;
+}
+
+.fd-dashboard .btn-success:hover {
+  background: linear-gradient(180deg, var(--fd-green-btn-hover) 0%, #062a1c 100%);
+  color: #fff;
+}
+
+.fd-badge-open {
+  background: rgba(180, 83, 9, 0.15) !important;
+  color: #92400e !important;
+  border: 1px solid rgba(180, 83, 9, 0.4);
+  font-weight: 700;
+}
+
+.fd-badge-resolved {
+  background: rgba(15, 81, 50, 0.15) !important;
+  color: var(--fd-green-dark) !important;
+  border: 1px solid rgba(15, 81, 50, 0.35);
+  font-weight: 700;
+}
+
+.fd-issue-cell {
+  max-width: 320px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.9rem;
+  color: var(--fd-text-body);
+  font-weight: 500;
+}
+
+.fd-dashboard strong.text-light {
+  color: var(--fd-text) !important;
+}
+
+/* درج الجوال فقط: نفس مظهر الشريط عندما يكون اللوحة منزلقة */
+@media (max-width: 768px) {
+  .fd-sidebar .dash-sidebar-panel {
+    background: linear-gradient(180deg, #0f5132 0%, #0a3d28 55%, #062a1c 100%);
+    border-left: 1px solid rgba(201, 162, 39, 0.25);
+    box-shadow: var(--fd-shadow-sm);
+  }
+}
+
+@media (max-width: 768px) {
+  html.fd-dashboard {
+    font-size: 1.06rem;
+  }
+
+  .fd-main.dash-main .fd-page-title {
+    font-size: 1.45rem;
+  }
+
+  .fd-card {
+    padding: 1.15rem 1.2rem;
+  }
+
+  .fd-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+  }
+}
+
+/* ——— الهوية البصرية (كروت زجاجية) ——— */
+.fd-identity-glass {
+  position: relative;
+  border-radius: var(--fd-radius-lg);
+  padding: 1.35rem 1.45rem;
+  background: rgba(255, 255, 255, 0.38);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(201, 162, 39, 0.28);
+  box-shadow: 0 10px 36px rgba(15, 81, 50, 0.08), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+}
+
+.fd-identity-glass--accent {
+  border-color: rgba(26, 107, 74, 0.35);
+  box-shadow: 0 12px 40px rgba(26, 107, 74, 0.12), 0 1px 0 rgba(255, 255, 255, 0.65) inset;
+}
+
+.fd-identity-glass__title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--fd-green-dark);
+  margin: 0 0 0.4rem;
+  letter-spacing: -0.02em;
+}
+
+.fd-identity-glass__hint {
+  font-size: 0.82rem;
+  color: var(--fd-text-soft);
+  line-height: 1.55;
+  margin: 0 0 1rem;
+}
+
+.fd-identity-preview {
+  position: relative;
+  min-height: 140px;
+  border-radius: 14px;
+  background: rgba(250, 250, 240, 0.75);
+  border: 1px dashed rgba(15, 81, 50, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.fd-identity-preview::after {
+  content: attr(data-label);
+  position: absolute;
+  top: 8px;
+  inset-inline-end: 10px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fd-text-soft);
+  opacity: 0.85;
+}
+
+.fd-identity-preview__img {
+  max-width: 100%;
+  max-height: 120px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 10px;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.1));
+}
+
+.fd-identity-preview__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--fd-text-soft);
+  max-width: 260px;
+  line-height: 1.45;
+}
+
+.fd-identity-preview__k {
+  display: none !important;
+}
+
+.fd-identity-file {
+  border: 1px solid var(--fd-border-gold) !important;
+  border-radius: 12px !important;
+  padding: 0.65rem 0.75rem !important;
+  font-weight: 600;
+}
+
+.fd-identity-form .fd-btn {
+  box-shadow: 0 6px 20px rgba(26, 107, 74, 0.2);
+}
+
+/* ——— شريط جانبي ثابت (سطح المكتب) + محتوى بلا تداخل ——— */
+@media (min-width: 769px) {
+  html.fd-dashboard .dash-layout .dash-row {
+    position: relative;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  html.fd-dashboard .dash-layout aside.fd-sidebar.dash-sidebar-col {
+    position: fixed !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    right: 0 !important;
+    left: auto !important;
+    width: min(280px, 22vw) !important;
+    max-width: 280px !important;
+    flex: none !important;
+    height: auto !important;
+    max-height: none !important;
+    z-index: 1020;
+    overflow: hidden;
+    background: transparent !important;
+  }
+
+  html.fd-dashboard .dash-layout aside.fd-sidebar .dash-sidebar-panel {
+    height: 100vh !important;
+    height: 100dvh !important;
+    min-height: 100vh !important;
+    min-height: 100dvh !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    background: linear-gradient(
+      180deg,
+      var(--fd-sidebar-luxury) 0%,
+      var(--fd-green-dark) 48%,
+      var(--fd-sidebar-luxury-deep) 100%
+    ) !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.14) !important;
+  }
+
+  html.fd-dashboard .dash-layout .fd-main.dash-main {
+    width: calc(100% - min(280px, 22vw)) !important;
+    max-width: none !important;
+    flex: 1 1 auto !important;
+    margin-right: min(280px, 22vw) !important;
+    margin-left: 0 !important;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+}
+
+/* ——— بطاقات إحصاء كبيرة (جوال) ——— */
+.fd-stat--hero {
+  text-align: center;
+  padding-top: 1.35rem;
+  padding-bottom: 1.35rem;
+}
+
+.fd-stat--hero .fd-stat-label {
+  font-size: 0.88rem;
+  letter-spacing: 0.04em;
+}
+
+.fd-stat--hero .fd-stat-value {
+  font-size: clamp(2.35rem, 9vw, 3.1rem);
+  font-weight: 900;
+  color: var(--fd-sidebar-luxury);
+}
+
+@media (max-width: 768px) {
+  .fd-stat--hero .fd-stat-value {
+    font-size: clamp(2.75rem, 14vw, 4rem);
+  }
+}
+
+/* ——— رسم بياني يومي ——— */
+.fd-chart-card {
+  border: 1px solid rgba(6, 78, 59, 0.2);
+}
+
+.fd-chart-wrap {
+  position: relative;
+  width: 100%;
+  min-height: 280px;
+  height: min(360px, 48vh);
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid rgba(15, 81, 50, 0.12);
+  padding: 0.75rem 0.5rem 0.5rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.fd-chart-wrap canvas {
+  display: block;
+}
+
+.fd-btn--soft {
+  background: rgba(6, 78, 59, 0.1) !important;
+  color: var(--fd-sidebar-luxury) !important;
+  border: 1px solid rgba(6, 78, 59, 0.25) !important;
+  font-weight: 700;
+}
+
+.fd-btn--soft:hover {
+  background: rgba(6, 78, 59, 0.18) !important;
+  color: var(--fd-sidebar-luxury-deep) !important;
+}
+
+/* ——— أزرار الاختصارات الحديثة ——— */
+.fd-card--shortcuts .fd-btn--wide {
+  padding: 0.75rem 1.25rem;
+  font-size: 1.02rem;
+  border-radius: 12px;
+}
+
+.fd-dashboard .fd-btn.fd-btn--outline {
+  background: #fff !important;
+  color: var(--fd-green-dark) !important;
+  border: 2px solid rgba(6, 78, 59, 0.35) !important;
+  font-weight: 700;
+}
+
+.fd-dashboard .fd-btn.fd-btn--outline:hover {
+  background: rgba(6, 78, 59, 0.06) !important;
+  border-color: var(--fd-sidebar-luxury) !important;
+  color: var(--fd-sidebar-luxury-deep) !important;
+}
+
+.fd-btn--accent {
+  background: linear-gradient(135deg, #c9a227 0%, #a88620 100%) !important;
+  color: #1a1508 !important;
+  border: none !important;
+  font-weight: 800;
+}
+
+.fd-btn--accent:hover {
+  filter: brightness(1.06);
+  color: #1a1508 !important;
+}
+
+/* درج الجوال: نفس الأخضر الفاخر */
+@media (max-width: 768px) {
+  .fd-sidebar .dash-sidebar-panel,
+  html.fd-dashboard .dash-layout aside.fd-sidebar .dash-sidebar-panel {
+    background: linear-gradient(
+      180deg,
+      var(--fd-sidebar-luxury) 0%,
+      var(--fd-green-dark) 50%,
+      var(--fd-sidebar-luxury-deep) 100%
+    ) !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.14) !important;
+  }
+}

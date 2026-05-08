@@ -1,0 +1,54 @@
+{% extends "founder/base.html" %}
+{% block title %}المنتجات{% endblock %}
+{% block content %}
+{% from "macros/csrf.html" import csrf_input %}
+<div class="fd-page-head">
+    <h1 class="fd-page-title">جميع المنتجات</h1>
+    <a class="btn fd-btn" href="{{ url_for('founder_add_product') }}">➕ إضافة منتج</a>
+</div>
+
+<div class="fd-card p-0">
+    <div class="table-responsive fd-table-wrap">
+        <table class="table fd-table table-hover align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>صورة</th>
+                    <th>المنتج</th>
+                    <th>الفرع</th>
+                    <th>السعر</th>
+                    <th>الكمية</th>
+                    <th style="min-width: 180px;">التحكم</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if products and products|length > 0 %}
+                    {% for p in products %}
+                    <tr>
+                        <td style="width: 72px;">
+                            {% if p.get('image_path') %}
+                            <img src="{{ media_url(p['image_path']) }}" alt="" class="fd-thumb-img">
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="fw-bold">{{ p.get('product_name', '-') }}</td>
+                        <td><span class="badge bg-secondary">{{ p.get('branch_name', '-') }}</span></td>
+                        <td>{{ p.get('price', '-') }}</td>
+                        <td>{{ p.get('total_quantity', 0) }}</td>
+                        <td>
+                            <a class="btn btn-sm btn-outline-success" href="{{ url_for('edit_product', product_id=p['id']) }}">تعديل</a>
+                            <form action="{{ url_for('delete_product', product_id=p['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('حذف هذا المنتج؟');">
+                                {{ csrf_input() }}
+                                <button type="submit" class="btn btn-sm btn-outline-danger">حذف</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr><td colspan="6" class="text-center text-muted py-4">لا توجد منتجات.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

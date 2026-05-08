@@ -1,0 +1,116 @@
+{# معلومات الشركة العامة للشات — لوحة الإدارة فقط #}
+{% from "macros/csrf.html" import csrf_input %}
+{% if company_info_rows is defined %}
+<div class="stat-card mt-4 mb-4">
+    <h5 class="mb-2 fw-bold">معلومات الشركة للشات (عامة)</h5>
+    <p class="small text-muted mb-3">
+        ما تكتبه هنا يصل لـ <strong>سياق الذكاء الاصطناعي</strong> في المحادثة.
+        استخدم «معلومات إضافية / أسئلة شائعة» لأي نص تريد إضافته (تعريف، روابط، عروض، إجابات جاهزة).
+        الدوام والفروع التفصيلية يستحسن أن تبقى متسقة مع بيانات الفروع.
+    </p>
+    <form method="post" action="{{ url_for('admin_company_info') }}" enctype="multipart/form-data">
+        {{ csrf_input() }}
+        <input type="hidden" name="company_globals_form" value="1">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="small fw-bold" for="ci_working_hours">أوقات العمل (عام)</label>
+                <textarea class="form-control form-control-sm" id="ci_working_hours" name="working_hours" rows="3" placeholder="مثال: من السبت للخميس 9ص–11م">{{ company_info_rows.get('working_hours', '') }}</textarea>
+            </div>
+            <div class="col-md-6">
+                <label class="small fw-bold" for="ci_payment">طرق الدفع</label>
+                <textarea class="form-control form-control-sm" id="ci_payment" name="payment_methods" rows="3" placeholder="مدى، فيزا، تحويل، …">{{ company_info_rows.get('payment_methods', '') }}</textarea>
+            </div>
+            <div class="col-md-6">
+                <label class="small fw-bold" for="ci_delivery">التوصيل والشحن</label>
+                <textarea class="form-control form-control-sm" id="ci_delivery" name="delivery_policy" rows="3" placeholder="مدد، مدن، تكلفة تقريبية…">{{ company_info_rows.get('delivery_policy', '') }}</textarea>
+            </div>
+            <div class="col-12">
+                <label class="small fw-bold" for="ci_delivery_imgs">صور توضيحية للتوصيل/الشحن (تظهر في الشات عند سؤال العميل عن التوصيل)</label>
+                <p class="small text-muted mb-2">ارفع صوراً أو احتفظ بالروابط الحالية. الحد الأقصى 16 صورة. يُفضّل رفع صغيرة للسرعة.</p>
+                <div id="deliveryImagesPreview" class="d-flex flex-wrap gap-2 mb-2"></div>
+                <textarea name="delivery_images_json" id="deliveryImagesJson" class="d-none" aria-hidden="true">{{ delivery_images_json_text if delivery_images_json_text is defined else '[]' }}</textarea>
+                <input type="file" name="delivery_image_uploads" id="delivery_image_uploads" class="form-control form-control-sm" accept="image/png,image/jpeg,image/gif,image/webp" multiple>
+            </div>
+            <div class="col-md-6">
+                <label class="small fw-bold" for="ci_return">سياسة الاسترجاع</label>
+                <textarea class="form-control form-control-sm" id="ci_return" name="return_policy" rows="3">{{ company_info_rows.get('return_policy', '') }}</textarea>
+            </div>
+            <div class="col-md-6">
+                <label class="small fw-bold" for="ci_exchange">سياسة الاستبدال</label>
+                <textarea class="form-control form-control-sm" id="ci_exchange" name="exchange_policy" rows="3">{{ company_info_rows.get('exchange_policy', '') }}</textarea>
+            </div>
+            <div class="col-md-6">
+                <label class="small fw-bold" for="ci_branches">معلومات عامة عن الفروع</label>
+                <textarea class="form-control form-control-sm" id="ci_branches" name="branches_info" rows="3" placeholder="نبذة، مناطق، …">{{ company_info_rows.get('branches_info', '') }}</textarea>
+            </div>
+            <div class="col-12">
+                <label class="small fw-bold" for="ci_general">معلومات عامة (نبذة عن المجمع)</label>
+                <textarea class="form-control form-control-sm" id="ci_general" name="general_info" rows="3">{{ company_info_rows.get('general_info', '') }}</textarea>
+            </div>
+            <div class="col-12">
+                <label class="small fw-bold text-success" for="ci_online_store">المتجر الإلكتروني</label>
+                <input type="url" class="form-control form-control-sm" id="ci_online_store" name="online_store_url" dir="ltr" placeholder="https://..." value="{{ company_info_rows.get('online_store_url', '') }}">
+                <p class="small text-muted mb-0 mt-1">يُعرَض للعميل عند السؤال عن المتجر أو الشراء أونلاين.</p>
+            </div>
+            <div class="col-12">
+                <label class="small fw-bold text-success" for="ci_social">روابط السوشال ميديا والقنوات</label>
+                <textarea class="form-control form-control-sm" id="ci_social" name="social_media_links" rows="5" placeholder="سطر لكل منصة، مثال:&#10;إنستغرام: https://instagram.com/...&#10;سناب شات: https://snapchat.com/add/...&#10;تيك توك: https://tiktok.com/@...">{{ company_info_rows.get('social_media_links', '') }}</textarea>
+                <p class="small text-muted mb-0 mt-1">تصل إلى سياق الشات والذكاء الاصطناعي؛ عند طلب «رابط القناة» أو «حسابكم» يُذكر ما ورد هنا.</p>
+            </div>
+            <div class="col-12">
+                <label class="small fw-bold text-primary" for="ci_chat_extra">معلومات إضافية للشات — أي نص تريده (أسئلة شائعة، تفاصيل، إجابات جاهزة)</label>
+                <textarea class="form-control" id="ci_chat_extra" name="chat_extra" rows="8" placeholder="مثال:&#10;• هل عندكم تخصيم للعائلات؟ …&#10;• كيف أطلب بالجملة؟ …&#10;كل سطر أو فقرة يمكن للبوت الاعتماد عليها عند السؤال.">{{ company_info_rows.get('chat_extra', '') }}</textarea>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-gold mt-3">حفظ معلومات الشركة للشات</button>
+    </form>
+</div>
+<script>
+(function () {
+    var ta = document.getElementById('deliveryImagesJson');
+    var prev = document.getElementById('deliveryImagesPreview');
+    if (!ta || !prev) return;
+    function urlsFromTa() {
+        try { return JSON.parse(ta.value || '[]'); } catch (e) { return []; }
+    }
+    function setUrls(arr) {
+        ta.value = JSON.stringify(arr);
+        render();
+    }
+    function staticPrefix(u) {
+        u = String(u || '');
+        if (u.indexOf('http://') === 0 || u.indexOf('https://') === 0) return u;
+        if (u.indexOf('/static/') === 0) return u;
+        if (u.indexOf('static/') === 0) return '/' + u;
+        return '/static/' + u.replace(/^\/+/, '');
+    }
+    function render() {
+        var urls = urlsFromTa();
+        prev.innerHTML = '';
+        urls.forEach(function (u, i) {
+            var wrap = document.createElement('div');
+            wrap.className = 'position-relative border rounded p-1 bg-white';
+            wrap.style.maxWidth = '120px';
+            var img = document.createElement('img');
+            img.src = staticPrefix(u);
+            img.alt = '';
+            img.style.cssText = 'width:100px;height:100px;object-fit:cover;border-radius:8px;display:block;';
+            img.onerror = function () { img.style.display = 'none'; };
+            var rm = document.createElement('button');
+            rm.type = 'button';
+            rm.className = 'btn btn-sm btn-outline-danger position-absolute top-0 end-0 m-1 p-0 px-1';
+            rm.textContent = '×';
+            rm.title = 'حذف';
+            rm.onclick = function () {
+                var a = urlsFromTa().filter(function (_, j) { return j !== i; });
+                setUrls(a);
+            };
+            wrap.appendChild(img);
+            wrap.appendChild(rm);
+            prev.appendChild(wrap);
+        });
+    }
+    render();
+})();
+</script>
+{% endif %}

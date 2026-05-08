@@ -1,0 +1,156 @@
+{% extends "founder/base.html" %}
+{% block title %}تعديل فرع{% endblock %}
+{% block content %}
+{% from "macros/csrf.html" import csrf_input %}
+<div class="fd-page-head">
+    <h1 class="fd-page-title">تعديل الفرع: {{ b.get('city_name', '') }}</h1>
+    <div class="d-flex flex-wrap gap-2">
+        {% if is_admin_editor %}
+        <a class="btn btn-outline-secondary btn-sm text-light" href="{{ url_for('admin_dashboard') }}">رجوع للإدارة</a>
+        {% endif %}
+        <a class="btn btn-outline-secondary btn-sm text-light" href="{{ url_for('founder_branch_view', branch_id=branch_id) }}">معاينة الفرع</a>
+        <a class="btn btn-outline-secondary btn-sm text-light" href="{{ url_for('founder_branches') }}">رجوع للفروع</a>
+    </div>
+</div>
+
+<form method="POST" action="{{ url_for('founder_branch_edit', branch_id=branch_id) }}">
+    {{ csrf_input() }}
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="fd-card">
+                <h2 class="h5 fw-bold mb-3">بيانات الحساب والتواصل</h2>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">اسم المدينة / الفرع</label>
+                    <input type="text" name="city_name" class="form-control" value="{{ b.get('city_name', '') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">اسم المستخدم (دخول الفرع)</label>
+                    <input type="text" name="username" class="form-control" value="{{ b.get('username', '') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">البريد (شكاوى)</label>
+                    <input type="email" name="complaint_email" class="form-control" value="{{ b.get('complaint_email', '') or '' }}" placeholder="email@example.com">
+                </div>
+                <div class="mb-0">
+                    <label class="form-label small fw-bold">رقم الجوال</label>
+                    <input type="text" name="phone" class="form-control" value="{{ b.get('phone', '') or '' }}" placeholder="05xxxxxxxx">
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="fd-card mb-4">
+                <h2 class="h5 fw-bold mb-3">الموقع والخرائط</h2>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">العنوان</label>
+                    <textarea name="address" class="form-control" rows="2" placeholder="العنوان الكامل">{{ loc.get('address', '') or '' }}</textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">رابط خرائط Google</label>
+                    <input type="url" name="google_maps_url" class="form-control" value="{{ loc.get('google_maps_url', '') or '' }}" placeholder="https://maps.google.com/...">
+                </div>
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">خط العرض (GPS lat)</label>
+                        <input type="text" name="gps_lat" class="form-control" value="{{ loc.get('gps_lat', '') if loc.get('gps_lat') is not none else '' }}" placeholder="21.4...">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">خط الطول (GPS lng)</label>
+                        <input type="text" name="gps_lng" class="form-control" value="{{ loc.get('gps_lng', '') if loc.get('gps_lng') is not none else '' }}" placeholder="39.2...">
+                    </div>
+                </div>
+            </div>
+            <div class="fd-card">
+                <h2 class="h5 fw-bold mb-3">أوقات الدوام</h2>
+                <p class="small text-muted mb-3">يُحفظ في قاعدة البيانات. صيغة الوقت مثل 09:00 أو 16:30 (توقيت السعودية).</p>
+
+                <h3 class="h6 fw-bold mb-2">أيام الأسبوع (عدا الجمعة)</h3>
+                <div class="mb-3">
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="weekday_period_mode" id="weekday-one" value="one" {% if weekday_period_mode != 'two' %}checked{% endif %}>
+                        <label class="form-check-label small" for="weekday-one">فترة واحدة</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="weekday_period_mode" id="weekday-two" value="two" {% if weekday_period_mode == 'two' %}checked{% endif %}>
+                        <label class="form-check-label small" for="weekday-two">فترتين</label>
+                    </div>
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col-6">
+                        <label class="form-label small">من</label>
+                        <input type="text" name="weekday_open" class="form-control" value="{{ weekday_open }}" placeholder="مثال: 08:30" autocomplete="off">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">إلى</label>
+                        <input type="text" name="weekday_close" class="form-control" value="{{ weekday_close }}" placeholder="مثال: 22:00" autocomplete="off">
+                    </div>
+                </div>
+                <div id="weekday-period-2" class="row g-2 mb-3 {% if not weekday_two %}d-none{% endif %}">
+                    <div class="col-12"><span class="small fw-bold text-muted">الفترة الثانية</span></div>
+                    <div class="col-6">
+                        <label class="form-label small">من</label>
+                        <input type="text" name="weekday_start_2" class="form-control" value="{{ weekday_start_2 or '' }}" placeholder="اختياري" autocomplete="off">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">إلى</label>
+                        <input type="text" name="weekday_end_2" class="form-control" value="{{ weekday_end_2 or '' }}" placeholder="اختياري" autocomplete="off">
+                    </div>
+                </div>
+
+                <h3 class="h6 fw-bold mb-2 mt-3">يوم الجمعة</h3>
+                <div class="mb-3">
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="friday_period_mode" id="friday-one" value="one" {% if friday_period_mode != 'two' %}checked{% endif %}>
+                        <label class="form-check-label small" for="friday-one">فترة واحدة</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="friday_period_mode" id="friday-two" value="two" {% if friday_period_mode == 'two' %}checked{% endif %}>
+                        <label class="form-check-label small" for="friday-two">فترتين</label>
+                    </div>
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col-6">
+                        <label class="form-label small">من</label>
+                        <input type="text" name="friday_open" class="form-control" value="{{ friday_open }}" placeholder="مثال: 16:00" autocomplete="off">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">إلى</label>
+                        <input type="text" name="friday_close" class="form-control" value="{{ friday_close }}" placeholder="مثال: 23:59" autocomplete="off">
+                    </div>
+                </div>
+                <div id="friday-period-2" class="row g-2 {% if not friday_two %}d-none{% endif %}">
+                    <div class="col-12"><span class="small fw-bold text-muted">الفترة الثانية</span></div>
+                    <div class="col-6">
+                        <label class="form-label small">من</label>
+                        <input type="text" name="friday_start_2" class="form-control" value="{{ friday_start_2 or '' }}" placeholder="اختياري" autocomplete="off">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">إلى</label>
+                        <input type="text" name="friday_end_2" class="form-control" value="{{ friday_end_2 or '' }}" placeholder="اختياري" autocomplete="off">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="mt-4">
+        <button type="submit" class="btn fd-btn btn-lg px-5">حفظ كل التغييرات</button>
+    </div>
+</form>
+<script>
+(function () {
+    function wire(modeName, radioTwoId, blockId) {
+        var two = document.getElementById(radioTwoId);
+        var block = document.getElementById(blockId);
+        if (!two || !block) return;
+        function upd() {
+            block.classList.toggle("d-none", !two.checked);
+        }
+        document.querySelectorAll('input[name="' + modeName + '"]').forEach(function (el) {
+            el.addEventListener("change", upd);
+        });
+        upd();
+    }
+    wire("weekday_period_mode", "weekday-two", "weekday-period-2");
+    wire("friday_period_mode", "friday-two", "friday-period-2");
+})();
+</script>
+{% endblock %}

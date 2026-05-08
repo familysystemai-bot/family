@@ -1,0 +1,81 @@
+{% extends "founder/base.html" %}
+{% from "macros/csrf.html" import csrf_input %}
+{% block title %}الذكاء الاصطناعي{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <a href="{{ url_for('integrations.integrations_dashboard') }}" class="btn btn-link mb-3">← رجوع للتكاملات</a>
+
+    <h2>🧠 مزوّد الذكاء الاصطناعي</h2>
+    <p class="text-muted">فعّل المزوّد والنموذج، واحفظ المفاتيح من لوحة كل خدمة.</p>
+
+    <div class="alert alert-light border mb-4">
+        المفعّل حالياً: <strong>{{ active_provider }}</strong> —
+        النموذج: <strong>{{ active_model }}</strong>
+    </div>
+
+    {% for p in providers %}
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <strong>{{ p.name }}</strong>
+                {% if p.available %}
+                <span class="badge bg-success ms-1">جاهز</span>
+                {% else %}
+                <span class="badge bg-warning text-dark ms-1">ناقص مفاتيح</span>
+                {% endif %}
+            </div>
+            {% if p.id == active_provider %}
+            <span class="badge bg-primary">نشط</span>
+            {% endif %}
+        </div>
+        <div class="card-body">
+            <form method="post" class="row g-2 align-items-end mb-4">
+                {{ csrf_input() }}
+                <input type="hidden" name="provider" value="{{ p.id }}">
+                <div class="col-12 col-md-4">
+                    <label class="form-label small">النموذج</label>
+                    <select name="model" class="form-select">
+                        {% for m in p.models %}
+                        <option value="{{ m }}" {% if m == active_model and p.id == active_provider %}selected{% endif %}>{{ m }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" name="action" value="activate" class="btn btn-primary">تفعيل هذا المزوّد</button>
+                </div>
+            </form>
+
+            {% if p.fields %}
+            <h6 class="border-top pt-3">مفاتيح الاتصال</h6>
+            <form method="post" class="row g-3">
+                {{ csrf_input() }}
+                <input type="hidden" name="provider" value="{{ p.id }}">
+                {% for f in p.fields %}
+                <div class="col-12 col-md-6">
+                    <label class="form-label">{{ f.label }}</label>
+                    {% set t = f.type or 'text' %}
+                    {% if t == 'password' %}
+                    <input type="password" class="form-control font-monospace" name="{{ f.key }}"
+                           placeholder="{% if p['values'].get(f.key ~ '_has_value') %}{{ p['values'].get(f.key) }}{% else %}أدخل المفتاح{% endif %}">
+                    {% if p['values'].get(f.key ~ '_has_value') %}
+                    <small class="text-success">محفوظ — اتركه فارغاً للإبقاء</small>
+                    {% endif %}
+                    {% else %}
+                    <input type="text" class="form-control" name="{{ f.key }}"
+                           value="{{ p['values'].get(f.key, f.default|default('')) }}">
+                    {% endif %}
+                    {% if f.help %}<div class="form-text">{{ f.help }}</div>{% endif %}
+                </div>
+                {% endfor %}
+                <div class="col-12 d-flex gap-2">
+                    <button type="submit" name="action" value="save" class="btn btn-success">حفظ</button>
+                    <button type="submit" name="action" value="test" class="btn btn-outline-secondary">اختبار التوفر</button>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

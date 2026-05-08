@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+{% from "macros/site_logo.html" import site_logo_pair %}
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% include "partials/pwa_head.html" %}
+    <title>{{ seo_title | default("مجمع العائلة | خدمة العملاء الذكية", true) }}</title>
+    <meta name="description" content="{{ seo_description | default('', true) }}">
+    <meta name="robots" content="index, follow">
+    {% if seo_canonical_url %}
+    <link rel="canonical" href="{{ seo_canonical_url }}">
+    {% endif %}
+    <meta property="og:type" content="website">
+    <meta property="og:locale" content="ar_SA">
+    <meta property="og:title" content="{{ seo_title | default("مجمع العائلة", true) }}">
+    <meta property="og:description" content="{{ seo_description | default('', true) }}">
+    {% if seo_canonical_url %}
+    <meta property="og:url" content="{{ seo_canonical_url }}">
+    {% endif %}
+    {% if seo_og_image %}
+    <meta property="og:image" content="{{ seo_og_image }}">
+    {% endif %}
+    <meta name="twitter:card" content="summary_large_image">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/site-brand.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/chat-ai-shell.css') }}" rel="stylesheet">
+    <style>
+        .modal.fade .modal-dialog { transition: transform 0.3s ease-out, opacity 0.3s ease-out; }
+        .header-logout-link {
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.75);
+            text-decoration: none;
+            padding: 6px 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+        .header-logout-link:hover { color: #fff; border-color: rgba(255,255,255,0.35); }
+    </style>
+</head>
+<body class="ai-chat-shell">
+
+    <div class="ai-chat-glass-frame">
+    <header class="chat-header">
+        <div class="chat-header-brand">
+            {{ site_logo_pair('header-logo', 'site-logo-k--chat-header') }}
+            <div class="header-info">
+                <h5>العائلة FAMILY</h5>
+                <small class="subtitle"><span class="online-dot">متصل الآن</span></small>
+            </div>
+        </div>
+        <button class="header-login-btn" id="headerLoginBtn" onclick="openSmartLogin()">
+            <i class="fa-solid fa-right-to-bracket"></i>
+            <span class="login-text">دخول</span>
+        </button>
+        <div id="userBadge" class="chat-user-badge" style="display:none;">
+            <i class="fa-solid fa-user-check"></i> <span id="displayUserName"></span>
+        </div>
+        <a href="{{ url_for('chat_visitor_logout') }}" id="chatLogoutLink" class="header-logout-link" style="display:none;" title="تسجيل خروج">تسجيل خروج</a>
+    </header>
+
+    <main class="chat-body" id="chatBox">
+        <div class="chat-body-brand-mark" aria-hidden="true">
+            {% if logo_url %}
+            <img src="{{ logo_url }}?v={{ site_logo_cache_bust }}" alt="" decoding="async" class="chat-body-brand-mark__img" onerror="this.classList.add('site-logo-hidden');">
+            {% endif %}
+        </div>
+    </main>
+
+    <footer class="chat-footer">
+        <!-- معاينة الصورة المرفقة قبل الإرسال -->
+        <div id="imagePreviewBar" style="display:none; padding:8px 12px; background:rgba(255,255,255,0.06); border-top:1px solid rgba(255,255,255,0.08); align-items:center; gap:10px;">
+            <img id="imagePreviewThumb" src="" alt="" style="height:52px; width:52px; object-fit:cover; border-radius:8px; border:2px solid rgba(255,255,255,0.2);">
+            <span id="imagePreviewName" style="font-size:0.82rem; color:rgba(255,255,255,0.7); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+            <button onclick="clearPendingImage()" style="background:none; border:none; color:rgba(255,100,100,0.9); font-size:1.1rem; cursor:pointer; padding:4px 8px;" title="إلغاء الصورة">✕</button>
+        </div>
+        <div class="input-row">
+            <button class="action-btn" onclick="document.getElementById('fileInput').click()" title="إرفاق صورة">
+                <i class="fa-solid fa-camera"></i>
+            </button>
+            <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFileSelect(event)">
+            <input type="text" id="userInput" placeholder="اكتب رسالتك..." onkeypress="if(event.key==='Enter') sendMessage()">
+            <button class="action-btn voice-btn" id="voiceBtn" onclick="toggleVoiceRecording()" title="تسجيل صوتي">
+                <i class="fa-solid fa-microphone"></i>
+            </button>
+            <button class="send-btn" onclick="sendMessage()"><i class="fa-solid fa-paper-plane"></i></button>
+        </div>
+    </footer>
+    </div>
+
+    <!-- تسجيل دخول زائر الشات: بريد أو جوال (9 أرقام) — بدون OTP -->
+    <div class="modal fade" id="smartLoginModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered" style="max-width:380px;">
+            <div class="modal-content ai-modal-panel">
+                <button class="modal-close-x" data-bs-dismiss="modal" aria-label="إغلاق"><i class="fa-solid fa-xmark"></i></button>
+                {{ site_logo_pair('login-logo login-logo--sm', 'site-logo-k--index-modal-sm') }}
+                <p class="text-center mb-3" style="font-size:0.9rem; color:#bbb; line-height:1.9;">
+                    للشكاوى وتتبع الطلب: اسمك ثم بريدك أو رقم جوالك (9 أرقام)
+                </p>
+                <div class="form-field">
+                    <input type="text" id="smartUserName" name="name" placeholder="اسمك" required autocomplete="name" enterkeyhint="next">
+                </div>
+                <div class="form-field">
+                    <input type="text" id="smartIdentifier" placeholder="البريد الإلكتروني أو رقم الجوال (9 أرقام)" autocomplete="username" inputmode="email">
+                </div>
+                <button type="button" class="btn-verify" id="smartLoginBtn" onclick="smartLoginSubmit()">تسجيل الدخول</button>
+                <button class="btn-cancel" data-bs-dismiss="modal">إلغاء</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let isLoggedIn = false;
+        let userName = "";
+        let selectedFile = null;
+        
+        const smartLoginModalElement = document.getElementById('smartLoginModal');
+        let smartLoginModal = smartLoginModalElement ? new bootstrap.Modal(smartLoginModalElement) : null;
+        if (smartLoginModalElement) {
+            smartLoginModalElement.addEventListener('hidden.bs.modal', function () {
+                var si = document.getElementById('smartIdentifier');
+                if (si) si.value = '';
+                var sn = document.getElementById('smartUserName');
+                if (sn) sn.value = '';
+            });
+        }
+
+        function scrollChat() {
+            const box = document.getElementById('chatBox');
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function appendMessage(text, type) {
+            if (type !== 'user') {
+                appendBotMessageText(text);
+                return;
+            }
+            const div = document.createElement('div');
+            div.className = 'message msg-user';
+            div.textContent = text;
+            document.getElementById('chatBox').appendChild(div);
+            scrollChat();
+        }
+
+        /** بعد انتهاء الكتابة: روابط http(s) قابلة للنقر */
+        function applyBotMessageLinks(div, s) {
+            const str = String(s || '');
+            div.textContent = '';
+            const urlRe = /(https?:\/\/[^\s<]+[^\s<.,;:!?)\]}»])/gi;
+            let last = 0;
+            let m;
+            let found = false;
+            while ((m = urlRe.exec(str)) !== null) {
+                found = true;
+                if (m.index > last) {
+                    div.appendChild(document.createTextNode(str.slice(last, m.index)));
+                }
+                const a = document.createElement('a');
+                a.href = m[1];
+                a.target = '_blank';
+                a.rel = 'noopener noreferrer';
+                a.textContent = m[1];
+                div.appendChild(a);
+                last = m.index + m[1].length;
+            }
+            if (found && last < str.length) {
+                div.appendChild(document.createTextNode(str.slice(last)));
+            }
+            if (!found) {
+                div.textContent = str;
+            }
+        }
+
+        var _botTextQueue = [];
+        var _botTextBusy = false;
+        var _botIdleCallbacks = [];
+
+        function runWhenBotTextIdle(fn) {
+            if (typeof fn !== 'function') return;
+            if (!_botTextBusy && _botTextQueue.length === 0) {
+                fn();
+            } else {
+                _botIdleCallbacks.push(fn);
+            }
+        }
+
+        function flushBotIdleCallbacks() {
+            if (_botTextBusy || _botTextQueue.length > 0) return;
+            var cbs = _botIdleCallbacks.slice();
+            _botIdleCallbacks.length = 0;
+            for (var j = 0; j < cbs.length; j++) {
+                try { cbs[j](); } catch (e) {}
+            }
+        }
+
+        function drainBotTextQueue() {
+            if (_botTextBusy) return;
+            if (_botTextQueue.length === 0) {
+                flushBotIdleCallbacks();
+                return;
+            }
+            var s = _botTextQueue.shift();
+            if (!s || !String(s).trim()) {
+                drainBotTextQueue();
+                return;
+            }
+            s = String(s);
+            _botTextBusy = true;
+
+            var box = document.getElementById('chatBox');
+            box.querySelectorAll('.typing-indicator').forEach(function (el) { el.remove(); });
+
+            var indicator = document.createElement('div');
+            indicator.className = 'typing-indicator';
+            indicator.id = 'typingIndicator';
+            indicator.innerHTML = '<span></span><span></span><span></span>';
+            box.appendChild(indicator);
+            scrollChat();
+
+            var delayMs = 520;
+            var msPerChar = Math.max(4, Math.min(14, Math.floor(4800 / Math.max(s.length, 40))));
+
+            setTimeout(function () {
+                var el = document.getElementById('typingIndicator');
+                if (el) el.remove();
+
+                var div = document.createElement('div');
+                div.className = 'message msg-bot';
+                box.appendChild(div);
+                var i = 0;
+                function typeChunk() {
+                    if (i < s.length) {
+                        div.textContent = s.slice(0, i + 1);
+                        i++;
+                        scrollChat();
+                        setTimeout(typeChunk, msPerChar);
+                    } else {
+                        applyBotMessageLinks(div, s);
+                        scrollChat();
+                        _botTextBusy = false;
+                        drainBotTextQueue();
+                    }
+                }
+                typeChunk();
+            }, delayMs);
+        }
+
+        /** رسالة بوت: مؤشر كتابة ثم ظهور تدريجي مثل ChatGPT (متسلسل عند عدة أجزاء) */
+        function appendBotMessageText(text) {
+            var s = String(text || '');
+            if (!s.trim()) return;
+            _botTextQueue.push(s);
+            drainBotTextQueue();
+        }
+
+        function appendBotChatPayload(data) {
+            const msgs = data && Array.isArray(data.messages) ? data.messages : [];
+            if (msgs.length > 0) {
+                msgs.forEach(function (part) {
+                    const t = String(part || '').trim();
+                    if (t) appendBotMessageText(t);
+                });
+                return;
+            }
+            let m = data && data.message ? String(data.message).trim() : '';
+            const isEmptyProduct =
+                data &&
+                data.intent === 'product' &&
+                (!data.products || data.products.length === 0);
+            if (!m && isEmptyProduct) {
+                m = 'لا يوجد منتجات حالياً';
+            }
+            if (m) appendBotMessageText(m);
+            const fol = data && data.followup_message ? String(data.followup_message).trim() : '';
+            if (fol) appendBotMessageText(fol);
+            const cimgs = data && Array.isArray(data.context_images) ? data.context_images : [];
+            if (cimgs.length > 0) {
+                const html = cimgs.map(function (u) {
+                    const src = chatProductImageUrl(u);
+                    if (!src) return '';
+                    return '<div class="mt-2"><a href="' + escHtml(src) + '" target="_blank" rel="noopener noreferrer"><img src="' + escHtml(src) + '" alt="" style="max-width:240px;max-height:240px;border-radius:10px;display:block;object-fit:cover;"></a></div>';
+                }).filter(Boolean).join('');
+                if (html) appendBotHTML(html);
+            }
+        }
+
+        function appendBotTyping(text) {
+            const s = String(text || '');
+            appendBotMessageText(s);
+        }
+
+        function appendBotHTML(html) {
+            const div = document.createElement('div');
+            div.className = 'message msg-bot';
+            div.innerHTML = html;
+            function attach() {
+                document.getElementById('chatBox').appendChild(div);
+                scrollChat();
+            }
+            runWhenBotTextIdle(attach);
+        }
+
+        function escHtml(s) {
+            if (s === null || s === undefined) return '';
+            return String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function chatProductImageUrl(rawPath) {
+            const s = String(rawPath || '').trim();
+            if (!s) return '';
+            if (s.startsWith('http://') || s.startsWith('https://')) return s;
+            if (s.startsWith('/static/')) return s;
+            if (s.startsWith('static/')) return '/' + s;
+            return '/static/' + s.replace(/^\/+/, '');
+        }
+
+        function renderProducts(products) {
+            if (!products || products.length === 0) return '';
+            const cards = products.map(p => {
+                let rawPath = '';
+                if (p.image_url && String(p.image_url).trim()) {
+                    rawPath = String(p.image_url).trim();
+                }
+                if (!rawPath && p.images && p.images.length) {
+                    const first = String(p.images[0] || '').trim();
+                    if (first) rawPath = p.images[0];
+                }
+                if (!rawPath && p.img1 && String(p.img1).trim()) {
+                    rawPath = String(p.img1).trim();
+                }
+                const img = chatProductImageUrl(rawPath);
+                const hrefRaw = (p.image_url && String(p.image_url).trim())
+                    ? String(p.image_url).trim()
+                    : ((p.primary_image_href && String(p.primary_image_href).trim())
+                        ? String(p.primary_image_href).trim()
+                        : rawPath);
+                const imgHref = chatProductImageUrl(hrefRaw);
+                const bodySrc = (p.chat_text && String(p.chat_text).trim())
+                    ? p.chat_text
+                    : (p.detail_text ? p.detail_text : [
+                        p.name || 'المنتج',
+                        'السعر: ' + (p.price != null ? p.price : '—') + ' ريال',
+                        'المقاسات: ' + ((p.sizes && p.sizes.length) ? p.sizes.join('، ') : '—'),
+                        'الألوان: ' + ((p.colors && p.colors.length) ? p.colors.join('، ') : '—'),
+                        'المتوفر: ' + (p.quantity != null ? p.quantity : '0') + ' قطع',
+                    ].join('\n'));
+                const body = escHtml(bodySrc).replace(/\n/g, '<br>');
+                const imgBlock = img
+                    ? (imgHref
+                        ? `<a href="${escHtml(imgHref)}" target="_blank" rel="noopener noreferrer" style="display:block;line-height:0;">
+                            <img src="${escHtml(img)}" alt="" class="chat-product-hero" style="width:100%;height:auto;max-height:min(360px, 52vh);object-fit:cover;display:block;">
+                           </a>`
+                        : `<img src="${escHtml(img)}" alt="" class="chat-product-hero" style="width:100%;height:auto;max-height:min(360px, 52vh);object-fit:cover;display:block;">`)
+                    : `<div style="min-height:140px;display:flex;align-items:center;justify-content:center;color:#666;font-size:0.9rem;padding:16px;">بدون صورة</div>`;
+                return `
+                    <div class="chat-product-card" style="border:1px solid var(--border); border-radius:18px; padding:0; background:rgba(255,255,255,0.04); margin-top:14px; overflow:hidden; max-width:100%;">
+                        <div style="width:100%; max-height:min(360px, 52vh); background:#0a0a0a; border-bottom:1px solid rgba(255,255,255,0.07);">
+                            ${imgBlock}
+                        </div>
+                        <div style="padding:14px 16px 16px; font-size:0.92rem; line-height:1.75; color:#e8e8e8;">
+                            ${body}
+                        </div>
+                    </div>`;
+            }).join('');
+            return `<div class="chat-products-wrap">${cards}</div>`;
+        }
+
+        function openSmartLogin() {
+            if (isLoggedIn) return;
+            if(smartLoginModal) smartLoginModal.show();
+        }
+
+        let userContact = '';
+
+        function syncAccountSession() {
+            if (!isLoggedIn) return;
+            if (!userName && !userContact) return;
+            fetch('/chat_query', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    account_session_sync: true,
+                    user_name: userName,
+                    user_contact: userContact || ''
+                })
+            }).catch(function() {});
+        }
+
+        (function applyServerChatSession() {
+            const srvChat = {{ chat_logged_in | tojson }};
+            const srvName = {{ chat_user_name | tojson }};
+            const srvContact = {{ chat_user_contact | tojson }};
+            if (!srvChat || !srvContact) return;
+            isLoggedIn = true;
+            userName = (srvName || '').trim();
+            userContact = srvContact;
+            const hb = document.getElementById('headerLoginBtn');
+            const badge = document.getElementById('userBadge');
+            const lo = document.getElementById('chatLogoutLink');
+            const du = document.getElementById('displayUserName');
+            if (hb) hb.style.display = 'none';
+            if (badge) badge.style.display = 'flex';
+            if (lo) lo.style.display = 'inline-flex';
+            if (du) du.textContent = userName || srvContact;
+            syncAccountSession();
+        })();
+
+        async function smartLoginSubmit() {
+            const nameRaw = (document.getElementById('smartUserName') && document.getElementById('smartUserName').value || '').trim();
+            const identifier = (document.getElementById('smartIdentifier') && document.getElementById('smartIdentifier').value || '').trim();
+            if (!nameRaw) {
+                alert('يرجى إدخال اسمك');
+                return;
+            }
+            if (!identifier) {
+                alert('يرجى إدخال البريد أو رقم الجوال');
+                return;
+            }
+            const btn = document.getElementById('smartLoginBtn');
+            if (btn) btn.disabled = true;
+            try {
+                const r = await fetch('/api/chat-login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ identifier: identifier, name: nameRaw }),
+                });
+                const j = await r.json().catch(function () { return {}; });
+                if (!r.ok || !j.ok) {
+                    alert(j.error || 'تعذر تسجيل الدخول');
+                    return;
+                }
+                userName = (j.name || nameRaw || '').trim();
+                userContact = j.identifier || identifier;
+                isLoggedIn = true;
+                if (smartLoginModal) smartLoginModal.hide();
+                document.getElementById('headerLoginBtn').style.display = 'none';
+                document.getElementById('userBadge').style.display = 'flex';
+                var lo = document.getElementById('chatLogoutLink');
+                if (lo) lo.style.display = 'inline-flex';
+                document.getElementById('displayUserName').textContent = userName || userContact;
+                var si = document.getElementById('smartIdentifier');
+                if (si) si.value = '';
+                var sn = document.getElementById('smartUserName');
+                if (sn) sn.value = '';
+                syncAccountSession();
+            } catch (e) {
+                alert('خطأ في الاتصال');
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        function detectLoginIntent(msg) {
+            const words = ['شكوى', 'أشتكي', 'شكاوى', 'مشكلة في', 'تتبع', 'أين طلبي', 'متى يوصل', 'حالة الطلب', 'شحنتي', 'طلبي', 'شحن', 'استلام'];
+            return words.some(w => msg.includes(w));
+        }
+
+        function handleComplaintClick() {
+            if (!isLoggedIn) {
+                if(smartLoginModal) smartLoginModal.show();
+            } else {
+                // لا نرسل رد ثابت — المستخدم يكتب الشكوى وسيتم التعامل معها عبر /chat_query
+            }
+        }
+
+        // ── ملف معلّق (ينتظر الإرسال مع رسالة نصية) ──
+        let pendingImageFile = null;
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            if (!file.type.startsWith('image/')) {
+                appendBotMessageText('يرجى إرفاق صورة فقط (jpg/png/webp).');
+                event.target.value = '';
+                return;
+            }
+            pendingImageFile = file;
+
+            // عرض المعاينة فوق خانة الكتابة
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById('imagePreviewThumb').src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+            document.getElementById('imagePreviewName').textContent = file.name;
+            document.getElementById('imagePreviewBar').style.display = 'flex';
+            document.getElementById('userInput').placeholder = 'أضف وصفاً للصورة (اختياري) ثم اضغط إرسال...';
+            document.getElementById('userInput').focus();
+            event.target.value = '';
+        }
+
+        function clearPendingImage() {
+            pendingImageFile = null;
+            document.getElementById('imagePreviewBar').style.display = 'none';
+            document.getElementById('imagePreviewThumb').src = '';
+            document.getElementById('imagePreviewName').textContent = '';
+            document.getElementById('userInput').placeholder = 'اكتب رسالتك...';
+        }
+
+        let mediaRecorder = null;
+        let isRecording = false;
+        let audioChunks = [];
+        let recordingTimer = null;
+        let recordingSeconds = 0;
+
+        async function toggleVoiceRecording() {
+            const btn = document.getElementById('voiceBtn');
+            if (!isRecording) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    audioChunks = [];
+                    recordingSeconds = 0;
+                    mediaRecorder.ondataavailable = function(e) { audioChunks.push(e.data); };
+                    mediaRecorder.onstop = function() {
+                        stream.getTracks().forEach(function(t) { t.stop(); });
+                        clearInterval(recordingTimer);
+                        const duration = formatTime(recordingSeconds);
+                        const div = document.createElement('div');
+                        div.className = 'message msg-user';
+                        div.innerHTML = '<div>رسالة صوتية</div><div class="msg-attachment" style="flex-direction:row-reverse;"><i class="fa-solid fa-microphone"></i><span><i class="fa-solid fa-play" style="margin-left:6px;font-size:0.75rem;"></i> ' + duration + '</span></div>';
+                        document.getElementById('chatBox').appendChild(div);
+                        scrollChat();
+                        
+                        // إرسال الصوت للسيرفر
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        const formData = new FormData();
+                        formData.append('file', audioBlob, 'voice_message.webm');
+                        formData.append('message', '');
+                        if(isLoggedIn) {
+                            formData.append('user_name', userName);
+                            formData.append('account_logged_in', '1');
+                        }
+                        
+                        fetch('/chat_query', { method: 'POST', body: formData, credentials: 'same-origin' })
+                            .then(response => response.json())
+                            .then(data => appendBotTyping((data && (data.message || data.reply)) || ''));
+                    };
+                    mediaRecorder.start();
+                    isRecording = true;
+                    btn.classList.add('recording');
+                    btn.innerHTML = '<i class="fa-solid fa-stop"></i>';
+                    recordingTimer = setInterval(function() { recordingSeconds++; }, 1000);
+                } catch (e) {
+                    alert("لا يمكن الوصول إلى الميكروفون");
+                }
+            } else {
+                if (mediaRecorder && mediaRecorder.state !== 'inactive') { mediaRecorder.stop(); }
+                isRecording = false;
+                btn.classList.remove('recording');
+                btn.innerHTML = '<i class="fa-solid fa-microphone"></i>';
+            }
+        }
+
+        function formatTime(sec) {
+            const m = Math.floor(sec / 60).toString().padStart(2, '0');
+            const s = (sec % 60).toString().padStart(2, '0');
+            return m + ':' + s;
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('userInput');
+            const msg = input.value.trim();
+
+            // لازم يكون نص أو صورة (أو الاثنين)
+            if (!msg && !pendingImageFile) return;
+
+            // إذا كتب شكوى وهو مو مسجل دخول
+            if (!isLoggedIn && msg && detectLoginIntent(msg)) {
+                if(smartLoginModal) smartLoginModal.show();
+                return;
+            }
+
+            // ── عرض رسالة المستخدم في الشات ──
+            const chatBox = document.getElementById('chatBox');
+            const userDiv = document.createElement('div');
+            userDiv.className = 'message msg-user';
+
+            if (pendingImageFile && msg) {
+                // صورة + نص معاً
+                const imgEl = document.createElement('img');
+                imgEl.className = 'attached-image-preview';
+                imgEl.src = document.getElementById('imagePreviewThumb').src;
+                imgEl.style.cssText = 'max-width:180px;border-radius:10px;display:block;margin-bottom:6px;';
+                userDiv.appendChild(imgEl);
+                const textEl = document.createElement('div');
+                textEl.textContent = msg;
+                userDiv.appendChild(textEl);
+            } else if (pendingImageFile) {
+                // صورة فقط
+                const imgEl = document.createElement('img');
+                imgEl.className = 'attached-image-preview';
+                imgEl.src = document.getElementById('imagePreviewThumb').src;
+                imgEl.style.cssText = 'max-width:180px;border-radius:10px;display:block;';
+                userDiv.appendChild(imgEl);
+                const textEl = document.createElement('div');
+                textEl.textContent = '📷 صورة مرفقة';
+                textEl.style.cssText = 'font-size:0.82rem;color:rgba(255,255,255,0.6);margin-top:4px;';
+                userDiv.appendChild(textEl);
+            } else {
+                userDiv.textContent = msg;
+            }
+            chatBox.appendChild(userDiv);
+            scrollChat();
+
+            input.value = '';
+
+            try {
+                let response;
+                if (pendingImageFile) {
+                    // إرسال صورة (+ نص اختياري) كـ FormData
+                    const formData = new FormData();
+                    formData.append('file', pendingImageFile);
+                    formData.append('message', msg);  // قد يكون فارغاً
+                    if (isLoggedIn) {
+                        formData.append('user_name', userName);
+                        formData.append('account_logged_in', '1');
+                        if (userContact) formData.append('user_contact', userContact);
+                    }
+                    clearPendingImage();
+                    response = await fetch('/chat_query', {
+                        method: 'POST',
+                        body: formData,
+                        credentials: 'same-origin',
+                    });
+                } else {
+                    // نص فقط كـ JSON
+                    const payload = { message: msg };
+                    if (isLoggedIn && userName) { payload.user_name = userName; payload.account_logged_in = true; }
+                    if (isLoggedIn && userContact) payload.user_contact = userContact;
+                    response = await fetch('/chat_query', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        credentials: 'same-origin',
+                        body: JSON.stringify(payload),
+                    });
+                }
+
+                const data = await response.json();
+                const hasProducts = data && Array.isArray(data.products) && data.products.length > 0;
+                if (hasProducts) {
+                    const intro = data.message ? String(data.message).trim() : '';
+                    if (intro) appendBotMessageText(intro);
+                    const fol = data.followup_message ? String(data.followup_message).trim() : '';
+                    if (fol) appendBotMessageText(fol);
+                    appendBotHTML(renderProducts(data.products));
+                } else {
+                    appendBotChatPayload(data);
+                }
+                // ── ابدأ polling إذا كان الرد استفساراً للفرع ──
+                if (data && (data.intent === 'branch_inquiry' || data.inquiry_id)) {
+                    startInquiryPolling();
+                }
+            } catch (error) {
+                appendBotMessageText('عذراً، حدث خطأ في الاتصال بالسيرفر.');
+            }
+        }
+
+        // ── Polling: تحقق إذا ردّ الفرع على استفسار العميل ──
+        let _inquiryPollTimer = null;
+        let _inquiryPollCount = 0;
+
+        function startInquiryPolling() {
+            stopInquiryPolling();
+            _inquiryPollCount = 0;
+            _inquiryPollTimer = setInterval(checkInquiryReply, 30000); // كل 30 ثانية
+        }
+
+        function stopInquiryPolling() {
+            if (_inquiryPollTimer) {
+                clearInterval(_inquiryPollTimer);
+                _inquiryPollTimer = null;
+            }
+        }
+
+        async function checkInquiryReply() {
+            _inquiryPollCount++;
+            if (_inquiryPollCount > 120) {
+                stopInquiryPolling();
+                return;
+            }
+            try {
+                const res = await fetch('/api/inquiry-status', { credentials: 'same-origin' });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.replied) {
+                    stopInquiryPolling();
+                    // ── عرض سياق الاستفسار الأصلي (WhatsApp-style) ──
+                    if (data.inquiry_text) {
+                        appendBotHTML(
+                            '<div style="background:rgba(255,255,255,0.08);border-right:3px solid rgba(255,255,255,0.3);padding:6px 10px;border-radius:6px;font-size:.8rem;color:rgba(255,255,255,.7);margin-bottom:4px;">' +
+                            '↩ رداً على: ' + escHtml(data.inquiry_text) +
+                            '</div>'
+                        );
+                    }
+                    // ── عرض نص الرد ──
+                    if (data.message) appendBotMessageText(String(data.message).trim());
+                    // ── عرض صورة الفرع إن وُجدت ──
+                    const hasProds = Array.isArray(data.products) && data.products.length > 0;
+                    if (hasProds) appendBotHTML(renderProducts(data.products));
+                }
+            } catch (_) { /* تجاهل أخطاء الشبكة */ }
+        }
+    </script>
+</body>
+</html>

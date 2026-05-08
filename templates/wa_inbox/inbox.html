@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% include "partials/pwa_head.html" %}
+    {% if csrf_token is defined %}
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    {% endif %}
+    <title>{{ title }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --wa-border: #d9d0c3;
+            --wa-accent: #b8860b;
+            --wa-bg: #f0ebe4;
+            --wa-chat-bg: #e5ddd5;
+            --wa-bubble-in: #ffffff;
+            --wa-bubble-out: #d9fdd3;
+            --wa-shadow: 0 1px 0.5px rgba(0, 0, 0, 0.13);
+        }
+        body { background: var(--wa-bg); font-family: "Segoe UI", Tahoma, sans-serif; }
+        .wa-wrap { max-width: 1180px; margin: 0 auto; }
+        .wa-shell {
+            border: 1px solid var(--wa-border);
+            border-radius: 16px;
+            overflow: hidden;
+            background: #fff;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+        }
+        .wa-sidebar {
+            border-left: 1px solid var(--wa-border);
+            background: #fff;
+            max-height: 76vh;
+            min-height: 320px;
+            overflow-y: auto;
+        }
+        .wa-thread-item {
+            cursor: pointer;
+            padding: 12px 14px;
+            border-bottom: 1px solid #f2ede6;
+            display: flex;
+            gap: 12px;
+            align-items: stretch;
+            transition: background 0.15s ease;
+        }
+        .wa-thread-item:hover { background: #faf7f1; }
+        .wa-thread-item.active { background: #fff8e8; border-inline-end: 3px solid var(--wa-accent); }
+        .wa-thread-avatar {
+            flex: 0 0 44px;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #c9a227, var(--wa-accent));
+            color: #fff;
+            font-weight: 700;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-transform: uppercase;
+        }
+        .wa-thread-body { flex: 1; min-width: 0; }
+        .wa-thread-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+        .wa-thread-time { font-size: 0.72rem; color: #888; white-space: nowrap; }
+        .wa-thread-preview {
+            font-size: 0.82rem;
+            color: #666;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .wa-thread-preview .dir-tag {
+            font-size: 0.68rem;
+            opacity: 0.75;
+            margin-inline-end: 4px;
+        }
+        .wa-panel {
+            display: none;
+            flex-direction: column;
+            min-height: 0;
+            height: 76vh;
+            max-height: 76vh;
+            background: var(--wa-chat-bg);
+        }
+        .wa-panel.is-open {
+            display: flex;
+        }
+        .wa-chat-header {
+            flex: 0 0 auto;
+            padding: 12px 16px;
+            background: #f7f5f1;
+            border-bottom: 1px solid var(--wa-border);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .wa-chat-header .wa-h-avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #7a9a6a, #5c7d52);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+        }
+        .wa-chat-header .wa-h-meta small { color: #777; }
+        .wa-chat-scroll {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 16px 14px 20px;
+            background-color: var(--wa-chat-bg);
+            background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23c9c2b8' fill-opacity='0.12'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+        }
+        .wa-chat-placeholder {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #888;
+            font-size: 0.95rem;
+            padding: 24px;
+            text-align: center;
+        }
+        .wa-day-sep {
+            text-align: center;
+            margin: 12px 0;
+        }
+        .wa-day-sep span {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.06);
+            color: #555;
+            font-size: 0.78rem;
+            box-shadow: var(--wa-shadow);
+        }
+        .wa-msg-row {
+            display: flex;
+            margin-bottom: 6px;
+            align-items: flex-end;
+        }
+        .wa-msg-row.wa-inbound { justify-content: flex-start; }
+        .wa-msg-row.wa-outbound { justify-content: flex-end; }
+        .wa-bubble-wrap { max-width: min(78%, 420px); }
+        .wa-bubble {
+            padding: 8px 12px 6px;
+            border-radius: 12px;
+            box-shadow: var(--wa-shadow);
+            font-size: 0.94rem;
+            line-height: 1.45;
+            word-break: break-word;
+        }
+        .wa-bubble-in {
+            background: var(--wa-bubble-in);
+            border-top-right-radius: 4px;
+        }
+        .wa-bubble-out {
+            background: var(--wa-bubble-out);
+            border-top-left-radius: 4px;
+        }
+        .wa-bubble .wa-text { white-space: pre-wrap; }
+        .wa-bubble-img {
+            max-width: 100%;
+            max-height: 220px;
+            border-radius: 8px;
+            display: block;
+            margin-bottom: 4px;
+        }
+        .wa-msg-meta {
+            font-size: 0.68rem;
+            color: rgba(0, 0, 0, 0.45);
+            text-align: end;
+            margin-top: 2px;
+            padding-inline: 4px 2px;
+        }
+        .wa-msg-row.wa-outbound .wa-msg-meta { text-align: start; }
+        .composer {
+            flex: 0 0 auto;
+            border-top: 1px solid var(--wa-border);
+            background: #f7f5f1;
+            padding: 12px 14px;
+        }
+        .btn-send { background: var(--wa-accent); color: #fff; border: none; font-weight: 600; }
+        .btn-send:hover { background: #966d09; color: #fff; }
+        .wa-hint { font-size: 0.8rem; color: #777; }
+    </style>
+</head>
+<body>
+<div class="container py-4 wa-wrap">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="mb-0">{{ title }}</h4>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ home_url }}">← الرئيسية</a>
+    </div>
+    <p class="wa-hint mb-3">
+        عرض محادثة شبيه بالواتساب: المحادثات على اليمين، الرسائل بالفقاعات والتاريخ.
+        للصور الصادرة يُفضّل ضبط <code>PUBLIC_BASE_URL</code> على رابط <strong>https</strong> عام.
+    </p>
+    <div class="wa-shell row g-0">
+        <div class="col-md-4 wa-sidebar p-0">
+            <div class="p-3 border-bottom bg-white">
+                <strong class="small">المحادثات</strong>
+            </div>
+            <div id="threadList">
+                <div class="p-3 text-muted small" id="threadPlaceholder">جاري التحميل…</div>
+            </div>
+        </div>
+        <div class="col-md-8 p-0 d-flex flex-column" style="min-height: 76vh;">
+            <div class="wa-panel flex-grow-1" id="chatPanel">
+                <div class="wa-chat-header" id="chatHeader">
+                    <div class="wa-h-avatar" id="hdrAvatar">؟</div>
+                    <div class="wa-h-meta">
+                        <div class="fw-semibold" id="hdrName">—</div>
+                        <small id="hdrPhone">—</small>
+                    </div>
+                </div>
+                <div class="wa-chat-scroll" id="chatPane"></div>
+                <div class="composer">
+                    <form id="sendForm" class="row g-2 align-items-end">
+                        {% if csrf_token is defined %}
+                        <input type="hidden" name="csrf_token" id="csrfFld" value="{{ csrf_token() }}">
+                        {% endif %}
+                        <div class="col-12">
+                            <label class="form-label small mb-0" for="msgText">رسالة</label>
+                            <textarea class="form-control" id="msgText" name="text" rows="2" placeholder="اكتب الرد…"></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small mb-0" for="imgIn">صورة (اختياري)</label>
+                            <input type="file" class="form-control form-control-sm" id="imgIn" name="image" accept="image/png,image/jpeg,image/gif,image/webp">
+                        </div>
+                        <div class="col-md-6 text-md-start">
+                            <button type="submit" class="btn btn-send w-100 mt-4" id="btnSend">إرسال</button>
+                        </div>
+                    </form>
+                    <div id="sendAlert" class="mt-2 small"></div>
+                </div>
+            </div>
+            <div class="wa-chat-placeholder flex-grow-1" id="chatEmpty">
+                اختر محادثة من القائمة لعرض الرسائل.
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+(function(){
+    const API_THREADS = {{ api_threads | tojson }};
+    const API_MESSAGES = {{ api_messages | tojson }};
+    const API_SEND = {{ api_send | tojson }};
+    const threadList = document.getElementById('threadList');
+    const chatPane = document.getElementById('chatPane');
+    const chatPanel = document.getElementById('chatPanel');
+    const chatEmpty = document.getElementById('chatEmpty');
+    const hdrName = document.getElementById('hdrName');
+    const hdrPhone = document.getElementById('hdrPhone');
+    const hdrAvatar = document.getElementById('hdrAvatar');
+    const sendForm = document.getElementById('sendForm');
+    const msgText = document.getElementById('msgText');
+    const imgIn = document.getElementById('imgIn');
+    const sendAlert = document.getElementById('sendAlert');
+    const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    const csrfFld = document.getElementById('csrfFld');
+    let selectedContact = '';
+    let threadNameByContact = {};
+    let pollTimer = null;
+
+    function csrfHeaders() {
+        const t = csrfMeta ? csrfMeta.getAttribute('content') : (csrfFld ? csrfFld.value : '');
+        return t ? { 'X-CSRFToken': t } : {};
+    }
+
+    function esc(s) {
+        const d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+    }
+
+    function parseTs(s) {
+        if (!s) return null;
+        const raw = String(s).trim();
+        const d = new Date(raw.replace(' ', 'T'));
+        if (!isNaN(d.getTime())) return d;
+        const d2 = new Date(raw);
+        return isNaN(d2.getTime()) ? null : d2;
+    }
+
+    function dayKey(d) {
+        return d ? (d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate()) : '';
+    }
+
+    function formatTime(d) {
+        if (!d) return '';
+        try {
+            return d.toLocaleTimeString('ar-SA', { hour: 'numeric', minute: '2-digit' });
+        } catch (e) {
+            return '';
+        }
+    }
+
+    function formatDayLabel(d) {
+        if (!d) return '';
+        const now = new Date();
+        if (dayKey(d) === dayKey(now)) return 'اليوم';
+        const y = new Date(now.getTime());
+        y.setDate(y.getDate() - 1);
+        if (dayKey(d) === dayKey(y)) return 'أمس';
+        try {
+            return d.toLocaleDateString('ar-SA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        } catch (e) {
+            return '';
+        }
+    }
+
+    function threadInitial(name, phone) {
+        const n = (name || '').trim();
+        if (n.length) return n.charAt(0);
+        const p = (phone || '').replace(/\D/g, '');
+        return p ? p.charAt(p.length - 1) : '?';
+    }
+
+    function isImageUrl(s) {
+        s = (s || '').trim();
+        if (!/^https?:\/\//i.test(s)) return false;
+        if (/\.(jpe?g|png|gif|webp)(\?|#|$)/i.test(s)) return true;
+        if (/whatsapp|fbcdn|facebook\.com/i.test(s)) return true;
+        return false;
+    }
+
+    function bubbleInnerHtml(body) {
+        const b = (body || '').trim();
+        if (!b || b === '—') return '<span class="text-muted small">(فارغ)</span>';
+        if (isImageUrl(b)) {
+            return (
+                '<a href="' + esc(b) + '" target="_blank" rel="noopener noreferrer">' +
+                '<img class="wa-bubble-img" src="' + esc(b) + '" alt="صورة" loading="lazy"></a>'
+            );
+        }
+        return '<div class="wa-text">' + esc(b) + '</div>';
+    }
+
+    function updateHeader(contact) {
+        const name = threadNameByContact[contact] || contact || '—';
+        hdrName.textContent = name;
+        hdrPhone.textContent = contact || '—';
+        hdrAvatar.textContent = threadInitial(name, contact);
+    }
+
+    function showChatPanel(show) {
+        if (show) {
+            chatPanel.classList.add('is-open');
+            chatEmpty.style.display = 'none';
+        } else {
+            chatPanel.classList.remove('is-open');
+            chatEmpty.style.display = '';
+        }
+    }
+
+    async function parseJsonResponse(res) {
+        const ct = (res.headers.get('content-type') || '').toLowerCase();
+        if (!ct.includes('application/json')) {
+            return { _notJson: true, status: res.status };
+        }
+        try {
+            return await res.json();
+        } catch (e) {
+            return { _parseErr: true, status: res.status };
+        }
+    }
+
+    async function loadThreads() {
+        let res;
+        try {
+            res = await fetch(API_THREADS, { credentials: 'same-origin' });
+        } catch (e) {
+            threadList.innerHTML = '<div class="p-3 text-danger small">تعذّر الاتصال بالخادم.</div>';
+            return;
+        }
+        const data = await parseJsonResponse(res);
+        if (data._notJson || data._parseErr) {
+            threadList.innerHTML = '<div class="p-3 text-danger small">' +
+                (res.ok ? 'استجابة غير متوقعة.' : ('خطأ ' + res.status + ' — جرّب تسجيل الدخول مجدداً.')) +
+                '</div>';
+            return;
+        }
+        if (!data.ok) {
+            threadList.innerHTML = '<div class="p-3 text-danger small">' + esc(data.error || 'خطأ') + '</div>';
+            return;
+        }
+        const items = data.threads || [];
+        threadNameByContact = {};
+        if (!items.length) {
+            threadList.innerHTML = '<div class="p-3 text-muted small">لا محادثات بعد.</div>';
+            return;
+        }
+        const frag = document.createDocumentFragment();
+        const placeholder = document.getElementById('threadPlaceholder');
+        if (placeholder) placeholder.remove();
+
+        items.forEach(function(row) {
+            const tel = row.contact_number || '';
+            const name = (row.whatsapp_name || '').trim() || 'عميل';
+            if (tel) threadNameByContact[tel] = name;
+
+            const div = document.createElement('div');
+            div.className = 'wa-thread-item' + (tel === selectedContact ? ' active' : '');
+            div.dataset.contact = tel;
+
+            const tParse = parseTs(row.timestamp);
+            const timeStr = formatTime(tParse) || '';
+
+            const dirHint = (row.last_direction === 'outbound') ? 'أنت: ' : '';
+            const preview = dirHint + (row.last_body || '').slice(0, 72);
+            const ac = row.ai_calls != null ? parseInt(row.ai_calls, 10) : 0;
+            const apt = row.ai_prompt_tokens != null ? parseInt(row.ai_prompt_tokens, 10) : 0;
+            const act = row.ai_completion_tokens != null ? parseInt(row.ai_completion_tokens, 10) : 0;
+            const aiLine = (ac > 0 || apt > 0 || act > 0)
+                ? ('<div class="wa-thread-ai small text-muted mt-1" dir="rtl">ذكاء اصطناعي: ' + ac +
+                    ' استدعاء · مدخلات ' + apt + ' · مخرجات ' + act + '</div>')
+                : '';
+
+            div.innerHTML =
+                '<div class="wa-thread-avatar">' + esc(threadInitial(name, tel)) + '</div>' +
+                '<div class="wa-thread-body">' +
+                '<div class="wa-thread-top"><strong class="text-truncate">' + esc(name) + '</strong>' +
+                '<span class="wa-thread-time">' + esc(timeStr) + '</span></div>' +
+                '<div class="wa-thread-preview"><span class="dir-tag">' + esc(tel) + '</span>' + esc(preview) + '</div>' +
+                aiLine +
+                '</div>';
+
+            div.addEventListener('click', function() {
+                selectedContact = tel;
+                document.querySelectorAll('.wa-thread-item').forEach(function(el) { el.classList.remove('active'); });
+                div.classList.add('active');
+                updateHeader(tel);
+                showChatPanel(true);
+                loadMessages(true);
+            });
+            frag.appendChild(div);
+        });
+
+        threadList.innerHTML = '';
+        threadList.appendChild(frag);
+        if (selectedContact) updateHeader(selectedContact);
+    }
+
+    async function loadMessages(scrollBottom) {
+        if (!selectedContact) {
+            showChatPanel(false);
+            return;
+        }
+        const url = API_MESSAGES + (API_MESSAGES.indexOf('?') >= 0 ? '&' : '?') + 'contact=' + encodeURIComponent(selectedContact);
+        let res;
+        try {
+            res = await fetch(url, { credentials: 'same-origin' });
+        } catch (e) {
+            chatPane.innerHTML = '<p class="text-danger small p-2">تعذّر الاتصال.</p>';
+            return;
+        }
+        const data = await parseJsonResponse(res);
+        if (data._notJson || data._parseErr || !res.ok) {
+            chatPane.innerHTML = '<p class="text-danger small p-2">تعذّر تحميل الرسائل (تحقق من الجلسة).</p>';
+            return;
+        }
+        if (!data.ok) {
+            chatPane.innerHTML = '<p class="text-danger small p-2">' + esc(data.error || 'خطأ') + '</p>';
+            return;
+        }
+        const msgs = data.messages || [];
+        let lastDay = '';
+        let html = '';
+        msgs.forEach(function(m) {
+            const t = parseTs(m.timestamp);
+            const dk = dayKey(t);
+            if (dk && dk !== lastDay) {
+                lastDay = dk;
+                html += '<div class="wa-day-sep"><span>' + esc(formatDayLabel(t)) + '</span></div>';
+            }
+            const inbound = (m.direction !== 'outbound');
+            const rowCls = inbound ? 'wa-inbound' : 'wa-outbound';
+            const bubCls = inbound ? 'wa-bubble-in' : 'wa-bubble-out';
+            const dirLabel = inbound ? 'وارد' : 'صادر';
+            html +=
+                '<div class="wa-msg-row ' + rowCls + '">' +
+                '<div class="wa-bubble-wrap">' +
+                '<div class="wa-bubble ' + bubCls + '">' + bubbleInnerHtml(m.message_body || '') + '</div>' +
+                '<div class="wa-msg-meta">' + esc(dirLabel) + ' · ' + esc(formatTime(t) || (m.timestamp || '')) + '</div>' +
+                '</div></div>';
+        });
+        chatPane.innerHTML = html || '<p class="text-muted small p-2 text-center">لا رسائل.</p>';
+        if (scrollBottom) {
+            requestAnimationFrame(function() {
+                chatPane.scrollTop = chatPane.scrollHeight;
+            });
+        }
+    }
+
+    sendForm.addEventListener('submit', async function(ev) {
+        ev.preventDefault();
+        sendAlert.textContent = '';
+        if (!selectedContact) {
+            sendAlert.innerHTML = '<span class="text-warning">اختر محادثة أولاً.</span>';
+            return;
+        }
+        const fd = new FormData();
+        const tok = csrfMeta ? csrfMeta.getAttribute('content') : (csrfFld ? csrfFld.value : '');
+        if (tok) fd.append('csrf_token', tok);
+        fd.append('contact', selectedContact);
+        fd.append('text', msgText.value || '');
+        if (imgIn.files && imgIn.files[0]) fd.append('image', imgIn.files[0]);
+        const btn = document.getElementById('btnSend');
+        btn.disabled = true;
+        try {
+            const res = await fetch(API_SEND, {
+                method: 'POST',
+                body: fd,
+                credentials: 'same-origin',
+                headers: csrfHeaders(),
+            });
+            const data = await parseJsonResponse(res);
+            if (data._notJson || data._parseErr) {
+                sendAlert.innerHTML = '<span class="text-danger">استجابة غير صالحة (تحقق من الجلسة).</span>';
+                return;
+            }
+            if (data.ok) {
+                msgText.value = '';
+                imgIn.value = '';
+                sendAlert.innerHTML = '<span class="text-success">تم الإرسال.</span>';
+                await loadThreads();
+                await loadMessages(true);
+            } else {
+                sendAlert.innerHTML = '<span class="text-danger">' + esc(data.error || 'فشل') + '</span>';
+            }
+        } catch (e) {
+            sendAlert.innerHTML = '<span class="text-danger">خطأ شبكة.</span>';
+        } finally {
+            btn.disabled = false;
+        }
+    });
+
+    function tick() {
+        loadThreads().then(function() {
+            if (selectedContact) return loadMessages(true);
+        });
+    }
+
+    loadThreads().catch(function() { threadList.innerHTML = '<div class="p-3 text-danger small">تعذر التحميل.</div>'; });
+    pollTimer = setInterval(tick, 12000);
+})();
+</script>
+</body>
+</html>

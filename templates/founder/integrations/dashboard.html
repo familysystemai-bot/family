@@ -1,0 +1,105 @@
+{% extends "founder/base.html" %}
+{% block title %}التكاملات الخارجية{% endblock %}
+
+{% block extra_head %}
+<style>
+.integration-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    transition: all 0.2s;
+    border: 2px solid transparent;
+}
+.integration-card:hover {
+    box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+    border-color: #e0f2fe;
+    transform: translateY(-2px);
+}
+.integration-icon {
+    font-size: 36px;
+    margin-bottom: 12px;
+}
+.status-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+}
+.status-active {
+    background: #dcfce7;
+    color: #166534;
+}
+.status-not-configured {
+    background: #fef3c7;
+    color: #92400e;
+}
+.status-not-activated {
+    background: #fee2e2;
+    color: #991b1b;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>🔌 التكاملات الخارجية</h2>
+        <small class="text-muted">إدارة المفاتيح والاتصالات مع الخدمات الخارجية</small>
+    </div>
+
+    <div class="alert alert-info">
+        <strong>💡 ملاحظة:</strong>
+        المفاتيح تُحفظ في قاعدة البيانات بأمان. لا تظهر كاملة بعد الحفظ — يُعرض آخر 4 أحرف فقط.
+        لتغيير مفتاح، اكتب الجديد في الحقل واحفظ.
+    </div>
+
+    <div class="row g-3">
+        {% for key, integration in overview.items() %}
+        <div class="col-md-6 col-lg-4">
+            <a href="{{ integration.url }}" class="text-decoration-none">
+                <div class="integration-card">
+                    <div class="integration-icon">{{ integration.icon }}</div>
+                    <h5 class="mb-2 text-dark">{{ integration.title }}</h5>
+                    <p class="text-muted small mb-3">{{ integration.description }}</p>
+
+                    <div class="d-flex justify-content-between align-items-center">
+                        <small class="text-muted">المنصة الحالية:</small>
+                        <strong class="text-primary">{{ integration.active }}</strong>
+                    </div>
+
+                    <div class="mt-2">
+                        {% if key == 'payment' %}
+                            {% if integration.activated %}
+                                <span class="status-badge status-active">✓ مُفعّل (مدفوعات حقيقية)</span>
+                            {% elif integration.configured %}
+                                <span class="status-badge status-not-activated">مفاتيح مدخلة — لم يُفعّل بعد</span>
+                            {% else %}
+                                <span class="status-badge status-not-configured">يحتاج إعداد</span>
+                            {% endif %}
+                        {% else %}
+                            {% if integration.configured %}
+                                <span class="status-badge status-active">✓ متصل</span>
+                            {% else %}
+                                <span class="status-badge status-not-configured">يحتاج إعداد</span>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="mt-5">
+        <h4>🔒 الأمان</h4>
+        <ul class="text-muted">
+            <li>كل المفاتيح مُخزّنة في <code>system_settings</code> بقاعدة البيانات</li>
+            <li>عرض المفاتيح الحساسة مُقيَّد (آخر 4 أحرف فقط)</li>
+            <li>الوصول لهذه الصفحات مقيّد بحساب لوحة تحكم النظام فقط</li>
+            <li>في الدفعة القادمة سيتم تشفير المفاتيح بـ AES-256 (Secrets Vault)</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

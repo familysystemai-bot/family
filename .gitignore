@@ -1,0 +1,63 @@
+# مجلدات نسخ / عمل قديمة داخل المشروع (لا تُرفع)
+famliy/
+saas/
+
+# ───── Python ─────
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ───── Virtual envs ─────
+venv/
+.venv/
+env/
+.env
+
+# ───── IDE ─────
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# ───── Cursor / Claude (الدفعة 4-ج) ─────
+# مجلد worktrees يسبب نسخ متعددة للمشروع داخل المشروع
+.claude/
+.cursor/
+.aider/
+.continue/
+
+# ───── Project specific ─────
+# قاعدة البيانات المحلية للتطوير
+data/*.db
+data/*.db-journal
+/family_system.db
+family_system.db
+*.sqlite
+*.sqlite3
+
+# ملفات الرفع المحلية (تُنقل للسحابة في الإنتاج)
+static/uploads/*
+!static/uploads/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Backups
+*.bak
+*.backup
+*.dump
+saas_db_full.dump
+
+# أدوات ثنائية محلية (لا تُرفع للمستودع)
+ngrok.exe
+
+# Test databases
+test_*.db
+.env 
+.env

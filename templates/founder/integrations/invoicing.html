@@ -1,0 +1,67 @@
+{% extends "founder/base.html" %}
+{% from "macros/csrf.html" import csrf_input %}
+{% block title %}الفواتير والبريد{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <a href="{{ url_for('integrations.integrations_dashboard') }}" class="btn btn-link mb-3">← رجوع للتكاملات</a>
+
+    <h2>📧 الفواتير والبريد</h2>
+    <p class="text-muted">اختر مزوّد إرسال البريد (SMTP أو Amazon SES) واحفظ الإعدادات.</p>
+
+    <div class="alert alert-info small">
+        المزوّد المفعّل: <strong>{{ active_provider or 'غير محدد' }}</strong>
+    </div>
+
+    {% for p in providers %}
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <strong>{{ p.name }}</strong>
+                <span class="text-muted small d-block">{{ p.description }}</span>
+            </div>
+            {% if p.id == active_provider %}
+            <span class="badge bg-primary">نشط</span>
+            {% endif %}
+        </div>
+        <div class="card-body">
+            <form method="post" class="d-inline mb-3 me-2">
+                {{ csrf_input() }}
+                <input type="hidden" name="provider" value="{{ p.id }}">
+                <button type="submit" name="action" value="activate" class="btn btn-sm btn-primary">تفعيل {{ p.name }}</button>
+            </form>
+            <form method="post" class="d-inline mb-3">
+                {{ csrf_input() }}
+                <input type="hidden" name="provider" value="{{ p.id }}">
+                <button type="submit" name="action" value="test" class="btn btn-sm btn-outline-secondary">اختبار الاتصال</button>
+            </form>
+
+            <form method="post" class="row g-3">
+                {{ csrf_input() }}
+                <input type="hidden" name="provider" value="{{ p.id }}">
+                {% for f in p.fields %}
+                <div class="col-12 col-md-6">
+                    <label class="form-label">{{ f.label }}</label>
+                    {% set t = f.type or 'text' %}
+                    {% if t == 'password' %}
+                    <input type="password" class="form-control font-monospace" name="{{ f.key }}"
+                           placeholder="{% if p['values'].get(f.key ~ '_has_value') %}{{ p['values'].get(f.key) }}{% else %}أدخل القيمة{% endif %}">
+                    {% if p['values'].get(f.key ~ '_has_value') %}
+                    <small class="text-success">محفوظ — اترك الحقل فارغاً للإبقاء</small>
+                    {% endif %}
+                    {% else %}
+                    <input type="text" class="form-control" name="{{ f.key }}"
+                           value="{{ p['values'].get(f.key, f.default|default('')) }}">
+                    {% endif %}
+                    {% if f.help %}<div class="form-text">{{ f.help }}</div>{% endif %}
+                </div>
+                {% endfor %}
+                <div class="col-12">
+                    <button type="submit" name="action" value="save" class="btn btn-success">حفظ إعدادات {{ p.id|upper }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

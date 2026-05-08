@@ -1,0 +1,13 @@
+{#
+  brand_logo_pair: صورة الشعار فقط (بدون أي fallback بحرف).
+  site_logo_pair: الشعار العام من السياق — logo_url (uploads + DB).
+#}
+{% macro brand_logo_pair(logo_src, img_class='', k_class='', cache_bust=None) %}
+{% if logo_src %}
+<img src="{{ logo_src }}{% if cache_bust is not none %}?v={{ cache_bust }}{% endif %}" class="site-logo-img {{ img_class }}" alt="" decoding="async" onerror="this.classList.add('site-logo-hidden');">
+{% endif %}
+{% endmacro %}
+
+{% macro site_logo_pair(img_class='', k_class='') %}
+{{ brand_logo_pair(logo_url, img_class, k_class, site_logo_cache_bust) }}
+{% endmacro %}

@@ -1,0 +1,92 @@
+{% extends "founder/base.html" %}
+{% from "macros/csrf.html" import csrf_input %}
+{% block title %}شركات الشحن{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <a href="{{ url_for('integrations.integrations_dashboard') }}" class="btn btn-link mb-3">← رجوع للتكاملات</a>
+
+    <h2>📦 شركات الشحن</h2>
+    <p class="text-muted">اختر شركة الشحن النشطة واحفظ مفاتيح الـ API لكل مزوّد.</p>
+
+    <div class="alert alert-info small">
+        الشركة الحالية: <strong>{{ active_provider or 'غير محددة' }}</strong>
+    </div>
+
+    {% for p in providers %}
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <strong>{{ p.name }}</strong>
+                <span class="text-muted small d-block">{{ p.description }}</span>
+            </div>
+            <div>
+                {% if p.configured %}
+                <span class="badge bg-success">مهيّأ</span>
+                {% else %}
+                <span class="badge bg-warning text-dark">يحتاج مفاتيح</span>
+                {% endif %}
+                {% if p.coverage %}<span class="badge bg-light text-dark border">{{ p.coverage }}</span>{% endif %}
+                {% if p.id == active_provider %}
+                <span class="badge bg-primary">نشط</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                <form method="post" class="d-inline">
+                    {{ csrf_input() }}
+                    <input type="hidden" name="provider" value="{{ p.id }}">
+                    <button type="submit" name="action" value="activate" class="btn btn-sm btn-primary">تفعيل كشركة رئيسية</button>
+                </form>
+                {% if p.fields %}
+                <form method="post" class="d-inline">
+                    {{ csrf_input() }}
+                    <input type="hidden" name="provider" value="{{ p.id }}">
+                    <button type="submit" name="action" value="test" class="btn btn-sm btn-outline-secondary">اختبار الاتصال</button>
+                </form>
+                {% endif %}
+            </div>
+
+            {% if p.fields %}
+            <form method="post" class="row g-3">
+                {{ csrf_input() }}
+                <input type="hidden" name="provider" value="{{ p.id }}">
+                {% for f in p.fields %}
+                <div class="col-12 col-md-6">
+                    <label class="form-label">{{ f.label }}</label>
+                    {% set t = f.type or 'text' %}
+                    {% if t == 'password' %}
+                    <input type="password" class="form-control font-monospace" name="{{ f.key }}"
+                           placeholder="{% if p['values'].get(f.key ~ '_has_value') %}{{ p['values'].get(f.key) }}{% else %}أدخل القيمة{% endif %}">
+                    {% if p['values'].get(f.key ~ '_has_value') %}
+                    <small class="text-success">محفوظ — اترك الحقل فارغاً للإبقاء</small>
+                    {% endif %}
+                    {% elif t == 'checkbox' %}
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="{{ f.key }}" value="on"
+                               id="cb_{{ p.id }}_{{ f.key }}"
+                               {% if (p['values'].get(f.key) or '')|lower in ['true','1','on'] %}checked{% endif %}>
+                        <label class="form-check-label" for="cb_{{ p.id }}_{{ f.key }}">{{ f.label }}</label>
+                    </div>
+                    {% else %}
+                    <input type="text" class="form-control" name="{{ f.key }}"
+                           value="{{ p['values'].get(f.key, f.default|default('')) }}">
+                    {% endif %}
+                    {% if f.help %}<div class="form-text">{{ f.help }}</div>{% endif %}
+                </div>
+                {% endfor %}
+                <div class="col-12">
+                    <button type="submit" name="action" value="save" class="btn btn-success">حفظ مفاتيح {{ p.name }}</button>
+                </div>
+            </form>
+            {% endif %}
+
+            {% if p.signup_url %}
+            <p class="mt-2 mb-0"><a href="{{ p.signup_url }}" target="_blank" rel="noopener">تسجيل / بوابة الأعمال</a></p>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

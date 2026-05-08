@@ -1,0 +1,203 @@
+{% extends "founder/base.html" %}
+{% from "macros/csrf.html" import csrf_input %}
+{% block title %}واتساب الأعمال{% endblock %}
+
+{% block extra_head %}
+<style>
+.security-banner {
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 20px;
+    border: 2px solid;
+}
+.security-banner.secure {
+    background: #f0fdf4;
+    border-color: #16a34a;
+    color: #14532d;
+}
+.security-banner.insecure {
+    background: #fef2f2;
+    border-color: #dc2626;
+    color: #7f1d1d;
+}
+.field-group { margin-bottom: 16px; }
+.field-group label { font-weight: 600; font-size: 14px; }
+.field-group input { font-family: monospace; }
+.help-text { font-size: 12px; color: #6b7280; margin-top: 4px; }
+.steps-card {
+    background: #f9fafb;
+    border-radius: 12px;
+    padding: 16px;
+    margin-top: 24px;
+}
+.check-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 14px;
+}
+.check-row.ok { color: #14532d; }
+.check-row.no { color: #7f1d1d; }
+.test-send-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 16px;
+    background: #fafafa;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <a href="{{ url_for('integrations.integrations_dashboard') }}" class="btn btn-link mb-3">← رجوع للتكاملات</a>
+
+    <h2>💬 واتساب الأعمال (Meta)</h2>
+    <p class="text-muted">إعدادات WhatsApp Business API + التحقق الأمني من webhooks.</p>
+
+    <div class="card mb-4 border">
+        <div class="card-body">
+            <h5 class="card-title">📡 حالة الربط (حسب القيم المحفوظة في النظام)</h5>
+            <p class="text-muted small mb-3">
+                التحقق من وجود مفاتيح في قاعدة البيانات — لا يضمن وحده أن ميتا قبلت الـ webhook.
+                <strong>أقوى اختبار:</strong> إرسال رسالة تجريبية أدناه.
+            </p>
+            <div class="check-row {% if wa_status.META_APP_SECRET %}ok{% else %}no{% endif %}">
+                {% if wa_status.META_APP_SECRET %}✓{% else %}✗{% endif %}
+                Meta App Secret (HMAC للـ webhook)
+            </div>
+            <div class="check-row {% if wa_status.WA_VERIFY_TOKEN %}ok{% else %}no{% endif %}">
+                {% if wa_status.WA_VERIFY_TOKEN %}✓{% else %}✗{% endif %}
+                Verify Token (يجب أن يطابق ميتا حرفياً)
+            </div>
+            <div class="check-row {% if wa_status.WA_PHONE_NUMBER_ID %}ok{% else %}no{% endif %}">
+                {% if wa_status.WA_PHONE_NUMBER_ID %}✓{% else %}✗{% endif %}
+                Phone Number ID
+            </div>
+            <div class="check-row {% if wa_status.WA_ACCESS_TOKEN %}ok{% else %}no{% endif %}">
+                {% if wa_status.WA_ACCESS_TOKEN %}✓{% else %}✗{% endif %}
+                Access Token (System User)
+            </div>
+            {% if wa_status.all_keys %}
+            <p class="text-success small mb-0 mt-2"><strong>الأربعة محفوظة.</strong> جرّب إرسال تجريبي للتأكد من صلاحية التوكن ورقم الواتساب التجاري.</p>
+            {% else %}
+            <p class="text-danger small mb-0 mt-2"> أكمل الحقول الناقصة ثم اضغط حفظ.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="test-send-card mb-4">
+        <h5 class="mb-2">📤 إرسال رسالة تجريبية</h5>
+        <p class="text-muted small">
+            يستدعي مباشرةً <code>graph.facebook.com</code> بنفس الـ Phone Number ID والـ Access Token المحفوظين.
+            إن وصلت الرسالة للرقم فالمفاتيح صالحة للإرسال.
+            (في وضع التطوير قد تحتاج أن يكون الرقم مضافاً كمستلم تجريبي في ميتا.)
+        </p>
+        <form method="POST" class="row g-2 align-items-end">
+            {{ csrf_input() }}
+            <div class="col-12 col-md-6">
+                <label class="form-label small fw-semibold" for="test_phone">رقم واتساب المستقبِل</label>
+                <input type="text" class="form-control" id="test_phone" name="test_phone"
+                       placeholder="مثال: 9665xxxxxxxx أو 05xxxxxxxx"
+                       autocomplete="tel">
+            </div>
+            <div class="col-12 col-md-auto">
+                <button type="submit" name="action" value="test_send" class="btn btn-success"
+                        {% if not wa_status.can_send_test %}disabled title="احفظ Phone Number ID و Access Token أولاً"{% endif %}>
+                    إرسال رسالة تجريبية
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Security status banner -->
+    {% if is_secure %}
+    <div class="security-banner secure">
+        <strong>🔐 الحماية مُفعّلة</strong> —
+        Meta App Secret مهيّأ. كل طلبات webhook يتم التحقق من توقيعها بـ HMAC-SHA256.
+    </div>
+    {% else %}
+    <div class="security-banner insecure">
+        <strong>⚠️ تحذير أمني خطير</strong> —
+        Meta App Secret غير مهيّأ. الـ webhook مفتوح لأي طلب POST مزوّر!<br>
+        أضف <code>META_APP_SECRET</code> في النموذج أدناه لتفعيل التحقق الأمني.
+    </div>
+    {% endif %}
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5>إعدادات الاتصال بـ Meta</h5>
+            <p class="text-muted small">
+                هذه الإعدادات تربط نظامك بـ WhatsApp Business API على Meta.
+            </p>
+
+            <form method="POST" autocomplete="off">
+                {{ csrf_input() }}
+                {% for f in fields %}
+                <div class="field-group">
+                    <label>{{ f.label }}</label>
+                    {% if f.type == "password" %}
+                        <input type="password" class="form-control" name="{{ f.key }}"
+                               id="wa_field_{{ f.key }}"
+                               readonly
+                               onfocus="this.removeAttribute('readonly');"
+                               autocomplete="off"
+                               data-lpignore="true"
+                               data-1p-ignore
+                               spellcheck="false"
+                               placeholder="{% if values.get(f.key + '_has_value') %}اتركه فارغاً للإبقاء على المخزّن — أو انقر واكتب قيمة جديدة{% else %}اكتب القيمة...{% endif %}">
+                        {% if values.get(f.key + '_has_value') %}
+                        <small class="text-success">✓ محفوظ — اتركه فارغاً للإبقاء على القديم (لا تنسخ النقاط من مكان آخر).</small>
+                        {% endif %}
+                    {% else %}
+                        <input type="text" class="form-control" name="{{ f.key }}"
+                               value="{{ values.get(f.key, '') }}">
+                    {% endif %}
+                    {% if f.help %}
+                    <div class="help-text">{{ f.help }}</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+
+                <div class="d-flex gap-2 mt-3">
+                    <button type="submit" name="action" value="save" class="btn btn-primary">
+                        💾 حفظ الإعدادات
+                    </button>
+                    <button type="submit" name="action" value="test" class="btn btn-outline-secondary">
+                        فحص اكتمال الحقول
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="steps-card">
+        <h6>📋 خطوات الإعداد الكامل:</h6>
+        <ol>
+            <li>سجّل في <a href="https://developers.facebook.com/" target="_blank">Meta for Developers</a></li>
+            <li>أنشئ تطبيق نوعه "Business" واربط حساب WhatsApp Business</li>
+            <li>اذهب إلى <strong>Settings → Basic</strong> → انسخ <code>App Secret</code> والصقه أعلاه</li>
+            <li>اذهب إلى <strong>WhatsApp → API Setup</strong> → انسخ <code>Phone Number ID</code></li>
+            <li>أنشئ <strong>System User Token</strong> دائم من Business Manager</li>
+            <li>اختر أي نص عشوائي كـ <code>Verify Token</code> واحفظه أعلاه</li>
+            <li>في إعدادات webhook على Meta:
+                <ul>
+                    <li><strong>Callback URL:</strong> <code>https://your-domain.com/webhook</code></li>
+                    <li><strong>Verify Token:</strong> نفس النص اللي اخترته</li>
+                </ul>
+            </li>
+            <li>اضغط "Verify and Save" في Meta — يجب يرجع ✓</li>
+            <li>اشترك في events: <code>messages</code></li>
+        </ol>
+    </div>
+
+    <div class="alert alert-info mt-3">
+        <h6>🔒 ملاحظة أمنية مهمة</h6>
+        <p class="mb-0">
+            بدون <strong>Meta App Secret</strong>، أي شخص يعرف عنوان webhook الخاص بك
+            يستطيع إرسال رسائل مزوّرة لنظامك. التحقق بـ HMAC-SHA256 يضمن أن
+            الـ payload فعلاً جاء من Meta وليس من جهة أخرى.
+        </p>
+    </div>
+</div>
+{% endblock %}
