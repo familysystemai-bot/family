@@ -2985,7 +2985,7 @@ def process_message(data) -> None:
             if _is_image_type:
                 try:
                     from logic.integrations.base import read_setting as _rs
-                    _img_enabled = (_rs("image_analysis_enabled", "1") or "1").strip()
+                    _img_enabled = (_rs("image_analysis_enabled", "0") or "0").strip()
                 except Exception:
                     _img_enabled = "1"
                 if _img_enabled == "0":
@@ -3191,7 +3191,7 @@ def admin_image_analysis_status():
         return jsonify({"ok": False, "error": "غير مصرح"}), 403
     try:
         from logic.integrations.base import read_setting as _rs
-        enabled = (_rs("image_analysis_enabled", "1") or "1").strip()
+        enabled = (_rs("image_analysis_enabled", "0") or "0").strip()
         provider = (_rs("image_analysis_provider", "gemini") or "gemini").strip()
         has_gemini_key = bool((_rs("GEMINI_API_KEY", "") or "").strip())
         has_openai_key = bool((_rs("OPENAI_API_KEY", "") or "").strip())
@@ -3216,7 +3216,7 @@ def admin_image_analysis_toggle():
         data = request.get_json(silent=True) or {}
         enable = data.get("enable")
         if enable is None:
-            current = (_rs("image_analysis_enabled", "1") or "1").strip()
+            current = (_rs("image_analysis_enabled", "0") or "0").strip()
             enable = current != "1"
         new_val = "1" if enable else "0"
         _ws("image_analysis_enabled", new_val)

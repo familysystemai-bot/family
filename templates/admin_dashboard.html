@@ -275,38 +275,6 @@
                 </div>
             </div>
 
-            <!-- ── TASK 1: تحكم مزود تحليل الصور ── -->
-            <div class="stat-card mt-4" id="image-analysis-control">
-                <h5 class="mb-3 fw-bold">🖼️ تحكم تحليل الصور (واتساب)</h5>
-                <p class="small text-muted mb-3">تحكم في تفعيل أو تعطيل تحليل صور الواتساب بالذكاء الاصطناعي. عند التعطيل يُرسل رد جاهز للعميل وتُحفظ الصورة في الصندوق للمعالجة اليدوية.</p>
-                <div class="d-flex align-items-center gap-3 mb-3">
-                    <span class="fw-bold small">الحالة:</span>
-                    <span id="imgAnStatusBadge" class="badge fs-6">جاري التحميل…</span>
-                    <button class="btn btn-sm btn-success" id="imgAnEnableBtn" onclick="imgAnToggle(true)">✅ تفعيل</button>
-                    <button class="btn btn-sm btn-danger" id="imgAnDisableBtn" onclick="imgAnToggle(false)">⏸ تعطيل</button>
-                </div>
-                <div class="row g-2 mb-3">
-                    <div class="col-md-4">
-                        <label class="form-label small fw-bold">المزود</label>
-                        <select class="form-select form-select-sm" id="imgAnProvider">
-                            <option value="gemini">Gemini (Google)</option>
-                            <option value="openai">OpenAI Vision</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label small fw-bold">مفتاح API (اتركه فارغاً للإبقاء على الحالي)</label>
-                        <input type="password" class="form-control form-control-sm" id="imgAnApiKey" placeholder="sk-... أو AIza...">
-                    </div>
-                    <div class="col-md-2 d-flex align-items-end">
-                        <button class="btn btn-gold btn-sm w-100" onclick="imgAnSave()">💾 حفظ</button>
-                    </div>
-                </div>
-                <div class="d-flex gap-2">
-                    <button class="btn btn-outline-secondary btn-sm" onclick="imgAnTest()">🔌 اختبار الاتصال</button>
-                </div>
-                <div id="imgAnAlert" class="mt-2 small"></div>
-            </div>
-
             {% if main_categories and main_categories|length > 0 %}
             <div class="stat-card mt-4">
                 <h5 class="mb-3 fw-bold">فهرس الفئات (عام)</h5>
@@ -327,73 +295,5 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 {% include 'partials/live_analytics.html' %}
 <script src="{{ url_for('static', filename='js/dashboard-layout.js') }}" defer></script>
-<script>
-// ── TASK 1: تحكم تحليل الصور ──
-(function(){
-    const statusBadge = document.getElementById('imgAnStatusBadge');
-    const enableBtn = document.getElementById('imgAnEnableBtn');
-    const disableBtn = document.getElementById('imgAnDisableBtn');
-    const providerSel = document.getElementById('imgAnProvider');
-    const apiKeyIn = document.getElementById('imgAnApiKey');
-    const alertDiv = document.getElementById('imgAnAlert');
-
-    function showAlert(msg, ok){
-        if(!alertDiv) return;
-        alertDiv.innerHTML = `<span class="text-${ok?'success':'danger'}">${msg}</span>`;
-        setTimeout(()=>{ if(alertDiv) alertDiv.innerHTML=''; }, 5000);
-    }
-
-    function refreshStatus(){
-        fetch('/admin/api/image-analysis/status', {credentials:'same-origin'})
-        .then(r=>r.json()).then(d=>{
-            if(!d.ok) return;
-            if(statusBadge){
-                statusBadge.textContent = d.enabled ? 'مفعّل ✅' : 'معطّل ⏸';
-                statusBadge.className = 'badge fs-6 ' + (d.enabled ? 'bg-success' : 'bg-danger');
-            }
-            if(providerSel) providerSel.value = d.provider || 'gemini';
-            if(enableBtn) enableBtn.disabled = d.enabled;
-            if(disableBtn) disableBtn.disabled = !d.enabled;
-        }).catch(()=>{});
-    }
-
-    window.imgAnToggle = function(enable){
-        fetch('/admin/api/image-analysis/toggle', {
-            method:'POST', credentials:'same-origin',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({enable: enable})
-        }).then(r=>r.json()).then(d=>{
-            if(d.ok){ showAlert(enable?'تم تفعيل تحليل الصور ✅':'تم تعطيل تحليل الصور ⏸', d.ok); refreshStatus(); }
-            else showAlert(d.error||'خطأ', false);
-        }).catch(()=>showAlert('خطأ في الاتصال', false));
-    };
-
-    window.imgAnSave = function(){
-        const provider = providerSel ? providerSel.value : 'gemini';
-        const api_key = apiKeyIn ? apiKeyIn.value.trim() : '';
-        fetch('/admin/api/image-analysis/save', {
-            method:'POST', credentials:'same-origin',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({provider, api_key})
-        }).then(r=>r.json()).then(d=>{
-            showAlert(d.ok?'تم الحفظ ✅':(d.error||'خطأ'), d.ok);
-            if(d.ok && apiKeyIn) apiKeyIn.value='';
-        }).catch(()=>showAlert('خطأ في الاتصال', false));
-    };
-
-    window.imgAnTest = function(){
-        showAlert('جاري الاختبار…', true);
-        fetch('/admin/api/image-analysis/test', {
-            method:'POST', credentials:'same-origin',
-            headers:{'Content-Type':'application/json'},
-            body: '{}'
-        }).then(r=>r.json()).then(d=>{
-            showAlert(d.ok?(d.message||'ناجح ✅'):(d.error||'فشل'), d.ok);
-        }).catch(()=>showAlert('خطأ في الاتصال', false));
-    };
-
-    if(document.getElementById('image-analysis-control')) refreshStatus();
-})();
-</script>
 </body>
 </html>

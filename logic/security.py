@@ -267,6 +267,11 @@ def validate_image_upload(
     if detected_mime is None:
         return False, "محتوى الملف ليس صورة صالحة", None, None
 
+    # تحقق من تطابق الامتداد مع المحتوى الفعلي — لكن لا نرفض عند الاختلاف:
+    # الأجهزة المحمولة (Android) كثيراً ما ترفع صور JPEG بامتداد .jpg
+    # بينما يكون المحتوى الفعلي WebP أو العكس — أو يأتي الامتداد من المتصفح
+    # بصيغة مختلفة عن الملف الحقيقي. طالما أن magic bytes أثبتت أنه صورة
+    # صالحة، نقبله ونوثّق تنبيهاً فقط.
     expected_ext_map = {
         "image/jpeg": ("jpg", "jpeg"),
         "image/png": ("png",),
@@ -275,11 +280,11 @@ def validate_image_upload(
     }
     valid_exts = expected_ext_map.get(detected_mime, ())
     if ext not in valid_exts:
-        return (
-            False,
-            f"محتوى الملف ({detected_mime}) لا يطابق الامتداد ({ext}). الملف قد يكون مزوّراً.",
-            None,
-            None,
+        import logging as _log
+        _log.getLogger(__name__).warning(
+            "validate_image_upload: امتداد الملف '%s' لا يطابق المحتوى الفعلي '%s' — "
+            "مقبول لأن magic bytes أثبتت صحة الصورة",
+            ext, detected_mime,
         )
 
     try:

@@ -109,22 +109,26 @@ class WaInboxRepositoryMixin:
         conn = self._get_connection()
         try:
             cur = conn.cursor()
+            # ON CONFLICT DO NOTHING هو الصياغة الصحيحة لـ PostgreSQL
+            # (INSERT OR IGNORE تعمل فقط في SQLite وتسبب InFailedSqlTransaction هنا)
+            # NOW() بدلاً من datetime('now') التي هي SQLite فقط
             cur.execute(
                 """
-                INSERT OR IGNORE INTO wa_contact_controls (contact_number, ai_stopped, banned, updated_at)
-                VALUES (%s, 0, 0, datetime('now'))
+                INSERT INTO wa_contact_controls (contact_number, ai_stopped, banned, updated_at)
+                VALUES (%s, 0, 0, NOW())
+                ON CONFLICT (contact_number) DO NOTHING
                 """,
                 (cn,),
             )
             # field مُحقَّق أعلاه — لا خطر حقن SQL
             if field == "ai_stopped":
                 cur.execute(
-                    "UPDATE wa_contact_controls SET ai_stopped = %s, updated_at = datetime('now') WHERE contact_number = %s",
+                    "UPDATE wa_contact_controls SET ai_stopped = %s, updated_at = NOW() WHERE contact_number = %s",
                     (v, cn),
                 )
             else:
                 cur.execute(
-                    "UPDATE wa_contact_controls SET banned = %s, updated_at = datetime('now') WHERE contact_number = %s",
+                    "UPDATE wa_contact_controls SET banned = %s, updated_at = NOW() WHERE contact_number = %s",
                     (v, cn),
                 )
             conn.commit()
