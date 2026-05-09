@@ -446,7 +446,7 @@ def init_security(app) -> None:
     app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
     app.config.setdefault("REMEMBER_COOKIE_HTTPONLY", True)
     app.config.setdefault("REMEMBER_COOKIE_SAMESITE", "Lax")
-    if os.environ.get("FLASK_ENV") == "production":
+    if os.environ.get("FLASK_ENV") == "production" or os.environ.get("RENDER") is not None:
         app.config.setdefault("SESSION_COOKIE_SECURE", True)
         app.config.setdefault("REMEMBER_COOKIE_SECURE", True)
 

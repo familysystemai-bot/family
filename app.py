@@ -1,3 +1,4 @@
+import hmac
 import logging
 import json
 import os
@@ -101,6 +102,26 @@ except ImportError as _se:
 @app.before_request
 def _make_session_permanent():
     session.permanent = True
+
+
+# ── حماية جلسات الموظفين: انتهاء صلاحية بعد 8 ساعات من الخمول ──
+_STAFF_IDLE_TIMEOUT_SECONDS = 8 * 3600
+
+
+@app.before_request
+def _enforce_staff_session_timeout():
+    role = session.get("role")
+    if role not in ("founder", "admin", "branch"):
+        return
+    now = time.time()
+    last_active = session.get("_staff_last_active")
+    if last_active is not None:
+        if (now - float(last_active)) > _STAFF_IDLE_TIMEOUT_SECONDS:
+            session.clear()
+            flash("انتهت جلستك بسبب عدم النشاط. يرجى تسجيل الدخول مجدداً.", "warning")
+            return redirect(url_for("login"))
+    session["_staff_last_active"] = now
+
 
 db = DatabaseManager()
 migrated_branch_passwords = db.migrate_branch_passwords_to_hashes()
@@ -310,6 +331,7 @@ def login():
             session["username"] = username
             session["role"] = "founder"
             session["city_name"] = "النظام"
+            session["_staff_last_active"] = time.time()
             flash("مرحباً بك — لوحة تحكم النظام", "success")
             return redirect(url_for("founder_dashboard"))
 
@@ -320,6 +342,7 @@ def login():
             session['username'] = username
             session['role'] = 'admin'
             session['city_name'] = 'الإدارة العامة'
+            session["_staff_last_active"] = time.time()
             flash('مرحباً بك أيها المدير العام', 'success')
             return redirect(url_for('admin_dashboard'))
         
@@ -333,6 +356,7 @@ def login():
             session['branch_id'] = branch['id']
             session['city_name'] = branch['city_name']
             session['role'] = 'branch'
+            session["_staff_last_active"] = time.time()
             flash(f'تم تسجيل الدخول لفرع: {branch["city_name"]}', 'success')
             return redirect(url_for('dashboard'))
         else:
@@ -2058,52 +2082,63 @@ def index():
 @app.route("/api/chat-login", methods=["POST"])
 def chat_login():
     """تسجيل دخول زائر الشات مباشرة بالبريد أو جوال (9 أرقام) — بدون OTP."""
-    data = request.get_json(silent=True) or {}
-    ok, kind, value, err = _parse_customer_login_identifier(data.get("identifier"))
-    if not ok or not kind or value is None:
-        return jsonify({"ok": False, "error": err or "بيانات غير صالحة"}), 400
-    nm = (data.get("name") or "").strip()
-    if len(nm) < 2:
+    try:
+        data = request.get_json(silent=True) or {}
+        ok, kind, value, err = _parse_customer_login_identifier(data.get("identifier"))
+        if not ok or not kind or value is None:
+            return jsonify({"ok": False, "error": err or "بيانات غير صالحة"}), 400
+        nm = (data.get("name") or "").strip()
+        if len(nm) < 2:
+            return jsonify(
+                {"ok": False, "error": "الاسم مطلوب (حرفان على الأقل) كما في واجهة الشات."}
+            ), 400
+        try:
+            prior_customer = (
+                db.get_customer_by_email(value)
+                if kind == "email"
+                else db.get_customer_by_phone(value)
+            )
+        except Exception:
+            logger.exception("chat_login: db lookup failed for %s", kind)
+            prior_customer = None
+        session.permanent = True
+        session["logged_in"] = True
+        session["login_scope"] = "chat_customer"
+        session["user"] = value
+        session["name"] = nm[:120]
+        session["user_name"] = nm[:120]
+        session["chat_customer_returning_visitor"] = bool(prior_customer)
+        if kind == "email":
+            session["user_email"] = value
+            session.pop("user_phone", None)
+        else:
+            session["user_phone"] = value
+            session["user_email"] = ""
+        try:
+            row = db.get_or_create_customer(
+                name=nm[:120],
+                email=value if kind == "email" else None,
+                phone=value if kind == "phone" else None,
+            )
+            if row:
+                session["customer_id"] = int(row["id"])
+                if row.get("email"):
+                    session["user_email"] = row["email"]
+                if row.get("phone"):
+                    session["user_phone"] = row["phone"]
+        except Exception:
+            logger.exception("chat_login: get_or_create_customer failed for %s", kind)
         return jsonify(
-            {"ok": False, "error": "الاسم مطلوب (حرفان على الأقل) كما في واجهة الشات."}
-        ), 400
-    prior_customer = (
-        db.get_customer_by_email(value)
-        if kind == "email"
-        else db.get_customer_by_phone(value)
-    )
-    session.permanent = True
-    session["logged_in"] = True
-    session["login_scope"] = "chat_customer"
-    session["user"] = value
-    session["name"] = nm[:120]
-    session["user_name"] = nm[:120]
-    session["chat_customer_returning_visitor"] = bool(prior_customer)
-    if kind == "email":
-        session["user_email"] = value
-        session.pop("user_phone", None)
-    else:
-        session["user_phone"] = value
-        session["user_email"] = ""
-    row = db.get_or_create_customer(
-        name=nm[:120],
-        email=value if kind == "email" else None,
-        phone=value if kind == "phone" else None,
-    )
-    if row:
-        session["customer_id"] = int(row["id"])
-        if row.get("email"):
-            session["user_email"] = row["email"]
-        if row.get("phone"):
-            session["user_phone"] = row["phone"]
-    return jsonify(
-        {
-            "ok": True,
-            "kind": kind,
-            "identifier": value,
-            "name": (session.get("name") or session.get("user_name") or ""),
-        }
-    )
+            {
+                "ok": True,
+                "kind": kind,
+                "identifier": value,
+                "name": (session.get("name") or session.get("user_name") or ""),
+            }
+        )
+    except Exception:
+        logger.exception("chat_login: unexpected error")
+        return jsonify({"ok": False, "error": "حدث خطأ في الخادم، يرجى المحاولة مرة أخرى."}), 500
 
 
 @app.route("/chat-logout", methods=["GET", "POST"])
