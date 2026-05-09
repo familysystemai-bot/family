@@ -327,4 +327,66 @@ def create_wa_inbox_blueprint(db) -> Blueprint:
             return jsonify({"ok": True, "message": msg})
         return jsonify({"ok": False, "error": msg}), 400
 
+    # ─── TASK 2: تحكم العميل (إيقاف AI / حظر) ────────────────────
+
+    @bp.route("/admin/messages/api/contact-status", methods=["GET"])
+    def api_contact_status_admin():
+        if "logged_in" not in session or session.get("role") not in ("admin", "founder"):
+            return jsonify({"ok": False, "error": "غير مصرح"}), 403
+        contact = (request.args.get("contact") or "").strip()
+        cn = normalize_wa_contact_number(contact)
+        if not cn:
+            return jsonify({"ok": False, "error": "رقم غير صالح"}), 400
+        controls = db.wa_contact_get_controls(cn)
+        return jsonify({"ok": True, "contact": cn, **controls})
+
+    @bp.route("/admin/messages/api/contact-control", methods=["POST"])
+    def api_contact_control_admin():
+        if "logged_in" not in session or session.get("role") not in ("admin", "founder"):
+            return jsonify({"ok": False, "error": "غير مصرح"}), 403
+        data = request.get_json(silent=True) or {}
+        contact = (data.get("contact") or "").strip()
+        cn = normalize_wa_contact_number(contact)
+        if not cn:
+            return jsonify({"ok": False, "error": "رقم غير صالح"}), 400
+        field = (data.get("field") or "").strip()
+        if field not in ("ai_stopped", "banned"):
+            return jsonify({"ok": False, "error": "حقل غير صالح"}), 400
+        value = 1 if data.get("value") else 0
+        ok = db.wa_contact_set_control(cn, field, value)
+        if ok:
+            controls = db.wa_contact_get_controls(cn)
+            return jsonify({"ok": True, "contact": cn, **controls})
+        return jsonify({"ok": False, "error": "فشل الحفظ"}), 500
+
+    @bp.route("/branch/messages/api/contact-status", methods=["GET"])
+    def api_contact_status_branch():
+        if "logged_in" not in session or session.get("role") != "branch":
+            return jsonify({"ok": False, "error": "غير مصرح"}), 403
+        contact = (request.args.get("contact") or "").strip()
+        cn = normalize_wa_contact_number(contact)
+        if not cn:
+            return jsonify({"ok": False, "error": "رقم غير صالح"}), 400
+        controls = db.wa_contact_get_controls(cn)
+        return jsonify({"ok": True, "contact": cn, **controls})
+
+    @bp.route("/branch/messages/api/contact-control", methods=["POST"])
+    def api_contact_control_branch():
+        if "logged_in" not in session or session.get("role") != "branch":
+            return jsonify({"ok": False, "error": "غير مصرح"}), 403
+        data = request.get_json(silent=True) or {}
+        contact = (data.get("contact") or "").strip()
+        cn = normalize_wa_contact_number(contact)
+        if not cn:
+            return jsonify({"ok": False, "error": "رقم غير صالح"}), 400
+        field = (data.get("field") or "").strip()
+        if field not in ("ai_stopped", "banned"):
+            return jsonify({"ok": False, "error": "حقل غير صالح"}), 400
+        value = 1 if data.get("value") else 0
+        ok = db.wa_contact_set_control(cn, field, value)
+        if ok:
+            controls = db.wa_contact_get_controls(cn)
+            return jsonify({"ok": True, "contact": cn, **controls})
+        return jsonify({"ok": False, "error": "فشل الحفظ"}), 500
+
     return bp

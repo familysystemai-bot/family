@@ -38,6 +38,19 @@
         .reply-panel   { background: #fdf8ee; border: 1px solid #eaddca; border-radius: 10px; padding: 14px; margin-top: 8px; display: none; }
         .reply-panel.show { display: block; }
         .sent-reply-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 14px; font-size: .87rem; margin-top: 8px; }
+        .emp-badge { background: #dbeafe; color: #1e40af; font-size: .75rem; padding: 2px 6px; border-radius: 6px; }
+        /* ── Mobile complaint cards ── */
+        .branch-complaint-desktop { display: block; }
+        .branch-complaint-mobile { display: none; }
+        @media (max-width: 768px) {
+            .branch-complaint-desktop { display: none !important; }
+            .branch-complaint-mobile { display: block !important; }
+            .bc-card { background: #fff; border: 1px solid #eaddca; border-radius: 12px; padding: 14px; margin-bottom: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+            .bc-card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+            .bc-card-ticket { font-family: monospace; font-weight: 700; color: var(--accent-gold); }
+            .bc-card-preview { font-size: .85rem; color: #444; line-height: 1.5; white-space: pre-wrap; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 8px; }
+            .bc-card-footer { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+        }
         /* ── استفسارات العملاء ── */
         .inq-row { border-right: 4px solid #0ea5e9; transition: background .2s; }
         .inq-row:hover { background: #f0f9ff; }
@@ -180,15 +193,15 @@
 
                 <div class="stat-card mb-5" style="padding: 0; overflow: hidden;">
                     {% if branch_complaints %}
-                    <div class="table-responsive">
+                    <!-- Desktop table -->
+                    <div class="branch-complaint-desktop table-responsive">
                         <table class="table table-hover align-middle mb-0">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="width:60px;">#</th>
                                     <th>التذكرة</th>
                                     <th>العميل</th>
                                     <th>الشكوى</th>
-                                    <th>النوع</th>
+                                    <th>التصنيف</th>
                                     <th>التاريخ</th>
                                     <th>الحالة</th>
                                     <th style="min-width:160px;">إجراء</th>
@@ -198,82 +211,70 @@
                             {% for c in branch_complaints %}
                                 {% set st = (c.status or '') | lower %}
                                 {% set is_resolved = st == 'resolved' %}
-                                {% set ctype = (c.complaint_type or '') %}
-                                {% set is_return = ctype in ('return', 'exchange', 'return_exchange') or
-                                   ('استبدال' in (c.issue or '') or 'استرجاع' in (c.issue or '')) %}
                             <tr class="complaint-row">
-                                <td class="fw-bold text-muted small">{{ c.id }}</td>
-                                <td><code class="small">{{ c.ticket_code or '—' }}</code></td>
+                                <td><code class="fw-bold" style="color:var(--accent-gold);">{{ c.ticket_code or c.id }}</code></td>
                                 <td>
                                     <div class="fw-bold small">{{ c.customer_name or '—' }}</div>
-                                    {% if c.customer_phone %}
-                                    <div class="text-muted" style="font-size:.78rem;">📱 {{ c.customer_phone }}</div>
-                                    {% endif %}
-                                    {% if c.customer_email %}
-                                    <div class="text-muted" style="font-size:.78rem;">✉️ {{ c.customer_email }}</div>
-                                    {% endif %}
+                                    {% if c.customer_phone %}<div class="text-muted" style="font-size:.78rem;">📱 {{ c.customer_phone }}</div>{% endif %}
                                 </td>
                                 <td class="issue-cell">{{ (c.message or c.issue or '') | truncate(120) }}</td>
                                 <td>
-                                    {% if is_return %}
-                                    <span class="badge badge-return">استرجاع/استبدال</span>
-                                    {% else %}
                                     <span class="small text-muted">{{ c.complaint_ai_classification or '—' }}</span>
-                                    {% endif %}
+                                    {% if c.employee_name %}<div><span class="emp-badge">{{ c.employee_name }}</span></div>{% endif %}
                                 </td>
                                 <td class="small text-nowrap text-muted">{{ (c.created_at or '—')[:16] }}</td>
                                 <td>
-                                    {% if is_resolved %}
-                                    <span class="badge rounded-pill badge-resolved">تم الحل</span>
-                                    {% if c.customer_reply_sent %}
-                                    <div class="small text-success mt-1">✅ تم إرسال الرد</div>
-                                    {% endif %}
-                                    {% else %}
-                                    <span class="badge rounded-pill badge-open">قيد المعالجة</span>
-                                    {% endif %}
+                                    {% if is_resolved %}<span class="badge rounded-pill badge-resolved">تم الحل</span>
+                                    {% else %}<span class="badge rounded-pill badge-open">قيد المعالجة</span>{% endif %}
                                 </td>
                                 <td>
-                                    <!-- زر الرد -->
                                     {% if c.customer_email or c.customer_phone %}
-                                    <button class="btn btn-sm btn-gold mb-1 w-100"
-                                            onclick="toggleReply('reply-{{ c.id }}')">
-                                        💬 رد على العميل
-                                    </button>
-                                    {% endif %}
-
-                                    <!-- نموذج الرد -->
+                                    <button class="btn btn-sm btn-gold mb-1 w-100" onclick="toggleReply('reply-{{ c.id }}')">💬 رد</button>
                                     <div id="reply-{{ c.id }}" class="reply-panel">
-                                        <div class="small fw-bold mb-2" style="color:var(--accent-gold);">
-                                            الرد سيُرسَل إلى:
-                                            {% if c.customer_email %}✉️ {{ c.customer_email }}{% endif %}
-                                            {% if c.customer_phone %}📱 {{ c.customer_phone }}{% endif %}
-                                        </div>
-                                        {% if c.customer_reply_text %}
-                                        <div class="sent-reply-box mb-2">
-                                            <div class="small fw-bold text-success mb-1">آخر رد مُرسَل:</div>
-                                            {{ c.customer_reply_text }}
-                                        </div>
-                                        {% endif %}
+                                        {% if c.customer_reply_text %}<div class="sent-reply-box mb-2"><div class="small fw-bold text-success mb-1">آخر رد:</div>{{ c.customer_reply_text }}</div>{% endif %}
                                         <form action="{{ url_for('branch_complaint_reply', complaint_id=c.id) }}" method="post">
                                             {{ csrf_input() }}
-                                            <textarea name="reply_text" class="form-control form-control-sm mb-2"
-                                                      rows="3"
-                                                      placeholder="اكتب ردك على العميل هنا...&#10;مثال: تم مراجعة طلبك وسيتم التواصل معك خلال 24 ساعة."
-                                                      required></textarea>
+                                            <textarea name="reply_text" class="form-control form-control-sm mb-2" rows="2" placeholder="اكتب ردك…" required></textarea>
                                             <div class="d-flex gap-2">
-                                                <button type="submit" class="btn btn-sm btn-gold flex-grow-1">
-                                                    📤 إرسال الرد
-                                                </button>
-                                                <button type="button" class="btn btn-sm btn-outline-secondary"
-                                                        onclick="toggleReply('reply-{{ c.id }}')">إلغاء</button>
+                                                <button type="submit" class="btn btn-sm btn-gold flex-grow-1">📤 إرسال</button>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleReply('reply-{{ c.id }}')">✕</button>
                                             </div>
                                         </form>
                                     </div>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% endfor %}
                             </tbody>
                         </table>
+                    </div>
+                    <!-- Mobile cards -->
+                    <div class="branch-complaint-mobile p-2">
+                        {% for c in branch_complaints %}
+                        {% set st = (c.status or '') | lower %}
+                        {% set is_resolved = st == 'resolved' %}
+                        {% set msg_text = (c.message or c.issue or '') %}
+                        <div class="bc-card">
+                            <div class="bc-card-top">
+                                <span class="bc-card-ticket">#{{ c.ticket_code or c.id }}</span>
+                                <span style="font-size:.72rem;color:#888;">{{ (c.created_at or '')[:10] }}</span>
+                            </div>
+                            <div class="fw-bold" style="font-size:.9rem;">{{ c.customer_name or 'عميل' }}</div>
+                            <div class="bc-card-preview">{{ msg_text }}</div>
+                            <div class="bc-card-footer">
+                                {% if is_resolved %}<span class="badge badge-resolved">تم الحل</span>
+                                {% else %}<span class="badge badge-open">مفتوحة</span>{% endif %}
+                                <span style="font-size:.7rem;color:#666;">{{ c.complaint_ai_classification or '' }}</span>
+                            </div>
+                            {% if c.customer_email or c.customer_phone %}
+                            <form action="{{ url_for('branch_complaint_reply', complaint_id=c.id) }}" method="post" class="mt-2">
+                                {{ csrf_input() }}
+                                <textarea name="reply_text" class="form-control form-control-sm mb-1" rows="2" placeholder="رد…" required></textarea>
+                                <button type="submit" class="btn btn-sm btn-gold w-100">💬 رد</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
                     </div>
                     {% else %}
                     <div class="text-center text-muted py-5">

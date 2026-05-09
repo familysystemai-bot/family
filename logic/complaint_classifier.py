@@ -7,19 +7,26 @@ from __future__ import annotations
 
 from typing import Dict, List, Tuple
 
-# ترتيب فضّل عند التعادل (أولوية للأكثر تحديداً للتحليل التشغيلي)
 _TIE_BREAK: Tuple[str, ...] = (
     "product_issue",
     "replacement_return",
-    "delay",
     "staff_conduct",
+    "delay",
+    "poor_service",
+    "disrespect",
+    "branch_issue",
+    "order_issue",
 )
 
 _LABELS_AR: Dict[str, str] = {
     "replacement_return": "استبدال / استرجاع",
-    "staff_conduct": "تعامل موظف",
+    "staff_conduct": "مشكلة موظف",
     "delay": "تأخير",
     "product_issue": "مشكلة منتج",
+    "poor_service": "سوء خدمة",
+    "disrespect": "عدم احترام",
+    "branch_issue": "مشكلة فرع",
+    "order_issue": "مشكلة طلب",
     "unspecified": "غير مصنّف",
 }
 
@@ -135,7 +142,87 @@ _KEYWORDS: Dict[str, Tuple[str, ...]] = {
         "قص",
         "قصة",
     ),
+    "poor_service": (
+        "خدمة سيئة",
+        "سوء خدمة",
+        "خدمة",
+        "الخدمة سيئة",
+        "مستوى الخدمة",
+        "خدمة زفت",
+        "خدمة وسخة",
+    ),
+    "disrespect": (
+        "عدم احترام",
+        "قلة ادب",
+        "قلة أدب",
+        "استهزاء",
+        "سخرية",
+        "اهانة",
+        "إهانة",
+        "كلام جارح",
+        "صراخ",
+        "صوت عالي",
+        "رفع صوت",
+    ),
+    "branch_issue": (
+        "مشكلة فرع",
+        "فرع",
+        "نظافة",
+        "نظافة الفرع",
+        "الفرع مقفل",
+        "ازدحام",
+        "المكان",
+        "المحل",
+        "المتجر",
+        "الفرع",
+    ),
+    "order_issue": (
+        "مشكلة طلب",
+        "طلب غلط",
+        "طلب ناقص",
+        "طلب خطأ",
+        "طلبية",
+        "الطلب",
+        "أوردر",
+        "اوردر",
+        "فاتورة",
+    ),
 }
+
+
+import re as _re
+
+_EMPLOYEE_PATTERNS = (
+    _re.compile(r"(?:الموظف|الموظفة|اسمه|اسمها|الأخ|الأخت|العامل|البائع|البائعة)\s+([^\s,،.؟!]{2,20})", _re.UNICODE),
+    _re.compile(r"موظف\s+(?:اسمه|اسمها)\s+([^\s,،.؟!]{2,20})", _re.UNICODE),
+)
+
+_DEPARTMENT_PATTERNS = (
+    _re.compile(r"(?:قسم|في قسم|من قسم|بقسم)\s+([^\s,،.؟!]{2,30})", _re.UNICODE),
+    _re.compile(r"(?:إدارة|ادارة)\s+([^\s,،.؟!]{2,30})", _re.UNICODE),
+)
+
+
+def extract_employee_name(text: str) -> str:
+    """يستخرج اسم الموظف من نص الشكوى إن وُجد."""
+    if not text:
+        return ""
+    for pat in _EMPLOYEE_PATTERNS:
+        m = pat.search(text)
+        if m:
+            return m.group(1).strip()[:100]
+    return ""
+
+
+def extract_department(text: str) -> str:
+    """يستخرج اسم القسم/الإدارة من نص الشكوى إن وُجد."""
+    if not text:
+        return ""
+    for pat in _DEPARTMENT_PATTERNS:
+        m = pat.search(text)
+        if m:
+            return m.group(1).strip()[:100]
+    return ""
 
 
 def complaint_type_label_ar(complaint_type: str) -> str:

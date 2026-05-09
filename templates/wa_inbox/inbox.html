@@ -193,6 +193,20 @@
         .btn-send { background: var(--wa-accent); color: #fff; border: none; font-weight: 600; }
         .btn-send:hover { background: #966d09; color: #fff; }
         .wa-hint { font-size: 0.8rem; color: #777; }
+        /* TASK 2: حالة العميل */
+        .wa-contact-banned { border-right: 4px solid #dc3545 !important; }
+        .wa-contact-stopped { border-right: 4px solid #fd7e14 !important; }
+        .wa-contact-badge { font-size: 0.65rem; padding: 2px 5px; border-radius: 4px; vertical-align: middle; }
+        /* TASK 2: أزرار تحكم في header */
+        .wa-ctrl-bar { display: flex; gap: 6px; margin-inline-start: auto; }
+        .btn-ctrl { font-size: 0.75rem; padding: 3px 9px; border-radius: 6px; font-weight: 600; }
+        /* TASK 3: ردود AI */
+        .wa-bubble-ai {
+            background: #e3f2fd !important;
+            border-top-left-radius: 4px;
+            border-inline-start: 3px solid #1976d2;
+        }
+        .wa-ai-label { font-size: 0.68rem; color: #1976d2; font-weight: 700; margin-bottom: 2px; }
     </style>
 </head>
 <body>
@@ -221,6 +235,11 @@
                     <div class="wa-h-meta">
                         <div class="fw-semibold" id="hdrName">—</div>
                         <small id="hdrPhone">—</small>
+                    </div>
+                    <!-- TASK 2: أزرار تحكم العميل -->
+                    <div class="wa-ctrl-bar" id="contactCtrlBar">
+                        <button class="btn btn-outline-warning btn-ctrl" id="btnStopAI" title="إيقاف رد AI تلقائياً">⏸ AI</button>
+                        <button class="btn btn-outline-danger btn-ctrl" id="btnBan" title="حظر العميل">🚫 حظر</button>
                     </div>
                 </div>
                 <div class="wa-chat-scroll" id="chatPane"></div>
@@ -255,6 +274,11 @@
     const API_THREADS = {{ api_threads | tojson }};
     const API_MESSAGES = {{ api_messages | tojson }};
     const API_SEND = {{ api_send | tojson }};
+    // TASK 2: اشتقاق روابط تحكم العميل من رابط threads
+    const _base = API_THREADS.replace('/api/threads', '');
+    const API_CONTACT_STATUS = _base + '/api/contact-status';
+    const API_CONTACT_CONTROL = _base + '/api/contact-control';
+
     const threadList = document.getElementById('threadList');
     const chatPane = document.getElementById('chatPane');
     const chatPanel = document.getElementById('chatPanel');
@@ -268,8 +292,12 @@
     const sendAlert = document.getElementById('sendAlert');
     const csrfMeta = document.querySelector('meta[name="csrf-token"]');
     const csrfFld = document.getElementById('csrfFld');
+    const btnStopAI = document.getElementById('btnStopAI');
+    const btnBan = document.getElementById('btnBan');
     let selectedContact = '';
     let threadNameByContact = {};
+    // TASK 2: cache حالة العملاء
+    let contactStatusCache = {};
     let pollTimer = null;
 
     function csrfHeaders() {
@@ -300,9 +328,7 @@
         if (!d) return '';
         try {
             return d.toLocaleTimeString('ar-SA', { hour: 'numeric', minute: '2-digit' });
-        } catch (e) {
-            return '';
-        }
+        } catch (e) { return ''; }
     }
 
     function formatDayLabel(d) {
@@ -314,9 +340,7 @@
         if (dayKey(d) === dayKey(y)) return 'أمس';
         try {
             return d.toLocaleDateString('ar-SA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-        } catch (e) {
-            return '';
-        }
+        } catch (e) { return ''; }
     }
 
     function threadInitial(name, phone) {
@@ -346,11 +370,103 @@
         return '<div class="wa-text">' + esc(b) + '</div>';
     }
 
+    // TASK 2: تحديث أزرار التحكم وعنوان المحادثة
+    function updateCtrlButtons(status) {
+        if (!btnStopAI || !btnBan) return;
+        const stopped = status && status.ai_stopped;
+        const banned = status && status.banned;
+        btnStopAI.textContent = stopped ? '▶ استئناف AI' : '⏸ وقف AI';
+        btnStopAI.className = 'btn btn-ctrl ' + (stopped ? 'btn-warning' : 'btn-outline-warning');
+        btnStopAI.title = stopped ? 'استئناف الرد التلقائي' : 'إيقاف رد AI تلقائياً';
+        btnBan.textContent = banned ? '✅ رفع الحظر' : '🚫 حظر';
+        btnBan.className = 'btn btn-ctrl ' + (banned ? 'btn-danger' : 'btn-outline-danger');
+    }
+
+    async function loadContactStatus(contact) {
+        if (!contact) return;
+        try {
+            const res = await fetch(API_CONTACT_STATUS + '?contact=' + encodeURIComponent(contact), { credentials: 'same-origin' });
+            const data = await res.json().catch(() => ({}));
+            if (data.ok) {
+                contactStatusCache[contact] = data;
+                updateCtrlButtons(data);
+                // تحديث البادج البصري في قائمة المحادثات
+                updateThreadBadge(contact, data);
+            }
+        } catch (e) {}
+    }
+
+    function updateThreadBadge(contact, status) {
+        const div = threadList.querySelector('[data-contact="' + contact + '"]');
+        if (!div) return;
+        div.classList.toggle('wa-contact-banned', !!(status && status.banned));
+        div.classList.toggle('wa-contact-stopped', !!(status && status.ai_stopped && !status.banned));
+        let badge = div.querySelector('.wa-contact-status-badge');
+        if (status && (status.banned || status.ai_stopped)) {
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'wa-contact-badge wa-contact-status-badge ms-1';
+                const nameEl = div.querySelector('strong');
+                if (nameEl) nameEl.after(badge);
+            }
+            badge.textContent = status.banned ? '🚫' : '⏸';
+            badge.style.background = status.banned ? '#dc3545' : '#fd7e14';
+            badge.style.color = '#fff';
+        } else if (badge) {
+            badge.remove();
+        }
+    }
+
+    async function setContactControl(contact, field, value) {
+        try {
+            const res = await fetch(API_CONTACT_CONTROL, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
+                body: JSON.stringify({ contact, field, value }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (data.ok) {
+                contactStatusCache[contact] = data;
+                updateCtrlButtons(data);
+                updateThreadBadge(contact, data);
+            } else {
+                alert(data.error || 'فشل العملية');
+            }
+        } catch (e) {
+            alert('خطأ في الاتصال');
+        }
+    }
+
+    if (btnStopAI) {
+        btnStopAI.addEventListener('click', function() {
+            if (!selectedContact) return;
+            const cur = contactStatusCache[selectedContact];
+            const newVal = !(cur && cur.ai_stopped);
+            setContactControl(selectedContact, 'ai_stopped', newVal);
+        });
+    }
+    if (btnBan) {
+        btnBan.addEventListener('click', function() {
+            if (!selectedContact) return;
+            const cur = contactStatusCache[selectedContact];
+            const newVal = !(cur && cur.banned);
+            if (newVal && !confirm('هل تريد حظر هذا العميل؟')) return;
+            setContactControl(selectedContact, 'banned', newVal);
+        });
+    }
+
     function updateHeader(contact) {
         const name = threadNameByContact[contact] || contact || '—';
         hdrName.textContent = name;
         hdrPhone.textContent = contact || '—';
         hdrAvatar.textContent = threadInitial(name, contact);
+        if (contactStatusCache[contact]) {
+            updateCtrlButtons(contactStatusCache[contact]);
+        } else {
+            if (btnStopAI) { btnStopAI.textContent = '⏸ وقف AI'; btnStopAI.className = 'btn btn-ctrl btn-outline-warning'; }
+            if (btnBan) { btnBan.textContent = '🚫 حظر'; btnBan.className = 'btn btn-ctrl btn-outline-danger'; }
+        }
     }
 
     function showChatPanel(show) {
@@ -365,14 +481,9 @@
 
     async function parseJsonResponse(res) {
         const ct = (res.headers.get('content-type') || '').toLowerCase();
-        if (!ct.includes('application/json')) {
-            return { _notJson: true, status: res.status };
-        }
-        try {
-            return await res.json();
-        } catch (e) {
-            return { _parseErr: true, status: res.status };
-        }
+        if (!ct.includes('application/json')) return { _notJson: true, status: res.status };
+        try { return await res.json(); }
+        catch (e) { return { _parseErr: true, status: res.status }; }
     }
 
     async function loadThreads() {
@@ -386,8 +497,7 @@
         const data = await parseJsonResponse(res);
         if (data._notJson || data._parseErr) {
             threadList.innerHTML = '<div class="p-3 text-danger small">' +
-                (res.ok ? 'استجابة غير متوقعة.' : ('خطأ ' + res.status + ' — جرّب تسجيل الدخول مجدداً.')) +
-                '</div>';
+                (res.ok ? 'استجابة غير متوقعة.' : ('خطأ ' + res.status + ' — جرّب تسجيل الدخول مجدداً.')) + '</div>';
             return;
         }
         if (!data.ok) {
@@ -410,12 +520,16 @@
             if (tel) threadNameByContact[tel] = name;
 
             const div = document.createElement('div');
-            div.className = 'wa-thread-item' + (tel === selectedContact ? ' active' : '');
+            // TASK 2: إضافة class الحالة المخزنة مسبقاً
+            const cachedStatus = contactStatusCache[tel];
+            let cls = 'wa-thread-item' + (tel === selectedContact ? ' active' : '');
+            if (cachedStatus && cachedStatus.banned) cls += ' wa-contact-banned';
+            else if (cachedStatus && cachedStatus.ai_stopped) cls += ' wa-contact-stopped';
+            div.className = cls;
             div.dataset.contact = tel;
 
             const tParse = parseTs(row.timestamp);
             const timeStr = formatTime(tParse) || '';
-
             const dirHint = (row.last_direction === 'outbound') ? 'أنت: ' : '';
             const preview = dirHint + (row.last_body || '').slice(0, 72);
             const ac = row.ai_calls != null ? parseInt(row.ai_calls, 10) : 0;
@@ -423,17 +537,18 @@
             const act = row.ai_completion_tokens != null ? parseInt(row.ai_completion_tokens, 10) : 0;
             const aiLine = (ac > 0 || apt > 0 || act > 0)
                 ? ('<div class="wa-thread-ai small text-muted mt-1" dir="rtl">ذكاء اصطناعي: ' + ac +
-                    ' استدعاء · مدخلات ' + apt + ' · مخرجات ' + act + '</div>')
-                : '';
+                    ' استدعاء · مدخلات ' + apt + ' · مخرجات ' + act + '</div>') : '';
+            // TASK 2: بادج الحالة
+            const statusBadge = (cachedStatus && cachedStatus.banned) ? '<span class="wa-contact-badge ms-1" style="background:#dc3545;color:#fff">🚫</span>' :
+                (cachedStatus && cachedStatus.ai_stopped) ? '<span class="wa-contact-badge ms-1" style="background:#fd7e14;color:#fff">⏸</span>' : '';
 
             div.innerHTML =
                 '<div class="wa-thread-avatar">' + esc(threadInitial(name, tel)) + '</div>' +
                 '<div class="wa-thread-body">' +
-                '<div class="wa-thread-top"><strong class="text-truncate">' + esc(name) + '</strong>' +
+                '<div class="wa-thread-top"><strong class="text-truncate">' + esc(name) + statusBadge + '</strong>' +
                 '<span class="wa-thread-time">' + esc(timeStr) + '</span></div>' +
                 '<div class="wa-thread-preview"><span class="dir-tag">' + esc(tel) + '</span>' + esc(preview) + '</div>' +
-                aiLine +
-                '</div>';
+                aiLine + '</div>';
 
             div.addEventListener('click', function() {
                 selectedContact = tel;
@@ -442,6 +557,7 @@
                 updateHeader(tel);
                 showChatPanel(true);
                 loadMessages(true);
+                loadContactStatus(tel);
             });
             frag.appendChild(div);
         });
@@ -452,10 +568,7 @@
     }
 
     async function loadMessages(scrollBottom) {
-        if (!selectedContact) {
-            showChatPanel(false);
-            return;
-        }
+        if (!selectedContact) { showChatPanel(false); return; }
         const url = API_MESSAGES + (API_MESSAGES.indexOf('?') >= 0 ? '&' : '?') + 'contact=' + encodeURIComponent(selectedContact);
         let res;
         try {
@@ -484,21 +597,22 @@
                 html += '<div class="wa-day-sep"><span>' + esc(formatDayLabel(t)) + '</span></div>';
             }
             const inbound = (m.direction !== 'outbound');
+            // TASK 3: تمييز ردود AI
+            const isAI = (!inbound && (m.sender_type || '') === 'ai');
             const rowCls = inbound ? 'wa-inbound' : 'wa-outbound';
-            const bubCls = inbound ? 'wa-bubble-in' : 'wa-bubble-out';
-            const dirLabel = inbound ? 'وارد' : 'صادر';
+            const bubCls = inbound ? 'wa-bubble-in' : (isAI ? 'wa-bubble-ai' : 'wa-bubble-out');
+            const dirLabel = inbound ? 'وارد' : (isAI ? '🤖 ذكاء اصطناعي' : 'صادر (يدوي)');
+            const aiLabel = isAI ? '<div class="wa-ai-label">🤖 رد AI</div>' : '';
             html +=
                 '<div class="wa-msg-row ' + rowCls + '">' +
                 '<div class="wa-bubble-wrap">' +
-                '<div class="wa-bubble ' + bubCls + '">' + bubbleInnerHtml(m.message_body || '') + '</div>' +
+                '<div class="wa-bubble ' + bubCls + '">' + aiLabel + bubbleInnerHtml(m.message_body || '') + '</div>' +
                 '<div class="wa-msg-meta">' + esc(dirLabel) + ' · ' + esc(formatTime(t) || (m.timestamp || '')) + '</div>' +
                 '</div></div>';
         });
         chatPane.innerHTML = html || '<p class="text-muted small p-2 text-center">لا رسائل.</p>';
         if (scrollBottom) {
-            requestAnimationFrame(function() {
-                chatPane.scrollTop = chatPane.scrollHeight;
-            });
+            requestAnimationFrame(function() { chatPane.scrollTop = chatPane.scrollHeight; });
         }
     }
 
@@ -519,10 +633,7 @@
         btn.disabled = true;
         try {
             const res = await fetch(API_SEND, {
-                method: 'POST',
-                body: fd,
-                credentials: 'same-origin',
-                headers: csrfHeaders(),
+                method: 'POST', body: fd, credentials: 'same-origin', headers: csrfHeaders(),
             });
             const data = await parseJsonResponse(res);
             if (data._notJson || data._parseErr) {
@@ -540,9 +651,7 @@
             }
         } catch (e) {
             sendAlert.innerHTML = '<span class="text-danger">خطأ شبكة.</span>';
-        } finally {
-            btn.disabled = false;
-        }
+        } finally { btn.disabled = false; }
     });
 
     function tick() {

@@ -666,6 +666,15 @@ class DatabaseManager(
             CREATE INDEX IF NOT EXISTS idx_wa_wamids_processed_at
             ON wa_processed_wamids (processed_at)
         """)
+        # ── تحكم جلسات واتساب: إيقاف AI أو حظر لكل رقم ──
+        self._exec_ddl(conn, """
+            CREATE TABLE IF NOT EXISTS wa_contact_controls (
+                contact_number TEXT PRIMARY KEY,
+                ai_stopped INTEGER NOT NULL DEFAULT 0,
+                banned INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
 
         # ── ALTER TABLE: إضافة أعمدة جديدة (كل أمر مستقل — لا rollback عند تكرار) ──
         for alter in (
@@ -697,6 +706,8 @@ class DatabaseManager(
             "ALTER TABLE complaints ADD COLUMN complaint_ai_classification TEXT DEFAULT ''",
             "ALTER TABLE complaints ADD COLUMN ticket_code TEXT",
             "ALTER TABLE complaints ADD COLUMN resolution_notes TEXT DEFAULT ''",
+            "ALTER TABLE complaints ADD COLUMN employee_name TEXT DEFAULT ''",
+            "ALTER TABLE complaints ADD COLUMN department TEXT DEFAULT ''",
             # ── الدفعة 4: أعمدة التخزين السحابي للصور ──
             # يُحفظ image_path الأصلي للتوافق الرجعي.
             # storage_provider: المنصة المستخدمة (local/cloudinary/imagekit/s3/r2)
@@ -707,6 +718,7 @@ class DatabaseManager(
             "ALTER TABLE product_images ADD COLUMN cloud_width INTEGER",
             "ALTER TABLE product_images ADD COLUMN cloud_height INTEGER",
             "ALTER TABLE product_images ADD COLUMN cloud_bytes INTEGER",
+            "ALTER TABLE messages ADD COLUMN sender_type TEXT DEFAULT ''",
         ):
             self._exec_alter(conn, alter)
 
@@ -788,10 +800,8 @@ END $$;
         # `conn._raw.execute("ROLLBACK TO SAVEPOINT _ticket_sp") if False else None`
         # تمت إزالته. نستخدم الآن SAVEPOINT حقيقي حول كل UPDATE في PostgreSQL
         # لتجنّب تسميم المعاملة عند تعارض UNIQUE.
-        _ticket_alphabet = string.ascii_uppercase + string.digits
-
         def _gen_complaint_ticket() -> str:
-            return "TKT-" + "".join(secrets.choice(_ticket_alphabet) for _ in range(8))
+            return str(secrets.randbelow(900000) + 100000)
 
         try:
             placeholder = "%s" if self.db_type == "postgres" else "?"
@@ -1082,7 +1092,7 @@ END $$;
         conn = self._get_connection()
         try:
             cur = conn.execute(
-                "SELECT * FROM complaints WHERE id = ?", (int(complaint_id),)
+                "SELECT * FROM complaints WHERE id = %s", (int(complaint_id),)
             )
             row = cur.fetchone()
             return dict(row) if row else None
@@ -1102,12 +1112,12 @@ END $$;
             conn.execute(
                 """
                 UPDATE complaints
-                SET customer_reply_text = ?,
+                SET customer_reply_text = %s,
                     customer_reply_sent = 1,
                     customer_reply_sent_at = datetime('now'),
                     status = 'resolved',
                     resolved_at = datetime('now')
-                WHERE id = ?
+                WHERE id = %s
                 """,
                 (str(reply_text)[:4000], int(complaint_id)),
             )

@@ -401,6 +401,7 @@ def admin_dashboard():
     admin_pending_inquiries = db.get_all_pending_inquiries(limit=120)
     admin_all_inquiries_recent = db.list_recent_branch_inquiries_all(80)
     admin_product_requests = db.list_recent_product_requests(60)
+    complaint_stats = db.get_complaints_stats()
     return render_template(
         "admin_dashboard.html",
         branches=branches,
@@ -410,6 +411,7 @@ def admin_dashboard():
         admin_pending_inquiries=admin_pending_inquiries,
         admin_all_inquiries_recent=admin_all_inquiries_recent,
         admin_product_requests=admin_product_requests,
+        complaint_stats=complaint_stats,
         delivery_images_json_text=json.dumps(
             parse_delivery_image_urls(ci_rows.get("delivery_images")),
             ensure_ascii=False,
@@ -1671,6 +1673,9 @@ def admin_complaints():
         status=status_filter or None,
         limit=800,
     )
+    stats_by_category = db.get_complaints_by_category(15)
+    stats_by_branch = db.get_complaints_by_branch(15)
+    stats_by_employee = db.get_complaints_by_employee(15)
     return render_template(
         "admin_complaints.html",
         complaints=complaints_list,
@@ -1678,6 +1683,9 @@ def admin_complaints():
         filter_branch=branch_filter,
         filter_status=status_filter,
         branch_options=branch_options,
+        stats_by_category=stats_by_category,
+        stats_by_branch=stats_by_branch,
+        stats_by_employee=stats_by_employee,
     )
 
 
@@ -2968,6 +2976,33 @@ def process_message(data) -> None:
             caption = (media_obj.get("caption") or "").strip()
 
             logger.info("[WA-Webhook][bg] media type=%s id=%s mime=%s", msg_type, media_id, mime_type)
+
+            # ── TASK 1: فحص إذا كان تحليل الصور معطلاً ──
+            _is_image_type = (
+                msg_type in ("image", "sticker")
+                or (mime_type or "").startswith("image/")
+            )
+            if _is_image_type:
+                try:
+                    from logic.integrations.base import read_setting as _rs
+                    _img_enabled = (_rs("image_analysis_enabled", "1") or "1").strip()
+                except Exception:
+                    _img_enabled = "1"
+                if _img_enabled == "0":
+                    _inbox_body = caption if caption else f"[صورة واتساب:{msg_type}]"
+                    _wa_inbox_store_inbound(
+                        db,
+                        value=value_full,
+                        wa_from=wa_from,
+                        message_body=_inbox_body,
+                    )
+                    _wa_send_message(
+                        send_phone_id,
+                        wa_from,
+                        "معذرة، حالياً ما أقدر أتعرف على الصورة، لكن أبشر تم إرسالها للفرع وسيتم الرد عليك قريباً.",
+                    )
+                    return
+
             extracted = _wa_download_and_extract_text(media_id, mime_type)
 
             if extracted:
@@ -2996,6 +3031,27 @@ def process_message(data) -> None:
                 wa_from=wa_from,
                 message_body=f"[واتساب:{msg_type}]",
             )
+            return
+
+        # ── TASK 2: فحص تحكم العميل (حظر / إيقاف AI) ──
+        try:
+            _controls = db.wa_contact_get_controls(wa_from)
+        except Exception:
+            _controls = {"ai_stopped": 0, "banned": 0}
+
+        if _controls.get("banned"):
+            _ban_body = wa_text or f"[واتساب:{msg_type}]"
+            _wa_inbox_store_inbound(db, value=value_full, wa_from=wa_from, message_body=_ban_body)
+            _wa_send_message(
+                send_phone_id,
+                wa_from,
+                "معذرة، تم حظرك لأن النظام مخصص فقط للاستفسارات المتعلقة بالنشاط.",
+            )
+            return
+
+        if _controls.get("ai_stopped"):
+            _stop_body = wa_text or f"[واتساب:{msg_type}]"
+            _wa_inbox_store_inbound(db, value=value_full, wa_from=wa_from, message_body=_stop_body)
             return
 
         if len(inbound) > 1:
@@ -3103,11 +3159,128 @@ def process_message(data) -> None:
                 _wa_send_image_link(send_phone_id, wa_from, image_link)
 
         if reply_text and send_phone_id:
-            if not _wa_send_message(send_phone_id, wa_from, reply_text):
+            _sent_ok = _wa_send_message(send_phone_id, wa_from, reply_text)
+            if not _sent_ok:
                 logger.warning("[WA-Webhook][bg] فشل إرسال الرد لواتساب للمستخدم %s", wa_from)
+            else:
+                # ── TASK 3: حفظ رد AI في صندوق الرسائل لعرضه في لوحة التحكم ──
+                try:
+                    _ai_bid = _wa_inbox_branch_for_contact(db, wa_from)
+                    db.wa_inbox_save_message(
+                        contact_number=wa_from,
+                        whatsapp_name="AI",
+                        message_body=reply_text,
+                        direction="outbound",
+                        branch_id=_ai_bid,
+                        sender_type="ai",
+                    )
+                except Exception:
+                    logger.debug("[WA-Webhook][bg] حفظ رد AI (غير حرج)", exc_info=True)
 
     except Exception:
         logger.exception("[WA-Webhook][bg] error while processing message")
+
+
+# ==========================================
+# TASK 1: إدارة مزود تحليل الصور
+# ==========================================
+
+@app.route("/admin/api/image-analysis/status", methods=["GET"])
+def admin_image_analysis_status():
+    if session.get("role") not in ("admin", "founder"):
+        return jsonify({"ok": False, "error": "غير مصرح"}), 403
+    try:
+        from logic.integrations.base import read_setting as _rs
+        enabled = (_rs("image_analysis_enabled", "1") or "1").strip()
+        provider = (_rs("image_analysis_provider", "gemini") or "gemini").strip()
+        has_gemini_key = bool((_rs("GEMINI_API_KEY", "") or "").strip())
+        has_openai_key = bool((_rs("OPENAI_API_KEY", "") or "").strip())
+        return jsonify({
+            "ok": True,
+            "enabled": enabled == "1",
+            "provider": provider,
+            "has_gemini_key": has_gemini_key,
+            "has_openai_key": has_openai_key,
+        })
+    except Exception:
+        logger.exception("admin_image_analysis_status error")
+        return jsonify({"ok": False, "error": "خطأ داخلي"}), 500
+
+
+@app.route("/admin/api/image-analysis/toggle", methods=["POST"])
+def admin_image_analysis_toggle():
+    if session.get("role") not in ("admin", "founder"):
+        return jsonify({"ok": False, "error": "غير مصرح"}), 403
+    try:
+        from logic.integrations.base import write_setting as _ws, read_setting as _rs
+        data = request.get_json(silent=True) or {}
+        enable = data.get("enable")
+        if enable is None:
+            current = (_rs("image_analysis_enabled", "1") or "1").strip()
+            enable = current != "1"
+        new_val = "1" if enable else "0"
+        _ws("image_analysis_enabled", new_val)
+        return jsonify({"ok": True, "enabled": new_val == "1"})
+    except Exception:
+        logger.exception("admin_image_analysis_toggle error")
+        return jsonify({"ok": False, "error": "خطأ داخلي"}), 500
+
+
+@app.route("/admin/api/image-analysis/save", methods=["POST"])
+def admin_image_analysis_save():
+    if session.get("role") not in ("admin", "founder"):
+        return jsonify({"ok": False, "error": "غير مصرح"}), 403
+    try:
+        from logic.integrations.base import write_setting as _ws
+        data = request.get_json(silent=True) or {}
+        provider = (data.get("provider") or "gemini").strip().lower()
+        api_key = (data.get("api_key") or "").strip()
+        if provider not in ("gemini", "openai"):
+            return jsonify({"ok": False, "error": "مزود غير مدعوم (gemini أو openai)"}), 400
+        _ws("image_analysis_provider", provider)
+        if api_key:
+            setting_key = "GEMINI_API_KEY" if provider == "gemini" else "OPENAI_API_KEY"
+            _ws(setting_key, api_key)
+        return jsonify({"ok": True})
+    except Exception:
+        logger.exception("admin_image_analysis_save error")
+        return jsonify({"ok": False, "error": "خطأ داخلي"}), 500
+
+
+@app.route("/admin/api/image-analysis/test", methods=["POST"])
+def admin_image_analysis_test():
+    if session.get("role") not in ("admin", "founder"):
+        return jsonify({"ok": False, "error": "غير مصرح"}), 403
+    try:
+        from logic.integrations.base import read_setting as _rs
+        provider = (_rs("image_analysis_provider", "gemini") or "gemini").strip().lower()
+        if provider == "gemini":
+            key = (_rs("GEMINI_API_KEY", "") or "").strip()
+            if not key:
+                return jsonify({"ok": False, "error": "مفتاح Gemini غير مضبوط"}), 400
+            import requests as _req
+            resp = _req.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}",
+                json={"contents": [{"parts": [{"text": "ping"}]}]},
+                timeout=10,
+            )
+            if resp.ok:
+                return jsonify({"ok": True, "message": "Gemini: اتصال ناجح ✅"})
+            return jsonify({"ok": False, "error": f"Gemini: {resp.status_code} — {resp.text[:200]}"}), 400
+        else:
+            key = (_rs("OPENAI_API_KEY", "") or "").strip()
+            if not key:
+                return jsonify({"ok": False, "error": "مفتاح OpenAI غير مضبوط"}), 400
+            try:
+                from openai import OpenAI as _OAI
+                client = _OAI(api_key=key)
+                client.models.list()
+                return jsonify({"ok": True, "message": "OpenAI: اتصال ناجح ✅"})
+            except Exception as _e:
+                return jsonify({"ok": False, "error": f"OpenAI: {str(_e)[:200]}"}), 400
+    except Exception:
+        logger.exception("admin_image_analysis_test error")
+        return jsonify({"ok": False, "error": "خطأ داخلي"}), 500
 
 
 @app.route("/webhook", methods=["GET", "POST"], strict_slashes=False)

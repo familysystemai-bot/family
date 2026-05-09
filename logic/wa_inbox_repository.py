@@ -28,6 +28,7 @@ class WaInboxRepositoryMixin:
         message_body: str,
         direction: str,
         branch_id: Optional[int],
+        sender_type: str = "",
     ) -> Optional[int]:
         cn = normalize_wa_contact_number(contact_number)
         if not cn or len(cn) < 8:
@@ -47,16 +48,17 @@ class WaInboxRepositoryMixin:
         body = (message_body or "").strip()
         if not body:
             body = "—"
+        stype = (sender_type or "").strip()[:32]
         conn = self._get_connection()
         try:
             cur = conn.cursor()
             cur.execute(
                 """
                 INSERT INTO messages
-                (contact_number, whatsapp_name, message_body, direction, msg_timestamp, branch_id)
-                VALUES (%s, %s, %s, %s, datetime('now'), %s)
+                (contact_number, whatsapp_name, message_body, direction, msg_timestamp, branch_id, sender_type)
+                VALUES (%s, %s, %s, %s, datetime('now'), %s, %s)
                 """,
-                (cn, name, body[:50000], d, branch_id),
+                (cn, name, body[:50000], d, branch_id, stype),
             )
             conn.commit()
             lid = getattr(cur, "lastrowid", None)
@@ -70,6 +72,67 @@ class WaInboxRepositoryMixin:
             self._safe_rollback_pg(conn)
             logger.exception("wa_inbox_save_message: %s", e)
             return None
+        finally:
+            conn.close()
+
+    # ─── تحكم جلسات واتساب (إيقاف AI / حظر) ──────────────────────
+
+    def wa_contact_get_controls(self, contact_number: str) -> Dict[str, Any]:
+        """يُعيد {'ai_stopped': 0|1, 'banned': 0|1} للرقم المحدد."""
+        cn = normalize_wa_contact_number(contact_number)
+        default: Dict[str, Any] = {"ai_stopped": 0, "banned": 0}
+        if not cn:
+            return default
+        conn = self._get_connection()
+        try:
+            cur = conn.execute(
+                "SELECT ai_stopped, banned FROM wa_contact_controls WHERE contact_number = %s",
+                (cn,),
+            )
+            row = cur.fetchone()
+            if row:
+                return {"ai_stopped": int(row["ai_stopped"] or 0), "banned": int(row["banned"] or 0)}
+            return default
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("wa_contact_get_controls: %s", e)
+            return default
+        finally:
+            conn.close()
+
+    def wa_contact_set_control(self, contact_number: str, field: str, value: int) -> bool:
+        """يضبط ai_stopped أو banned للرقم المحدد."""
+        cn = normalize_wa_contact_number(contact_number)
+        if not cn or field not in ("ai_stopped", "banned"):
+            return False
+        v = 1 if value else 0
+        conn = self._get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT OR IGNORE INTO wa_contact_controls (contact_number, ai_stopped, banned, updated_at)
+                VALUES (%s, 0, 0, datetime('now'))
+                """,
+                (cn,),
+            )
+            # field مُحقَّق أعلاه — لا خطر حقن SQL
+            if field == "ai_stopped":
+                cur.execute(
+                    "UPDATE wa_contact_controls SET ai_stopped = %s, updated_at = datetime('now') WHERE contact_number = %s",
+                    (v, cn),
+                )
+            else:
+                cur.execute(
+                    "UPDATE wa_contact_controls SET banned = %s, updated_at = datetime('now') WHERE contact_number = %s",
+                    (v, cn),
+                )
+            conn.commit()
+            return True
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("wa_contact_set_control: %s", e)
+            return False
         finally:
             conn.close()
 

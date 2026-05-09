@@ -23,7 +23,7 @@ _TICKET_ALPHABET = string.ascii_uppercase + string.digits
 
 
 def _generate_complaint_ticket_code() -> str:
-    return "TKT-" + "".join(secrets.choice(_TICKET_ALPHABET) for _ in range(8))
+    return str(secrets.randbelow(900000) + 100000)
 
 
 class ComplaintRepositoryMixin:
@@ -170,7 +170,7 @@ class ComplaintRepositoryMixin:
                 """
                 SELECT id, issue, branch_id, user_id, created_at, status, complaint_type,
                        message, branch_name, customer_name, customer_phone, customer_email,
-                       resolved_at, ticket_code, resolution_notes
+                       resolved_at, ticket_code, resolution_notes, employee_name, department
                 FROM complaints WHERE id = %s
                 """,
                 (complaint_id,),
@@ -188,7 +188,8 @@ class ComplaintRepositoryMixin:
         raw = (ticket_code or "").strip().upper().replace(" ", "")
         if not raw:
             return None
-        if not raw.startswith("TKT-"):
+        # دعم الصيغة القديمة TKT-XXXXXXXX والجديدة 6 أرقام
+        if not raw.startswith("TKT-") and not raw.isdigit():
             if len(raw) == 8 and raw.isalnum():
                 raw = "TKT-" + raw
             else:
@@ -199,7 +200,7 @@ class ComplaintRepositoryMixin:
                 """
                 SELECT id, issue, branch_id, user_id, created_at, status, complaint_type,
                        message, branch_name, customer_name, customer_phone, customer_email,
-                       resolved_at, ticket_code, resolution_notes
+                       resolved_at, ticket_code, resolution_notes, employee_name, department
                 FROM complaints WHERE UPPER(TRIM(COALESCE(ticket_code,''))) = %s
                 """,
                 (raw,),
@@ -370,6 +371,74 @@ class ComplaintRepositoryMixin:
         except Exception as e:
             self._safe_rollback_pg(conn)
             logger.exception("get_complaints: %s", e)
+            return []
+        finally:
+            conn.close()
+
+    def get_complaints_by_category(self, limit: int = 20) -> List[Dict[str, Any]]:
+        conn = self._get_connection()
+        try:
+            cur = conn.execute(
+                """
+                SELECT COALESCE(NULLIF(TRIM(complaint_ai_classification),''), 'غير مصنّف') AS category,
+                       COUNT(*) AS cnt
+                FROM complaints
+                GROUP BY category
+                ORDER BY cnt DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("get_complaints_by_category: %s", e)
+            return []
+        finally:
+            conn.close()
+
+    def get_complaints_by_branch(self, limit: int = 20) -> List[Dict[str, Any]]:
+        conn = self._get_connection()
+        try:
+            cur = conn.execute(
+                """
+                SELECT COALESCE(NULLIF(TRIM(branch_name),''), '—') AS branch,
+                       COUNT(*) AS cnt,
+                       SUM(CASE WHEN LOWER(TRIM(COALESCE(status,''))) = 'resolved' THEN 1 ELSE 0 END) AS resolved
+                FROM complaints
+                GROUP BY branch
+                ORDER BY cnt DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("get_complaints_by_branch: %s", e)
+            return []
+        finally:
+            conn.close()
+
+    def get_complaints_by_employee(self, limit: int = 20) -> List[Dict[str, Any]]:
+        conn = self._get_connection()
+        try:
+            cur = conn.execute(
+                """
+                SELECT employee_name, branch_name,
+                       COUNT(*) AS cnt
+                FROM complaints
+                WHERE employee_name IS NOT NULL AND TRIM(employee_name) != ''
+                GROUP BY employee_name, branch_name
+                ORDER BY cnt DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+        except Exception as e:
+            self._safe_rollback_pg(conn)
+            logger.exception("get_complaints_by_employee: %s", e)
             return []
         finally:
             conn.close()

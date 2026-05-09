@@ -47,7 +47,7 @@ def _cs():
 
 logger = logging.getLogger(__name__)
 
-_TICKET_IN_MESSAGE_RE = re.compile(r"\bTKT-[A-Z0-9]{8}\b", re.IGNORECASE)
+_TICKET_IN_MESSAGE_RE = re.compile(r"\bTKT-[A-Z0-9]{8}\b|\b\d{6}\b", re.IGNORECASE)
 
 # عبارات تدل على وجود شكوى سابقة
 _PREV_COMPLAINT_PHRASES = (
@@ -769,6 +769,11 @@ def _submit_new_complaint(message: str, branch_name_override=None):
             branch_display = (br.get("city_name") or "").strip()
     cust_name, cust_phone, cust_email = _customer_contact_from_session()
     ai_cls = (session.get("complaint_ai_classification_ar") or "").strip() or None
+    if not ai_cls:
+        ai_cls = complaint_type_label_ar(ctype)
+    from logic.complaint_classifier import extract_employee_name, extract_department
+    emp_name = extract_employee_name(message_plain) or None
+    dept = extract_department(message_plain) or None
     complaint_id = get_db().add_complaint(
         user_id=_customer_user_id_for_records(),
         issue=issue_body,
@@ -780,6 +785,8 @@ def _submit_new_complaint(message: str, branch_name_override=None):
         customer_phone=cust_phone,
         customer_email=cust_email,
         complaint_ai_classification=ai_cls,
+        employee_name=emp_name,
+        department=dept,
     )
     if complaint_id is None:
         print("❌ لم يُحفظ سجل الشكوى — أرجِع add_complaint بقيمة None")
