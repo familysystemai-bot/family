@@ -102,34 +102,37 @@ class WaInboxRepositoryMixin:
 
     def wa_contact_set_control(self, contact_number: str, field: str, value: int) -> bool:
         """يضبط ai_stopped أو banned للرقم المحدد."""
+        import datetime as _dt
         cn = normalize_wa_contact_number(contact_number)
         if not cn or field not in ("ai_stopped", "banned"):
             return False
         v = 1 if value else 0
+        # نمرر التاريخ كـ string من Python لتجنب عدم توافق الأنواع بين
+        # timestamp وعمود TEXT في PostgreSQL (NOW() يعيد timestamp لا text)
+        now_str = _dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         conn = self._get_connection()
         try:
             cur = conn.cursor()
-            # ON CONFLICT DO NOTHING هو الصياغة الصحيحة لـ PostgreSQL
-            # (INSERT OR IGNORE تعمل فقط في SQLite وتسبب InFailedSqlTransaction هنا)
-            # NOW() بدلاً من datetime('now') التي هي SQLite فقط
+            # INSERT OR IGNORE يُترجم تلقائياً لـ PostgreSQL عبر sql_translator،
+            # لكن نكتب ON CONFLICT صراحةً لضمان الوضوح واتساق السلوك
             cur.execute(
                 """
                 INSERT INTO wa_contact_controls (contact_number, ai_stopped, banned, updated_at)
-                VALUES (%s, 0, 0, NOW())
+                VALUES (%s, 0, 0, %s)
                 ON CONFLICT (contact_number) DO NOTHING
                 """,
-                (cn,),
+                (cn, now_str),
             )
             # field مُحقَّق أعلاه — لا خطر حقن SQL
             if field == "ai_stopped":
                 cur.execute(
-                    "UPDATE wa_contact_controls SET ai_stopped = %s, updated_at = NOW() WHERE contact_number = %s",
-                    (v, cn),
+                    "UPDATE wa_contact_controls SET ai_stopped = %s, updated_at = %s WHERE contact_number = %s",
+                    (v, now_str, cn),
                 )
             else:
                 cur.execute(
-                    "UPDATE wa_contact_controls SET banned = %s, updated_at = NOW() WHERE contact_number = %s",
-                    (v, cn),
+                    "UPDATE wa_contact_controls SET banned = %s, updated_at = %s WHERE contact_number = %s",
+                    (v, now_str, cn),
                 )
             conn.commit()
             return True

@@ -667,12 +667,14 @@ class DatabaseManager(
             ON wa_processed_wamids (processed_at)
         """)
         # ── تحكم جلسات واتساب: إيقاف AI أو حظر لكل رقم ──
+        # ملاحظة: updated_at بدون DEFAULT لأن datetime('now') SQLite فقط
+        # والقيمة تُمرَّر دائماً من كود Python في wa_contact_set_control
         self._exec_ddl(conn, """
             CREATE TABLE IF NOT EXISTS wa_contact_controls (
                 contact_number TEXT PRIMARY KEY,
                 ai_stopped INTEGER NOT NULL DEFAULT 0,
                 banned INTEGER NOT NULL DEFAULT 0,
-                updated_at TEXT DEFAULT (datetime('now'))
+                updated_at TEXT DEFAULT ''
             )
         """)
 
