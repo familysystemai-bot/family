@@ -1,0 +1,20 @@
+{% extends "founder/finance_shell.html" %}
+{% block mm_title %}تهيئة الخزنة{% endblock %}
+{% from "macros/csrf.html" import csrf_input %}
+{% block mm_main %}
+<section class="mm-fin-panel mx-auto my-4" style="max-width:520px;">
+    <h1 class="mm-fin-h1 text-center">أول تهيئة — الخزنة المالية</h1>
+    <p class="mm-fin-muted text-center mb-4">فعِّل المركز بتعريف رمز شخصي ومخزَّن بتجزئة آمنة، وبريد استعادة مُشفَّر بتشفير AES-256.</p>
+    <form method="post" action="{{ url_for('almanakh_finance.finance_setup') }}" class="mm-fin-form-card">
+        {{ csrf_input() }}
+        <label class="mm-fin-label">رمز المركز الجديد</label>
+        <input type="password" name="pin" class="form-control mm-fin-input" required maxlength="24" autocomplete="new-password">
+        <label class="mm-fin-label mt-3">تأكيد الرمز</label>
+        <input type="password" name="pin_confirm" class="form-control mm-fin-input" required maxlength="24" autocomplete="new-password">
+        <label class="mm-fin-label mt-3">البريد الاحتياطي للاستعادة</label>
+        <input type="email" name="recovery_email" class="form-control mm-fin-input" dir="ltr" required placeholder="email@company.com">
+        <p class="small mm-fin-muted mt-2 mb-0">سيُستخدم مرة واحدة عند الطلب لتلقي رمز لمرة وحدة وقت النسيان (إذا كان SMTP مفعّلاً).</p>
+        <button type="submit" class="btn mm-fin-btn-gold w-100 mt-4 fw-bold py-2">إنشاء الخزنة</button>
+    </form>
+</section>
+{% endblock %}

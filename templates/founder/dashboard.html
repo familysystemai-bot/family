@@ -1,5 +1,15 @@
 {% extends "founder/base.html" %}
 {% block title %}الرئيسية — لوحة تحكم النظام{% endblock %}
+
+{% block fd_sidebar_extra %}
+{# معلومات الشركة للشات — الشريط الجانبي؛ الواجهة الرئيسية للتحليلات والكروت #}
+{% if company_info_rows is defined %}
+<div class="fd-sidebar-company-scroll" aria-label="معلومات الشركة للشات">
+    {% include 'partials/company_info_global_block.html' %}
+</div>
+{% endif %}
+{% endblock %}
+
 {% block fd_top_header %}
 <header class="fd-dash-hero" aria-label="هوية العلامة — العائلة">
     {% if founder_logo_url %}
@@ -15,25 +25,80 @@
     <span class="fd-page-sub">إدارة موحّدة للفروع والمنتجات والإعدادات</span>
 </div>
 
-{% include 'partials/company_info_global_block.html' %}
+<section class="fd-premium-overview mb-4" aria-label="ملخص المنصّة">
+    {% set pinq_total = founder_inquiry_report|default([])|sum(attribute='pending_cnt') %}
+    {% set acct_early = founder_accounting if founder_accounting is defined else none %}
+    <div class="fd-premium-overview__heading">
+        <h2 class="fd-premium-overview__title">نظرة المؤسس</h2>
+        <p class="fd-premium-overview__sub">البيانات الأهم قبل التفاصيل — محسَّن للجوال والشاشات الكبيرة</p>
+    </div>
+    <div class="fd-premium-grid">
+        <article class="fd-kpi-card fd-kpi-card--accent">
+            <span class="fd-kpi-card__label">الفروع</span>
+            <span class="fd-kpi-card__value">{{ n_branches }}</span>
+            <span class="fd-kpi-card__hint">نقاط حضور وفروع عاملة</span>
+        </article>
+        <article class="fd-kpi-card">
+            <span class="fd-kpi-card__label">المنتجات</span>
+            <span class="fd-kpi-card__value">{{ n_products }}</span>
+            <span class="fd-kpi-card__hint">إجمالي السجل المركزي</span>
+        </article>
+        <article class="fd-kpi-card fd-kpi-card--accent">
+            <span class="fd-kpi-card__label">شكاوى مفتوحة</span>
+            <span class="fd-kpi-card__value">{{ complaints_open | default(0) }}</span>
+            <span class="fd-kpi-card__hint">تحتاج متابعة</span>
+        </article>
+        <article class="fd-kpi-card">
+            <span class="fd-kpi-card__label">شكاوى كلية</span>
+            <span class="fd-kpi-card__value">{{ n_complaints }}</span>
+            <span class="fd-kpi-card__hint">سجل كل الحالات</span>
+        </article>
+        <article class="fd-kpi-card">
+            <span class="fd-kpi-card__label">طلبات بحث منتج</span>
+            <span class="fd-kpi-card__value">{{ founder_product_request_total | default(0) }}</span>
+            <span class="fd-kpi-card__hint">جدول product_requests</span>
+        </article>
+        <article class="fd-kpi-card fd-kpi-card--accent">
+            <span class="fd-kpi-card__label">استفسارات معلّقة</span>
+            <span class="fd-kpi-card__value">{{ pinq_total }}</span>
+            <span class="fd-kpi-card__hint">في تقرير الفروع أسفله</span>
+        </article>
+    </div>
+    {% if acct_early %}
+    {% set wa_in = acct_early.wa_messages_inbound | default(0) %}
+    {% set wa_out = acct_early.wa_messages_outbound | default(0) %}
+    {% set wa_peak = wa_in + wa_out if (wa_in + wa_out) else 1 %}
+    <div class="fd-traffic-strip" aria-label="حركة الواتساب">
+        <div class="fd-traffic-pill">
+            <span class="fd-traffic-pill__lbl">واتساب — وارد (آخر 30 يوماً)</span>
+            <span class="fd-traffic-pill__num">{{ wa_in }}</span>
+            <div class="fd-traffic-bar" aria-hidden="true"><span style="width: {{ (wa_in * 100 // wa_peak) if wa_peak else 0 }}%"></span></div>
+        </div>
+        <div class="fd-traffic-pill">
+            <span class="fd-traffic-pill__lbl">واتساب — صادر</span>
+            <span class="fd-traffic-pill__num">{{ wa_out }}</span>
+            <div class="fd-traffic-bar" aria-hidden="true"><span style="width: {{ (wa_out * 100 // wa_peak) if wa_peak else 0 }}%"></span></div>
+        </div>
+        <div class="fd-traffic-pill">
+            <span class="fd-traffic-pill__lbl">توكنز LLM (ويب + WA)</span>
+            <span class="fd-traffic-pill__num">{{ (acct_early.llm_wa.total_tokens | default(0)) + (acct_early.llm_web.total_tokens | default(0)) }}</span>
+            <div class="fd-traffic-bar" aria-hidden="true"><span style="width: 100%"></span></div>
+        </div>
+    </div>
+    {% endif %}
+</section>
 
 <div class="row g-3 mb-4">
-    <div class="col-md-4">
-        <div class="fd-card fd-stat fd-stat--hero">
-            <div class="fd-stat-label">الفروع</div>
-            <div class="fd-stat-value">{{ n_branches }}</div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="fd-card fd-stat fd-stat--hero">
-            <div class="fd-stat-label">المنتجات</div>
-            <div class="fd-stat-value">{{ n_products }}</div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="fd-card fd-stat fd-stat--hero">
-            <div class="fd-stat-label">الشكاوى</div>
-            <div class="fd-stat-value">{{ n_complaints }}</div>
+    <div class="col-12">
+        <div class="fd-card fd-chart-card">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                <h2 class="fd-card-title mb-0">تفاعلات الشات اليومية</h2>
+                <button type="button" class="btn fd-btn fd-btn--soft btn-sm" id="fdRefreshDailyChart">تحديث الرسم</button>
+            </div>
+            <p class="small text-muted mb-3 mb-md-4">يُحسب عدد تفاعلات الشات المسجّلة يومياً مع تحليلات trend_data.</p>
+            <div class="fd-chart-wrap">
+                <canvas id="fdDailyLineChart" aria-label="رسم تفاعلات يومية"></canvas>
+            </div>
         </div>
     </div>
 </div>
@@ -154,21 +219,6 @@
     </div>
 </div>
 {% endif %}
-
-<div class="row g-3 mb-4">
-    <div class="col-12">
-        <div class="fd-card fd-chart-card">
-            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-                <h2 class="fd-card-title mb-0">تفاعلات الشات اليومية</h2>
-                <button type="button" class="btn fd-btn fd-btn--soft btn-sm" id="fdRefreshDailyChart">تحديث الرسم</button>
-            </div>
-            <p class="small text-muted mb-3 mb-md-4">يُحسب عدد تفاعلات الشات المسجّلة يومياً مع تحليلات <code>trend_data</code>.</p>
-            <div class="fd-chart-wrap">
-                <canvas id="fdDailyLineChart" aria-label="رسم تفاعلات يومية"></canvas>
-            </div>
-        </div>
-    </div>
-</div>
 
 <div class="row g-3">
     <div class="col-md-6">

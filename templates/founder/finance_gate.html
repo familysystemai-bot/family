@@ -1,0 +1,20 @@
+{% extends "founder/finance_shell.html" %}
+{% block mm_title %}بوابة الخزنة{% endblock %}
+{% from "macros/csrf.html" import csrf_input %}
+{% block mm_main %}
+<section class="mm-fin-panel mx-auto my-4" style="max-width:460px;">
+    <h1 class="mm-fin-h1">المناخ Financial Vault</h1>
+    <p class="mm-fin-muted mb-4">أدخل رمز الدخول المخصَّص لتفعيل لوحة التحليلات المالية (٣٠ دقيقة لكل جلسة).</p>
+    <form method="post" action="{{ url_for('almanakh_finance.finance_unlock_pin') }}" class="mm-fin-form-card">
+        {{ csrf_input() }}
+        <label class="mm-fin-label">رمز المركز</label>
+        <input type="password" name="pin" autocomplete="current-password" class="form-control mm-fin-input" required maxlength="24" autofocus placeholder="رمز المحفظة الآمنة">
+        <button type="submit" class="btn mm-fin-btn-gold w-100 mt-3 fw-bold py-2">الدخول إلى التحليلات</button>
+    </form>
+    <div class="d-flex flex-wrap gap-3 justify-content-center mt-4 small">
+        {% if has_recovery_hint %}
+        <a href="{{ url_for('almanakh_finance.finance_forgot', step='1') }}" class="mm-fin-link">نسيت الرمز؟</a>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

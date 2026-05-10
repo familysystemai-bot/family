@@ -83,6 +83,55 @@ def png_bytes_from_image_bytes(data: bytes) -> bytes:
     return buf.getvalue()
 
 
+def _mime_to_ext_fname(mime: str, stem: str) -> tuple[str, str]:
+    mt = (mime or "image/jpeg").strip().lower()
+    ext = "jpg"
+    if mt == "image/png":
+        ext = "png"
+    elif mt == "image/webp":
+        ext = "webp"
+    elif mt == "image/gif":
+        ext = "gif"
+    elif mt in ("image/jpeg", "image/jpg"):
+        ext = "jpg"
+    return ext, f"{stem}.{ext}"
+
+
+def upload_branding_image_via_cloud_then_png(
+    data: bytes,
+    detected_mime: str,
+    *,
+    logical_stem: str,
+    folder: str = "site-logos",
+) -> Tuple[str, str]:
+    """
+    يرفع الشعار إلى التخزين السحابي المفعّل بأقل معالجة:
+    المحاولة الأولى بالصيغة الأصلية (JPEG/PNG/WebP)، ثم إعادة الترميز PNG عند الفشل.
+    يعيد (ref للإعداد، public_id فارغ لو محلي).
+    """
+    if not data:
+        raise ValueError("empty branding image")
+    import uuid as _uuid
+    from logic import cloud_storage as cst
+
+    ext, _fn = _mime_to_ext_fname(detected_mime, logical_stem)
+    mime_primary = (detected_mime or "image/jpeg").strip() or "image/jpeg"
+    uid = _uuid.uuid4().hex[:10]
+    cloud_name = f"{logical_stem}-{uid}.{ext}"
+
+    res = cst.upload(data, cloud_name, mime_primary, folder=folder)
+    if res:
+        return normalize_stored_media_ref(res.url or ""), (res.public_id or "").strip()
+
+    png = png_bytes_from_image_bytes(data)
+    res2 = cst.upload(png, f"{logical_stem}-{uid}-reencode.png", "image/png", folder=folder)
+    if res2:
+        return normalize_stored_media_ref(res2.url or ""), (res2.public_id or "").strip()
+
+    local_ref = upload_image_bytes(png, f"{logical_stem}.png", "image/png", folder=folder)
+    return normalize_stored_media_ref(local_ref), ""
+
+
 def public_https_url(ref: Optional[str]) -> str:
     """رابط يمكن لميتا/واتساب جلبه (يفضّل https + PUBLIC_BASE_URL للملفات المحلية)."""
     p = (ref or "").strip()

@@ -106,6 +106,12 @@ class WaInboxRepositoryMixin:
         cn = normalize_wa_contact_number(contact_number)
         if not cn or field not in ("ai_stopped", "banned"):
             return False
+        if len(cn) < 8:
+            logger.warning(
+                "wa_contact_set_control: رقم قصير جداً بعد التطبيع (يلزم ≥8): %s",
+                (contact_number or "")[:32],
+            )
+            return False
         v = 1 if value else 0
         # نمرر التاريخ كـ string من Python لتجنب عدم توافق الأنواع بين
         # timestamp وعمود TEXT في PostgreSQL (NOW() يعيد timestamp لا text)
@@ -113,27 +119,29 @@ class WaInboxRepositoryMixin:
         conn = self._get_connection()
         try:
             cur = conn.cursor()
-            # INSERT OR IGNORE يُترجم تلقائياً لـ PostgreSQL عبر sql_translator،
-            # لكن نكتب ON CONFLICT صراحةً لضمان الوضوح واتساق السلوك
+            cur.execute(
+                "SELECT ai_stopped, banned FROM wa_contact_controls WHERE contact_number = %s",
+                (cn,),
+            )
+            prow = cur.fetchone()
+            prev_a = int(prow["ai_stopped"] or 0) if prow else 0
+            prev_b = int(prow["banned"] or 0) if prow else 0
+            if field == "ai_stopped":
+                prev_a = v
+            else:
+                prev_b = v
+            # صف واحد ضمن Upsert يضمن نجاح التحديث حتى لو فشلت أنماط INSERT+UPDATE السابقة
             cur.execute(
                 """
                 INSERT INTO wa_contact_controls (contact_number, ai_stopped, banned, updated_at)
-                VALUES (%s, 0, 0, %s)
-                ON CONFLICT (contact_number) DO NOTHING
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (contact_number) DO UPDATE SET
+                    ai_stopped = excluded.ai_stopped,
+                    banned = excluded.banned,
+                    updated_at = excluded.updated_at
                 """,
-                (cn, now_str),
+                (cn, prev_a, prev_b, now_str),
             )
-            # field مُحقَّق أعلاه — لا خطر حقن SQL
-            if field == "ai_stopped":
-                cur.execute(
-                    "UPDATE wa_contact_controls SET ai_stopped = %s, updated_at = %s WHERE contact_number = %s",
-                    (v, now_str, cn),
-                )
-            else:
-                cur.execute(
-                    "UPDATE wa_contact_controls SET banned = %s, updated_at = %s WHERE contact_number = %s",
-                    (v, now_str, cn),
-                )
             conn.commit()
             return True
         except Exception as e:

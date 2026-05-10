@@ -13,16 +13,7 @@ cloud_storage — طبقة تجريد لتخزين الصور السحابي.
     - local       (الافتراضي — تخزين محلي للتجربة)
     - cloudinary  (الموصى به — مجاني حتى 25GB)
     - imagekit    (بديل أرخص — 20GB مجاني)
-    - s3          (AWS S3 — للتحكم الكامل)
-    - r2          (Cloudflare R2 — أرخص خيار)
 
-الإعدادات تُقرأ من system_settings:
-    storage_provider     = "local" | "cloudinary" | "imagekit" | "s3" | "r2"
-    storage_<provider>_* = مفاتيح المنصة المختارة
-
-في الدفعة 5: ستُقرأ من Secrets Vault (مشفّرة).
-
-الواجهة الموحدة:
     StorageResult = upload(file_bytes, filename, mime_type) → success/url/error
     delete(public_id) → success
     get_active_provider() → "cloudinary" | "imagekit" | ...

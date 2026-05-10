@@ -1,0 +1,48 @@
+{% extends "founder/finance_shell.html" %}
+{% block mm_title %}مركز التكامل{% endblock %}
+{% from "macros/csrf.html" import csrf_input %}
+{% block mm_main %}
+<div class="mm-fin-page px-2 px-md-3 pb-5">
+    <header class="mm-fin-page-head mb-4">
+        <h1 class="mm-fin-h1 mb-1">ربط العقول — Amazon API + المحلّل</h1>
+        <p class="mm-fin-muted mb-0">تُشفَّر المفاتيح بـ AES-256-GCM في قاعدة البيانات. اترك الحقل فارغاً للإبقاء على القيمة السابقة.</p>
+    </header>
+    <form method="post" action="{{ url_for('almanakh_finance.finance_hub') }}" class="mm-fin-form-card mm-fin-hub-form">
+        {{ csrf_input() }}
+        <h2 class="h6 text-info mb-3">نظام المحاسبة (REST)</h2>
+        <label class="mm-fin-label">Base URL</label>
+        <input type="url" name="amazon_base_url" class="form-control mm-fin-input" dir="ltr" placeholder="https://api.example.com" value="">
+        <p class="small mm-fin-muted">المحفوظ حالياً: <code class="text-warning">{{ amazon_base_url_masked }}</code></p>
+        <label class="mm-fin-label mt-2">API Key</label>
+        <input type="password" name="amazon_api_key" class="form-control mm-fin-input" dir="ltr" autocomplete="off" placeholder="{% if has_amazon_api_key %}•••• محفوظ ••••{% else %}أدخل المفتاح{% endif %}">
+        <label class="mm-fin-label mt-2">API Secret</label>
+        <input type="password" name="amazon_secret" class="form-control mm-fin-input" dir="ltr" autocomplete="off" placeholder="{% if has_amazon_api_key %}•••• محفوظ ••••{% else %}السر{% endif %}">
+
+        <hr class="border-secondary opacity-25 my-4">
+        <h2 class="h6 text-info mb-3">المحلل المالي (مانوس)</h2>
+        <label class="mm-fin-label">المزوّد</label>
+        <select name="finance_ai_provider" class="form-select mm-fin-input">
+            <option value="openai" {% if ai_provider_pref=='openai' %}selected{% endif %}>OpenAI (GPT-4 / 4o)</option>
+            <option value="anthropic" {% if ai_provider_pref=='anthropic' %}selected{% endif %}>Anthropic (Claude 3.5)</option>
+        </select>
+        <label class="mm-fin-label mt-2">اسم الموديل</label>
+        <input type="text" name="finance_ai_model" class="form-control mm-fin-input" dir="ltr" value="{{ ai_model_pref }}" placeholder="gpt-4o أو claude-3-5-sonnet-20240620">
+        <label class="mm-fin-label mt-2">مفتاح API للمحلل</label>
+        <input type="password" name="finance_ai_api_key" class="form-control mm-fin-input" dir="ltr" autocomplete="off" placeholder="{% if has_ai_key %}•••• محفوظ ••••{% else %}sk-... أو x-api-key{% endif %}">
+
+        <hr class="border-secondary opacity-25 my-4">
+        <h2 class="h6 text-warning mb-3">تغيير رمز الخزنة (اختياري)</h2>
+        <label class="mm-fin-label">الرمز الحالي</label>
+        <input type="password" name="finance_change_old_pin" class="form-control mm-fin-input" maxlength="24" autocomplete="off">
+        <label class="mm-fin-label mt-2">الرمز الجديد</label>
+        <input type="password" name="finance_change_pin" class="form-control mm-fin-input" maxlength="24" autocomplete="new-password">
+        <label class="mm-fin-label mt-2">تأكيد الرمز الجديد</label>
+        <input type="password" name="finance_change_pin_confirm" class="form-control mm-fin-input" maxlength="24" autocomplete="new-password">
+
+        <hr class="border-secondary opacity-25 my-4">
+        <label class="mm-fin-label text-danger">تأكيد بنفس رمز الدخول الحالي لحفظ الإعدادات</label>
+        <input type="password" name="finance_hub_pin_confirm" class="form-control mm-fin-input border-warning" required maxlength="24" autocomplete="current-password">
+        <button type="submit" class="btn mm-fin-btn-gold w-100 mt-4 fw-bold py-2">حفظ وترميز المفاتيح</button>
+    </form>
+</div>
+{% endblock %}

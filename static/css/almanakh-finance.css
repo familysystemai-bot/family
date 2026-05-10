@@ -1,0 +1,300 @@
+/* المركز المالي — وضع داكن بلمسات ذهبية وزرقاء (متوافق الجوال أولاً) */
+.mm-fin-root {
+  --mm-bg: #0a0f1a;
+  --mm-panel: rgba(17, 28, 48, 0.92);
+  --mm-panel-2: rgba(12, 20, 36, 0.98);
+  --mm-edge: rgba(212, 175, 55, 0.22);
+  --mm-edge-blue: rgba(56, 189, 248, 0.22);
+  --mm-gold: #d4af37;
+  --mm-gold-dim: #a67c29;
+  --mm-blue: #38bdf8;
+  --mm-text: #e8edf5;
+  --mm-muted: #8b96ab;
+}
+
+.mm-fin-root.dash-html,
+.mm-fin.dash-body {
+  background:
+    radial-gradient(1200px 800px at 15% -10%, rgba(56, 189, 248, 0.12), transparent),
+    radial-gradient(900px 600px at 100% 0%, rgba(212, 175, 55, 0.08), transparent),
+    var(--mm-bg);
+  color: var(--mm-text);
+  font-family: "Cairo", system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+.mm-fin .dash-sidebar-col {
+  border-inline-end: 1px solid var(--mm-edge);
+  background: var(--mm-panel);
+  backdrop-filter: blur(14px);
+}
+
+.mm-fin-brand__logo {
+  border-radius: 12px;
+  border: 1px solid var(--mm-edge);
+  object-fit: cover;
+}
+
+.mm-fin-brand__name {
+  display: block;
+  font-weight: 800;
+  color: var(--mm-gold);
+  letter-spacing: 0.02em;
+}
+
+.mm-fin-brand__sub {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--mm-muted);
+}
+
+.mm-fin-sidebar-panel {
+  padding-bottom: env(safe-area-inset-bottom, 12px);
+}
+
+.mm-fin-nav .nav-link {
+  color: var(--mm-muted);
+  border-radius: 10px;
+  margin: 0.15rem 0;
+  font-weight: 600;
+}
+
+.mm-fin-nav .nav-link:hover {
+  background: rgba(56, 189, 248, 0.08);
+  color: var(--mm-text);
+}
+
+.mm-fin-nav .nav-link.active {
+  background: linear-gradient(120deg, rgba(212, 175, 55, 0.18), rgba(56, 189, 248, 0.12));
+  color: var(--mm-gold);
+  border: 1px solid var(--mm-edge);
+}
+
+.mm-fin-menu-btn {
+  color: var(--mm-gold) !important;
+  border-color: var(--mm-edge) !important;
+}
+
+.mm-fin-main.dash-main {
+  background: transparent;
+}
+
+.mm-fin-alert {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mm-fin-root .mm-fin-h1,
+.mm-fin-page-head .mm-fin-h1 {
+  font-weight: 800;
+  font-size: 1.35rem;
+  letter-spacing: 0.03em;
+  background: linear-gradient(90deg, var(--mm-gold), var(--mm-blue));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.mm-fin-panel {
+  padding: 1rem 1.25rem;
+}
+
+.mm-fin-link {
+  color: var(--mm-blue);
+  text-decoration: none;
+}
+
+.mm-fin-link:hover {
+  text-decoration: underline;
+}
+
+.mm-fin-muted {
+  color: var(--mm-muted) !important;
+}
+
+.mm-fin-kpi {
+  border-radius: 16px;
+  padding: 1rem 1.1rem;
+  background: var(--mm-panel);
+  border: 1px solid var(--mm-edge-blue);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+  min-height: 104px;
+}
+
+.mm-fin-kpi--accent {
+  border-color: var(--mm-edge);
+  background: linear-gradient(155deg, var(--mm-panel), var(--mm-panel-2));
+}
+
+.mm-fin-kpi__lbl {
+  font-size: 0.82rem;
+  color: var(--mm-muted);
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.mm-fin-kpi__val {
+  font-size: 1.55rem;
+  font-weight: 800;
+  color: var(--mm-gold);
+  display: block;
+  line-height: 1.1;
+}
+
+.mm-fin-kpi__hint {
+  font-size: 0.72rem;
+  color: var(--mm-muted);
+  display: block;
+  margin-top: 0.35rem;
+}
+
+.mm-fin-card-chart,
+.mm-fin-manukh,
+.mm-fin-card-flat {
+  border-radius: 18px;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--mm-panel);
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.42);
+}
+
+.mm-fin-chart-shell {
+  position: relative;
+  min-height: 240px;
+}
+
+.mm-fin-section-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--mm-blue);
+}
+
+.mm-fin-manukh__body {
+  line-height: 1.85;
+  color: var(--mm-text);
+  white-space: pre-wrap;
+}
+
+.mm-fin-btn-gold {
+  background: linear-gradient(120deg, var(--mm-gold), var(--mm-gold-dim));
+  color: #15120a !important;
+  border: none;
+}
+
+.mm-fin-btn-gold:hover {
+  filter: brightness(1.06);
+}
+
+.mm-fin-btn-outline {
+  border: 1px solid var(--mm-edge-blue);
+  color: var(--mm-blue);
+  background: transparent;
+}
+
+.mm-fin-btn-outline:hover {
+  background: rgba(56, 189, 248, 0.1);
+}
+
+/* نماذج البوابة والإعدادات */
+.mm-fin-gate-shell,
+.mm-fin-form-card {
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.mm-fin-form-card.mm-fin-hub-form {
+  max-width: 640px;
+}
+
+.mm-fin-card {
+  border-radius: 16px;
+  padding: 1.25rem 1.35rem;
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  background: rgba(12, 20, 36, 0.85);
+}
+
+.mm-fin-input {
+  border-radius: 12px !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  background: rgba(6, 10, 20, 0.65) !important;
+  color: var(--mm-text) !important;
+}
+
+.mm-fin-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--mm-muted);
+  margin-bottom: 0.35rem;
+  display: block;
+}
+
+/* محادثة عائمة */
+.mm-fin-chat-btn {
+  position: fixed;
+  z-index: 1050;
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  inset-inline-start: 18px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 1.4rem;
+  cursor: pointer;
+  background: radial-gradient(circle at 30% 30%, rgba(56, 189, 248, 0.35), rgba(212, 175, 55, 0.45));
+  border: 2px solid var(--mm-gold);
+  box-shadow: 0 10px 38px rgba(0, 0, 0, 0.5);
+}
+
+.mm-fin-chat-panel {
+  position: fixed;
+  z-index: 1049;
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  inset-inline-start: 14px;
+  width: min(92vw, 380px);
+  max-height: 58vh;
+  border-radius: 18px;
+  border: 1px solid var(--mm-edge);
+  background: rgba(10, 15, 26, 0.97);
+  box-shadow: 0 26px 60px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.mm-fin-chat-panel__hdr {
+  padding: 0.55rem 0.85rem;
+  background: rgba(212, 175, 55, 0.12);
+  border-bottom: 1px solid var(--mm-edge-blue);
+}
+
+.mm-fin-chat-panel__msgs {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.6rem;
+  gap: 0.45rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.mm-fin-msg {
+  align-self: flex-start;
+  max-width: 92%;
+  padding: 0.45rem 0.65rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(17, 28, 48, 0.9);
+}
+
+.mm-fin-msg.mm-fin-msg--user {
+  align-self: flex-end;
+  border-color: rgba(56, 189, 248, 0.35);
+  background: rgba(56, 189, 248, 0.1);
+}
+
+@media (max-width: 767.98px) {
+  .mm-fin-chat-panel {
+    inset-inline-start: 4vw;
+    width: min(94vw, 400px);
+  }
+}

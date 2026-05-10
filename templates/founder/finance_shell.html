@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+{% from "macros/site_logo.html" import brand_logo_pair %}
+<html lang="ar" dir="rtl" class="dash-html mm-fin-root">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% include "partials/pwa_head.html" %}
+    <title>{% block mm_title %}المركز المالي{% endblock %} — المناخ COMMAND</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/dashboard-layout.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/almanakh-finance.css') }}" rel="stylesheet">
+    {% block mm_extra_head %}{% endblock %}
+</head>
+<body class="mm-fin dash-body">
+<div class="container-fluid dash-layout">
+    <button type="button" class="dash-menu-btn mm-fin-menu-btn" aria-label="القائمة" aria-controls="mm-fin-sidebar" aria-expanded="false">☰</button>
+    <div class="dash-backdrop sidebar-overlay" data-dash-close="true" aria-hidden="true"></div>
+    <div class="row g-0 dash-row">
+        <aside id="mm-fin-sidebar" class="col-md-2 dash-sidebar-col mm-fin-sidebar p-0">
+            <div class="dash-sidebar-panel mm-fin-sidebar-panel">
+                <div class="mm-fin-brand px-3 py-3 border-bottom border-secondary-subtle border-opacity-25">
+                    {% if founder_logo_url %}
+                    <img src="{{ founder_logo_url }}" alt="" class="mm-fin-brand__logo" decoding="async" width="42" height="42">
+                    {% endif %}
+                    <div class="mm-fin-brand__text">
+                        <span class="mm-fin-brand__name">مركز المناخ المالي</span>
+                        <span class="mm-fin-brand__sub">Command · Analytics Vault</span>
+                    </div>
+                </div>
+                {% set mm_ep = request.endpoint %}
+                <nav class="mm-fin-nav px-2 py-2">
+                    <a class="nav-link {% if mm_ep=='almanakh_finance.finance_dashboard' %}active{% endif %}" href="{{ url_for('almanakh_finance.finance_dashboard') }}">📊 لوحة التحكم</a>
+                    <a class="nav-link {% if mm_ep=='almanakh_finance.finance_hub' %}active{% endif %}" href="{{ url_for('almanakh_finance.finance_hub') }}">🔗 مركز التكامل</a>
+                    <a class="nav-link" href="{{ url_for('almanakh_finance.finance_gate') }}">🔐 بوابة الرمز</a>
+                    <hr class="border-secondary-subtle opacity-25 my-2">
+                    <a class="nav-link" href="{{ url_for('founder_dashboard') }}">↩ الواجهة العامة</a>
+                    <a class="nav-link text-warning" href="{{ url_for('almanakh_finance.finance_leave') }}">⌁ مغادرة الخزنة</a>
+                    <hr class="border-secondary-subtle opacity-25 my-2">
+                    <a class="nav-link text-danger" href="{{ url_for('logout') }}">🚪 خروج كامل</a>
+                </nav>
+            </div>
+        </aside>
+        <div class="col-md-10 mm-fin-main dash-main">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="mb-3 px-2 px-md-0">
+                {% for category, message in messages %}
+                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show mm-fin-alert" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert" aria-label="إغلاق"></button>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endwith %}
+            {% block mm_main %}{% endblock %}
+        </div>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='js/dashboard-layout.js') }}" defer></script>
+{% block mm_bottom_scripts %}{% endblock %}
+</body>
+</html>

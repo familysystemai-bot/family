@@ -8,7 +8,7 @@ security — وحدة الأمان الموحّدة للتطبيق.
 1. CSRF Protection:
     - إعداد Flask-WTF CSRFProtect
     - csrf_exempt() للـ webhook (يستخدم HMAC بدلاً)
-    - csrf_exempt() لـ /chat_query (AJAX endpoint)
+    - csrf_exempt() لـ /chat_query و /api/chat-login (AJAX من الصفحة العامة دون نموذج)
 
 2. WhatsApp Webhook Signature Verification:
     - verify_meta_signature(payload, signature_header) → bool

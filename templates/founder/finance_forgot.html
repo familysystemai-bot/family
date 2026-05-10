@@ -1,0 +1,30 @@
+{% extends "founder/finance_shell.html" %}
+{% block mm_title %}استعادة الرمز{% endblock %}
+{% from "macros/csrf.html" import csrf_input %}
+{% block mm_main %}
+<section class="mm-fin-panel mx-auto my-4" style="max-width:460px;">
+    {% if step == '1' %}
+    <h1 class="mm-fin-h1">التحقق من البريد</h1>
+    <form method="post" action="{{ url_for('almanakh_finance.finance_forgot', step='1') }}" class="mm-fin-form-card">
+        {{ csrf_input() }}
+        <input type="hidden" name="_step" value="1">
+        <label class="mm-fin-label">البريد الاحتياطي المُسجل</label>
+        <input type="email" name="recovery_email" class="form-control mm-fin-input" dir="ltr" required>
+        <button type="submit" class="btn mm-fin-btn-outline w-100 mt-3">إنشاء الرمز الموحّد</button>
+    </form>
+    {% else %}
+    <h1 class="mm-fin-h1">رمز الاستعادة</h1>
+    <form method="post" action="{{ url_for('almanakh_finance.finance_forgot', step='2') }}" class="mm-fin-form-card">
+        {{ csrf_input() }}
+        <input type="hidden" name="_step" value="2">
+        <label class="mm-fin-label">الرمز الوارد من الإيميل</label>
+        <input type="text" name="otp" class="form-control mm-fin-input" maxlength="12" autocomplete="one-time-code" required>
+        <label class="mm-fin-label mt-3">رمز جديد للمركز</label>
+        <input type="password" name="new_pin" class="form-control mm-fin-input" maxlength="24" autocomplete="new-password" required>
+        <label class="mm-fin-label mt-2">تأكيد</label>
+        <input type="password" name="new_pin_confirm" class="form-control mm-fin-input" maxlength="24" autocomplete="new-password" required>
+        <button type="submit" class="btn mm-fin-btn-gold w-100 mt-3 fw-bold py-2">تحديث الرمز وفتح الخزنة</button>
+    </form>
+    {% endif %}
+</section>
+{% endblock %}

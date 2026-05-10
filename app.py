@@ -53,6 +53,7 @@ from logic.campaign_scheduler import (
     stop_campaign_scheduler_thread,
 )
 from logic.wa_inbox_routes import create_wa_inbox_blueprint
+from logic.finance_routes import create_finance_blueprint
 from logic.company_info_repository import ALLOWED_COMPANY_INFO_KEYS, parse_delivery_image_urls
 from logic.ai_usage_tracker import get_founder_accounting
 from logic.database import DatabaseManager
@@ -73,7 +74,9 @@ from logic.site_logo import (
 from logic.media_uploads import (
     collect_product_images_from_request,
     file_storage_to_upload,
+    normalize_stored_media_ref,
     png_bytes_from_image_bytes,
+    upload_branding_image_via_cloud_then_png,
 )
 
 ensure_upload_dir()
@@ -133,6 +136,7 @@ if migrated_branch_passwords:
 init_chat_service(db)
 app.register_blueprint(create_campaign_blueprint(db))
 app.register_blueprint(create_wa_inbox_blueprint(db))
+app.register_blueprint(create_finance_blueprint(db))
 
 
 def _persist_company_delivery_images_from_request(database) -> None:
@@ -1043,6 +1047,7 @@ def founder_dashboard():
         n_branches=n_branches,
         n_products=n_products,
         n_complaints=st.get("total", 0),
+        complaints_open=st.get("open", 0),
         complaints_preview=complaints_preview,
         founder_inquiry_report=founder_inquiry_report,
         founder_product_request_total=founder_product_request_total,
@@ -1093,28 +1098,45 @@ def founder_upload_site_logo():
             flash(str(_e) if str(_e) else "تعذر معالجة الصورة.", "danger")
         return redirect(url_for("founder_dashboard"))
     try:
-        from logic import cloud_storage as cst
-        from logic.media_uploads import normalize_stored_media_ref
-
-        png = png_bytes_from_image_bytes(data)
         delete_remote_storage_public_id(db.get_system_setting(SITE_LOGO_CLOUD_ID_KEY))
-        res = cst.upload(png, "site-logo.png", "image/png", folder="site-logos")
-        if res.success and (res.url or "").strip():
-            db.set_system_setting(
-                SITE_LOGO_SETTING_KEY, normalize_stored_media_ref(res.url)
-            )
-            db.set_system_setting(SITE_LOGO_CLOUD_ID_KEY, (res.public_id or "").strip())
+        mime = ((_mime or "image/jpeg").strip()) or "image/jpeg"
+        ref, pid = upload_branding_image_via_cloud_then_png(
+            data,
+            mime,
+            logical_stem="site-logo",
+            folder="site-logos",
+        )
+        ref_n = normalize_stored_media_ref(ref or "")
+        if ref_n.startswith("http"):
+            db.set_system_setting(SITE_LOGO_SETTING_KEY, ref_n)
+            db.set_system_setting(SITE_LOGO_CLOUD_ID_KEY, (pid or "").strip())
             try:
                 remove_logo_file(app.config["UPLOAD_FOLDER"], "logo.png")
             except ValueError:
                 pass
+            flash(
+                "تم حفظ الشعار العام وتحديث واجهة العملاء والفروع والإدارة.",
+                "success",
+            )
+        elif ref_n.startswith("uploads/"):
+            db.set_system_setting(SITE_LOGO_SETTING_KEY, ref_n)
+            db.set_system_setting(SITE_LOGO_CLOUD_ID_KEY, "")
+            try:
+                remove_logo_file(app.config["UPLOAD_FOLDER"], "logo.png")
+            except ValueError:
+                pass
+            flash(
+                "تم حفظ الشعار محلياً (احتياطاً). راجع إعداد التخزين السحابي في التكاملات.",
+                "success",
+            )
         else:
+            png = png_bytes_from_image_bytes(data)
             save_png_bytes_to_upload_folder(
                 png, app.config["UPLOAD_FOLDER"], "logo.png"
             )
             db.set_system_setting(SITE_LOGO_SETTING_KEY, SITE_LOGO_RELATIVE)
             db.set_system_setting(SITE_LOGO_CLOUD_ID_KEY, "")
-        flash("تم حفظ الشعار العام وتحديث واجهة العملاء والفروع والإدارة.", "success")
+            flash("تم حفظ الشعار العام وتحديث واجهة العملاء والفروع والإدارة.", "success")
     except ValueError as e:
         flash(str(e), "warning")
     except OSError:
@@ -1172,30 +1194,44 @@ def founder_upload_founder_logo():
             flash(str(_e) if str(_e) else "تعذر معالجة الصورة.", "danger")
         return redirect(url_for("founder_dashboard"))
     try:
-        from logic import cloud_storage as cst
-        from logic.media_uploads import normalize_stored_media_ref
-
-        png = png_bytes_from_image_bytes(data)
         delete_remote_storage_public_id(db.get_system_setting(FOUNDER_LOGO_CLOUD_ID_KEY))
-        res = cst.upload(png, "founder-logo.png", "image/png", folder="site-logos")
-        if res.success and (res.url or "").strip():
+        mime = ((_mime or "image/jpeg").strip()) or "image/jpeg"
+        ref, pid = upload_branding_image_via_cloud_then_png(
+            data,
+            mime,
+            logical_stem="founder-logo",
+            folder="site-logos",
+        )
+        ref_n = normalize_stored_media_ref(ref or "")
+        if ref_n.startswith("http"):
+            db.set_system_setting(FOUNDER_LOGO_SETTING_KEY, ref_n)
             db.set_system_setting(
-                FOUNDER_LOGO_SETTING_KEY, normalize_stored_media_ref(res.url)
-            )
-            db.set_system_setting(
-                FOUNDER_LOGO_CLOUD_ID_KEY, (res.public_id or "").strip()
+                FOUNDER_LOGO_CLOUD_ID_KEY, (pid or "").strip()
             )
             try:
                 remove_logo_file(app.config["UPLOAD_FOLDER"], "founder_logo.png")
             except ValueError:
                 pass
+            flash("تم حفظ شعار لوحة تحكم النظام.", "success")
+        elif ref_n.startswith("uploads/"):
+            db.set_system_setting(FOUNDER_LOGO_SETTING_KEY, ref_n)
+            db.set_system_setting(FOUNDER_LOGO_CLOUD_ID_KEY, "")
+            try:
+                remove_logo_file(app.config["UPLOAD_FOLDER"], "founder_logo.png")
+            except ValueError:
+                pass
+            flash(
+                "تم حفظ الشعار محلياً (احتياطاً). يُستحسن تفعيل تخزين سحابي من التكاملات.",
+                "success",
+            )
         else:
+            png = png_bytes_from_image_bytes(data)
             save_png_bytes_to_upload_folder(
                 png, app.config["UPLOAD_FOLDER"], "founder_logo.png"
             )
             db.set_system_setting(FOUNDER_LOGO_SETTING_KEY, FOUNDER_LOGO_RELATIVE)
             db.set_system_setting(FOUNDER_LOGO_CLOUD_ID_KEY, "")
-        flash("تم حفظ شعار لوحة تحكم النظام.", "success")
+            flash("تم حفظ شعار لوحة تحكم النظام.", "success")
     except ValueError as e:
         flash(str(e), "warning")
     except OSError:
@@ -2088,6 +2124,7 @@ def index():
 # واجهة الشات الموحّدة (نص + مرفقات)
 # ==========================================
 @app.route("/api/chat-login", methods=["POST"])
+@csrf_exempt
 def chat_login():
     """تسجيل دخول زائر الشات مباشرة بالبريد أو جوال (9 أرقام) — بدون OTP."""
     try:

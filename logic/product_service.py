@@ -45,6 +45,16 @@ def _send_product_inquiry_to_branch(product_query: str) -> bool:
     يرسل استفسار منتج للفرع بالإيميل لما ما يلقاه في قاعدة البيانات.
     يسجّل الطلب في product_requests أيضاً.
     """
+    from logic.notification_guards import should_send_product_miss_notification
+
+    if not should_send_product_miss_notification(product_query):
+        import logging
+
+        logging.getLogger(__name__).info(
+            "تخطّي تنبيه بريدي — الرسالة لا تبدو طلب منتج حقيقياً (%s)",
+            (product_query or "")[:120],
+        )
+        return False
     try:
         cs = _cs()
         db = cs.get_db()
@@ -1414,14 +1424,23 @@ def _build_products_response(
                     "جرّب تكتب اسم المنتج أو القسم، أو أرسل صورة أوضح 👍"
                 ),
             }
-        # أرسل للفرع واعطِ العميل رد إيجابي
-        _send_product_inquiry_to_branch(raw_message)
+        # أرسل للفرع (فقط إن كانت الرسالة تبدو طلب منتج حقيقي)
+        sent_mail = _send_product_inquiry_to_branch(raw_message)
+        if sent_mail:
+            return {
+                "products": [],
+                "intent": "product_inquiry_sent",
+                "message": (
+                    f"لحظات يا {cs_dn}، راسلت الفرع عن هذا المنتج "
+                    "وراح يردوا عليك بأقرب وقت 👍"
+                ),
+            }
         return {
             "products": [],
-            "intent": "product_inquiry_sent",
+            "intent": "product",
             "message": (
-                f"لحظات يا {cs_dn}، راسلت الفرع عن هذا المنتج "
-                "وراح يردوا عليك بأقرب وقت 👍"
+                f"ما لقيت في الكتالوج مطابقة مباشرة يا {cs_dn}. "
+                "جرّب تكتب الاسم أو النوع بشكل أوضح 👍 أو تواصل فرعنا من صفحة «الفروع»."
             ),
         }
 
@@ -1475,13 +1494,22 @@ def _build_products_response(
                     "اكتب اسم القطعة أو تصفّح الأقسام إذا تحب."
                 ),
             }
-        _send_product_inquiry_to_branch(raw_message)
+        sent_mail = _send_product_inquiry_to_branch(raw_message)
+        if sent_mail:
+            return {
+                "products": [],
+                "intent": "product_inquiry_sent",
+                "message": (
+                    f"لحظات يا {cs_dn}، راسلت الفرع عن هذا المنتج "
+                    "وراح يردوا عليك بأقرب وقت 👍"
+                ),
+            }
         return {
             "products": [],
-            "intent": "product_inquiry_sent",
+            "intent": "product",
             "message": (
-                f"لحظات يا {cs_dn}، راسلت الفرع عن هذا المنتج "
-                "وراح يردوا عليك بأقرب وقت 👍"
+                f"ما لقيت مطابقة دقيقة حسب المواصفات يا {cs_dn}. "
+                "جرّب تخفف الفلاتر أو اكتب وصف مختلف، أو أسألك الفروع برسالة أوضح إذا تحب 👍"
             ),
         }
 
@@ -1745,16 +1773,27 @@ def _try_last_section_product_followup(message: str):
         session.pop("remaining_products", None)
         session.pop("remaining_products_intent", None)
         ls = (last or "").strip() or "هذا القسم"
-        _send_product_inquiry_to_branch(t)
+        sent_mail = _send_product_inquiry_to_branch(t)
         cs_dn = _cs()._display_name()
+        if sent_mail:
+            return jsonify(
+                {
+                    "products": [],
+                    "message": (
+                        f"لحظات يا {cs_dn}، راسلت الفرع عن هذا المنتج "
+                        "وراح يردوا عليك بأقرب وقت 👍"
+                    ),
+                    "intent": "product_inquiry_sent",
+                }
+            )
         return jsonify(
             {
                 "products": [],
                 "message": (
-                    f"لحظات يا {cs_dn}، راسلت الفرع عن هذا المنتج "
-                    "وراح يردوا عليك بأقرب وقت 👍"
+                    f"ما طابقت المنتج في قسم {ls} كما هو واصف الآن يا {cs_dn}. "
+                    "جرّب كلمات أبسط لوصف القطعة، أو أكد لو تبي أبحث أكثر عمّا يشبهها."
                 ),
-                "intent": "product_inquiry_sent",
+                "intent": "product",
             }
         )
     session["last_products"] = [int(p["id"]) for p in out_products]

@@ -349,6 +349,13 @@ def create_wa_inbox_blueprint(db) -> Blueprint:
         cn = normalize_wa_contact_number(contact)
         if not cn:
             return jsonify({"ok": False, "error": "رقم غير صالح"}), 400
+        if len(cn) < 8:
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": "رقم قصير جداً — تأكد من صيغة الرقم بدون مسافات أو رموز",
+                }
+            ), 400
         field = (data.get("field") or "").strip()
         if field not in ("ai_stopped", "banned"):
             return jsonify({"ok": False, "error": "حقل غير صالح"}), 400
@@ -379,6 +386,13 @@ def create_wa_inbox_blueprint(db) -> Blueprint:
         cn = normalize_wa_contact_number(contact)
         if not cn:
             return jsonify({"ok": False, "error": "رقم غير صالح"}), 400
+        if len(cn) < 8:
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": "رقم قصير جداً — تأكد من صيغة الرقم بدون مسافات أو رموز",
+                }
+            ), 400
         field = (data.get("field") or "").strip()
         if field not in ("ai_stopped", "banned"):
             return jsonify({"ok": False, "error": "حقل غير صالح"}), 400

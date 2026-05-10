@@ -153,7 +153,11 @@ _ORCHESTRATOR_SYSTEM = """أنت موظف خدمة عملاء حقيقي في م
 - ممنوع: ذكر بطء النظام أو أعطال تقنية أو "جرّب بعد لحظة" — لا أعذار تقنية وهمية.
 - ممنوع في message صياغة «ما لقيت / لا يوجد / غير موجود» **كإنك تغلق الموضوع نهائياً** عن منتج قد يكون عند الفرع — بدلاً من ذلك action = "product_search" ليتم التصعيد؛ يجوز أن تعتذر بلطف مع التصعيد في نفس الجملة.
 - ممنوع اقتراح أقسام عشوائية بلا صلة بالرسالة.
-- لا تذكر فروعاً أو مدناً أو مواقع أو دواماً إلا إذا سأل العميل عن الفرع/الموقع/الأقرب/الزيارة صراحة — **استثناء**: إذا كان الرد مأخوذاً حصراً من database_context.company_info (نص رسمي مُدخل من الإدارة) فيُسمح بذكر ما ورد هناك.
+- لا تخترع فروعاً أو أرقاماً أو دواماً. عندما يسأل عن **رقم فرع، أوقات العمل، العنوان، الخرائط، أو أقرب فرع**: استعمل **database_context.branch_directory** (من قاعدة البيانات) حرفياً؛ إذا كان الحقل فارغاً في الدليل فقل بلطف إن ما عندك التفاصيل داخل النظام ووجّه لتطبيق الشركة أو الزيارة.
+- للأسئلة العامة غير المتعلقة بالفرع لا تطرح قائمة كل الفروع — اكتفِ بما يخدم سؤاله فقط.
+
+database_context.branch_directory:
+- قائمة منسّقة بالفروع المتاحة: اسم المدينة/الفرع، الهاتف، إيميل الشكوى إن وُجد، عنوان مختصر، رابط الخرائط، وملخص **أوقات العمل** عند وجودها في الجدول. هذه هي المرجعية عند الأسئلة العملانية عن الفروع.
 
 database_context.company_info (سياسات وخدمات رسمية):
 - المصدر الوحيد للإجابة عند سؤال العميل عن: التوصيل، الشحن، الاسترجاع، الدفع، الدوام، معلومات عامة عن الفروع، أو «خدمات» فرع معيّن — إن وُجدت في الحقول أو في branch_services.
@@ -500,6 +504,47 @@ def _category_names_from_product_hits(db: Any, message: str, limit: int = 14) ->
     return out
 
 
+def _apply_category_bleed_guard(cats: List[str], message: str) -> List[str]:
+    """
+    يقلّل تداخل أقسام واضحة (حقائب/شنط مقابل بدلات/طقم) عندما تُذكر جهة واحدة فقط بوضوح.
+    """
+    m = (
+        (message or "")
+        .replace("أ", "ا")
+        .replace("إ", "ا")
+        .replace("آ", "ا")
+        .replace("ؤ", "و")
+        .replace("ئ", "ي")
+        .lower()
+    )
+    bag_kw = ("شنط", "شنطة", "حقيبه", "حقيبة", "حقائب", "كلتش", "باكباك", "شنطه")
+    suit_kw = (
+        "بدله",
+        "بدلة",
+        "بدل ",
+        "طقم ",
+        "جاكيت",
+        "بنطلون رجالي",
+        "قميص رجالي",
+    )
+    has_bag = any(k in m for k in bag_kw)
+    has_suit = any(k in m for k in suit_kw)
+
+    def _is_suitish(name: str) -> bool:
+        n = (name or "").lower()
+        return any(x in n for x in ("بدل", "بدلة", "طقم", "جاكيت"))
+
+    def _is_baggish(name: str) -> bool:
+        n = (name or "").lower()
+        return any(x in n for x in ("حقائب", "حقيب", "شنط", "كلتش"))
+
+    if has_bag and not has_suit:
+        cats = [c for c in cats if not _is_suitish(c)]
+    if has_suit and not has_bag:
+        cats = [c for c in cats if not _is_baggish(c)]
+    return cats
+
+
 def _category_context_score(cat_name: str, user_ctx: Optional[Dict[str, Any]]) -> int:
     """رفع أقسام تلائم مناسبة/أسلوب العميل (بدون تغيير قاعدة البيانات)."""
     if not user_ctx:
@@ -564,6 +609,7 @@ def filter_categories_for_context(
             out,
             key=lambda x: (-_category_context_score(x, user_ctx), x),
         )
+    out = _apply_category_bleed_guard(out, message)
     return out[:28]
 
 
@@ -1121,6 +1167,7 @@ def build_orchestrator_context(
         "products_sample": base.get("products") or [],
         "sections_sample": base.get("sections") or [],
         "company_info": base.get("company_info") or {},
+        "branch_directory": base.get("branch_directory") or [],
     }
     # ملخص المحادثة للمنسّق: جلسة chat_context إن وُجد؛ وإلا آخر أدوار من DB (_conv_history في الطلب)
     try:
@@ -1773,6 +1820,70 @@ def build_fallback_db_data(db: Any, message: str) -> Dict[str, Any]:
         out["company_info"] = db.get_company_info_for_ai()
     except Exception:
         out["company_info"] = {}
+
+    branch_directory: List[Dict[str, Any]] = []
+    try:
+        for b in db.get_all_branches() or []:
+            bid = b.get("id")
+            if bid is None:
+                continue
+            try:
+                bid_int = int(bid)
+            except (TypeError, ValueError):
+                continue
+            city = str(b.get("city_name") or "").strip()
+            phone = str(b.get("phone") or "").strip()
+            em = str(b.get("complaint_email") or "").strip()
+            loc = None
+            addr = ""
+            maps_u = ""
+            try:
+                loc = db.get_branch_location(bid_int)
+            except Exception:
+                loc = None
+            if isinstance(loc, dict):
+                addr = str(loc.get("address") or "").strip()
+                maps_u = str(loc.get("google_maps_url") or "").strip()
+            wh_s = ""
+            try:
+                wh_rows = db.get_working_hours(bid_int) or []
+                parts: List[str] = []
+                for r in wh_rows:
+                    if not isinstance(r, dict):
+                        continue
+                    day = (
+                        str(r.get("day_type") or r.get("day_name") or "")
+                        .strip()
+                    )
+                    o = str(
+                        r.get("open_time")
+                        or r.get("start_time_1")
+                        or ""
+                    ).strip()
+                    cl = str(
+                        r.get("close_time")
+                        or r.get("end_time_1")
+                        or ""
+                    ).strip()
+                    if day and (o or cl):
+                        parts.append(f"{day}: {o}–{cl}")
+                if parts:
+                    wh_s = "; ".join(parts)[:800]
+            except Exception:
+                wh_s = ""
+            branch_directory.append(
+                {
+                    "branch_city": city,
+                    "phone": phone,
+                    "complaint_email": em,
+                    "address_short": addr[:280] if addr else "",
+                    "maps_url": maps_u[:500] if maps_u else "",
+                    "working_hours_compact": wh_s,
+                }
+            )
+    except Exception:
+        branch_directory = []
+    out["branch_directory"] = branch_directory
 
     return out
 

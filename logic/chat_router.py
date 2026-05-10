@@ -417,7 +417,7 @@ def _try_resolve_pending_inquiry(message: str) -> Optional[Any]:
         return jsonify(
             {
                 "products": [],
-                "message": "حالياً ما قدرت أرسل الاستفسار للفرع. اكتب اسم المنتج مرة ثانية وأرسله لك فوراً.",
+                "message": "ما قدرت أرسل تنبيهاً للفرع لأن وصف المنتج غير واضح بما يكفي. اكتب اسم القطعة أو نوعها بجملة أوضح وأرسل مرة ثانية.",
                 "intent": "inquiry_error",
             }
         )

@@ -1,0 +1,87 @@
+{% extends "founder/finance_shell.html" %}
+{% block mm_title %}لوحة التحكم المالية{% endblock %}
+{% block mm_extra_head %}
+<meta name="mm-fin-ai-configured" content="{{ 1 if placeholders.has_ai else 0 }}">
+{% endblock %}
+{% block mm_main %}
+<div class="mm-fin-page px-2 px-md-3 pb-5">
+    <section class="mm-fin-kpi-strip row g-2 g-md-3 mb-3">
+        <div class="col-12 col-md-4">
+            <article class="mm-fin-kpi">
+                <span class="mm-fin-kpi__lbl">مبيعات اليوم (تقدير)</span>
+                <span class="mm-fin-kpi__val" id="mnKpiSales">{{ '{:,.0f}'.format(metrics.today_sales | float) }}</span>
+                <span class="mm-fin-kpi__hint">عملة المحلي — مصدر:&nbsp;<span id="mnKpiSrc">{{ metrics.mode }}</span></span>
+            </article>
+        </div>
+        <div class="col-6 col-md-4">
+            <article class="mm-fin-kpi mm-fin-kpi--accent">
+                <span class="mm-fin-kpi__lbl">العمليات / التفاعل</span>
+                <span class="mm-fin-kpi__val" id="mnKpiTx">{{ metrics.transaction_count }}</span>
+            </article>
+        </div>
+        <div class="col-6 col-md-4">
+            <article class="mm-fin-kpi">
+                <span class="mm-fin-kpi__lbl">هامش الربح (تقدير %)</span>
+                <span class="mm-fin-kpi__val" id="mnKpiMargin">{{ metrics.profit_margin_estimate_pct }}</span>
+            </article>
+        </div>
+    </section>
+
+    <div class="row g-3">
+        <div class="col-12">
+            <div class="mm-fin-card-chart">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h2 class="mm-fin-section-title mb-0">مبيعات مُقدَّرة مقابل استفسارات العملاء</h2>
+                    <span class="small mm-fin-muted" id="mnChartLazyTag">Lazy…</span>
+                </div>
+                <div class="mm-fin-chart-shell">
+                    <canvas id="mnBranchChart" height="260" aria-label="Chart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-8">
+            <div class="mm-fin-manukh">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h2 class="mm-fin-section-title mb-0">صندوق مانوس للرؤى</h2>
+                    <button type="button" class="btn btn-sm mm-fin-btn-outline" id="mnRefreshInsights">تحديث</button>
+                </div>
+                <div id="mnInsightsBody" class="mm-fin-manukh__body small">جاري تحضير مانوس بحسب ضبط مفاتيح المحلل…</div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-4">
+            <div class="mm-fin-card-flat">
+                <h3 class="h6 text-info mb-2">إشارات المخزون (Lazy)</h3>
+                <div id="mnInventoryBody" class="small mm-fin-muted">—</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- مانوس المحادثة -->
+<div id="mnChatLauncher" class="mm-fin-chat-btn" aria-label="فتح محادثة مانوس" role="button" tabindex="0">💠</div>
+<div id="mnChatPanel" class="mm-fin-chat-panel d-none">
+    <div class="mm-fin-chat-panel__hdr d-flex justify-content-between align-items-center">
+        <span class="fw-bold">مانوس — محللك المالي</span>
+        <button type="button" class="btn btn-sm btn-link text-white-50 text-decoration-none" id="mnChatClose">×</button>
+    </div>
+    <div id="mnChatMsgs" class="mm-fin-chat-panel__msgs small"></div>
+    <div class="mm-fin-chat-panel__foot p-2">
+        <textarea id="mnChatInput" rows="2" class="form-control mb-2 mm-fin-input" placeholder="مثلاً: لماذا انخفضت مبيعات فرع معيّن؟"></textarea>
+        <button type="button" class="btn mm-fin-btn-gold btn-sm w-100" id="mnChatSend">إرسال</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block mm_bottom_scripts %}
+<script>
+window.MM_FIN_ENDPOINTS = {
+    metricsJson: "{{ url_for('almanakh_finance.api_metrics') }}",
+    insightsJson: "{{ url_for('almanakh_finance.api_insights') }}",
+    inventoryJson: "{{ url_for('almanakh_finance.api_inventory_snippet_lazy') }}",
+    chatJson: "{{ url_for('almanakh_finance.api_finance_chat') }}"
+};
+window.MM_FIN_SSR_BRANCHES = {{ (metrics.branches_breakdown | default([])) | tojson }};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+<script src="{{ url_for('static', filename='js/almanakh-finance.js') }}" defer></script>
+{% endblock %}

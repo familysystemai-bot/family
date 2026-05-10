@@ -875,3 +875,216 @@ body.fd-dashboard {
     border-left: 1px solid rgba(255, 255, 255, 0.14) !important;
   }
 }
+
+/* ——— نظرة قيّمة — Founder premium overview ——— */
+.fd-premium-overview {
+  background: linear-gradient(
+    155deg,
+    var(--fd-white-card) 0%,
+    rgba(255, 253, 244, 0.98) 55%,
+    rgba(237, 250, 244, 0.55) 100%
+  );
+  border-radius: var(--fd-radius-lg);
+  border: 1px solid var(--fd-border-gold);
+  box-shadow: var(--fd-shadow);
+  padding: 1rem 1.1rem;
+}
+
+@media (min-width: 768px) {
+  .fd-premium-overview {
+    padding: 1.35rem 1.35rem;
+  }
+}
+
+.fd-premium-overview__heading {
+  margin-bottom: 0.85rem;
+}
+
+.fd-premium-overview__title {
+  font-family: "Cairo", "Tajawal", sans-serif;
+  font-weight: 800;
+  font-size: 1.2rem;
+  color: var(--fd-title-accent);
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+.fd-premium-overview__sub {
+  margin: 0.15rem 0 0;
+  font-size: 0.92rem;
+  color: var(--fd-text-soft);
+}
+
+.fd-premium-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(148px, 100%), 1fr));
+  gap: 0.65rem;
+}
+
+@media (min-width: 992px) {
+  .fd-premium-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+.fd-kpi-card {
+  border-radius: 14px;
+  padding: 0.72rem 0.82rem;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(15, 81, 50, 0.1);
+  min-height: 88px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  position: relative;
+  overflow: hidden;
+}
+
+.fd-kpi-card::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--fd-sidebar-luxury), var(--fd-gold));
+  opacity: 0.42;
+}
+
+.fd-kpi-card--accent::after {
+  opacity: 0.82;
+}
+
+.fd-kpi-card__label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--fd-text-soft);
+  line-height: 1.35;
+}
+
+.fd-kpi-card__value {
+  font-family: "Cairo", "Tajawal", sans-serif;
+  font-weight: 800;
+  font-size: 1.55rem;
+  color: var(--fd-green-dark);
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+}
+
+.fd-kpi-card__hint {
+  font-size: 0.72rem;
+  color: rgba(42, 42, 42, 0.55);
+  margin-top: 0.12rem;
+}
+
+.fd-traffic-strip {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(155px, 100%), 1fr));
+  gap: 0.55rem;
+}
+
+.fd-traffic-pill {
+  border-radius: 12px;
+  padding: 0.55rem 0.72rem;
+  background: rgba(6, 78, 59, 0.07);
+  border: 1px solid rgba(6, 78, 59, 0.12);
+}
+
+.fd-traffic-pill__lbl {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--fd-text-soft);
+}
+
+.fd-traffic-pill__num {
+  font-weight: 800;
+  font-size: 1.15rem;
+  color: var(--fd-sidebar-luxury);
+}
+
+.fd-traffic-bar {
+  height: 7px;
+  border-radius: 99px;
+  background: rgba(0, 0, 0, 0.06);
+  margin-top: 0.4rem;
+  overflow: hidden;
+}
+
+.fd-traffic-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #047857, #c9a227);
+  transition: width 0.35s ease;
+}
+
+/* ——— معلومات الشركة للشات — داخل الشريط الجانبي (لوحة المؤسس) ——— */
+.fd-sidebar-company-scroll {
+  margin-top: 0.65rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  max-height: min(52vh, 520px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+
+.fd-sidebar-company-scroll .stat-card {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding: 0.85rem 0.75rem !important;
+  background: var(--fd-white-card);
+  border: 1px solid var(--fd-border);
+  border-radius: var(--fd-radius);
+  box-shadow: var(--fd-shadow-sm);
+}
+
+.fd-sidebar-company-scroll .stat-card h5 {
+  font-size: 0.95rem;
+  margin-bottom: 0.35rem !important;
+  color: var(--fd-title-accent);
+}
+
+.fd-sidebar-company-scroll .stat-card > .small.text-muted {
+  font-size: 0.72rem !important;
+  line-height: 1.45;
+  margin-bottom: 0.65rem !important;
+}
+
+.fd-sidebar-company-scroll .row > [class*="col-"] {
+  flex: 0 0 100%;
+  max-width: 100%;
+}
+
+.fd-sidebar-company-scroll .form-label,
+.fd-sidebar-company-scroll label.small {
+  font-size: 0.72rem !important;
+}
+
+.fd-sidebar-company-scroll textarea.form-control-sm {
+  font-size: 0.78rem !important;
+  min-height: 2.5rem;
+}
+
+.fd-sidebar-company-scroll .btn-gold {
+  width: 100%;
+  font-weight: 800;
+  font-size: 0.85rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, var(--fd-gold) 0%, var(--fd-gold-dim) 100%);
+  color: #1a1508;
+}
+
+.fd-sidebar-company-scroll .btn-gold:hover {
+  filter: brightness(1.05);
+  color: #1a1508;
+}
+
+@media (min-width: 992px) {
+  .fd-sidebar-company-scroll {
+    max-height: min(58vh, 560px);
+  }
+}
