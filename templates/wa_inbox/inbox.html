@@ -157,8 +157,10 @@
             border-radius: 12px;
             box-shadow: var(--wa-shadow);
             font-size: 0.94rem;
-            line-height: 1.45;
-            word-break: break-word;
+            line-height: 1.55;
+            word-break: normal;
+            overflow-wrap: anywhere;
+            unicode-bidi: plaintext;
         }
         .wa-bubble-in {
             background: var(--wa-bubble-in);
@@ -168,7 +170,11 @@
             background: var(--wa-bubble-out);
             border-top-left-radius: 4px;
         }
-        .wa-bubble .wa-text { white-space: pre-wrap; }
+        .wa-bubble .wa-text {
+            white-space: pre-wrap;
+            direction: rtl;
+            text-align: start;
+        }
         .wa-bubble-img {
             max-width: 100%;
             max-height: 220px;
@@ -555,9 +561,15 @@
                 document.querySelectorAll('.wa-thread-item').forEach(function(el) { el.classList.remove('active'); });
                 div.classList.add('active');
                 updateHeader(tel);
+                try { msgText.blur(); } catch (e) {}
                 showChatPanel(true);
-                loadMessages(true);
+                loadMessages('top');
                 loadContactStatus(tel);
+                requestAnimationFrame(function() {
+                    try {
+                        chatPanel.scrollIntoView({ block: 'start', behavior: 'auto', inline: 'nearest' });
+                    } catch (e) {}
+                });
             });
             frag.appendChild(div);
         });
@@ -567,8 +579,13 @@
         if (selectedContact) updateHeader(selectedContact);
     }
 
-    async function loadMessages(scrollBottom) {
+    async function loadMessages(scrollMode) {
         if (!selectedContact) { showChatPanel(false); return; }
+        const mode = scrollMode || 'smart';
+        const el = chatPane;
+        const prevNearBottom =
+            el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+        const prevRatio = el.scrollHeight > 0 ? el.scrollTop / el.scrollHeight : 0;
         const url = API_MESSAGES + (API_MESSAGES.indexOf('?') >= 0 ? '&' : '?') + 'contact=' + encodeURIComponent(selectedContact);
         let res;
         try {
@@ -611,9 +628,20 @@
                 '</div></div>';
         });
         chatPane.innerHTML = html || '<p class="text-muted small p-2 text-center">لا رسائل.</p>';
-        if (scrollBottom) {
-            requestAnimationFrame(function() { chatPane.scrollTop = chatPane.scrollHeight; });
-        }
+        requestAnimationFrame(function() {
+            if (mode === 'bottom') {
+                chatPane.scrollTop = chatPane.scrollHeight;
+            } else if (mode === 'top') {
+                chatPane.scrollTop = 0;
+            } else {
+                if (prevNearBottom) {
+                    chatPane.scrollTop = chatPane.scrollHeight;
+                } else {
+                    chatPane.scrollTop =
+                        prevRatio * Math.max(chatPane.scrollHeight, 1);
+                }
+            }
+        });
     }
 
     sendForm.addEventListener('submit', async function(ev) {
@@ -645,7 +673,7 @@
                 imgIn.value = '';
                 sendAlert.innerHTML = '<span class="text-success">تم الإرسال.</span>';
                 await loadThreads();
-                await loadMessages(true);
+                await loadMessages('bottom');
             } else {
                 sendAlert.innerHTML = '<span class="text-danger">' + esc(data.error || 'فشل') + '</span>';
             }
@@ -656,7 +684,7 @@
 
     function tick() {
         loadThreads().then(function() {
-            if (selectedContact) return loadMessages(true);
+            if (selectedContact) return loadMessages('smart');
         });
     }
 

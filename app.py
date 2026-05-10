@@ -3137,7 +3137,10 @@ def process_message(data) -> None:
         reply_text = (resp_data.get("message") or "").strip()
         if welcome_needed:
             display_name = (wa_profile_nm or _captured_state.get("user_name") or "").strip()
-            welcome_name = display_name if display_name else "العميل"
+            # عرض الحالة أو جمل طويلة كاسم واتساب يفسد سطر الترحيب — نستخدم «العميل»
+            welcome_name = (display_name if display_name else "العميل").strip()
+            if len(welcome_name) > 36 or welcome_name.count(" ") >= 4:
+                welcome_name = "العميل"
             welcome_line = f"أهلاً بك في مجمع العائلة أستاذ {welcome_name}"
             reply_text = f"{welcome_line}\n{reply_text}" if reply_text else welcome_line
             _captured_state["chat_welcome_sent"] = True
