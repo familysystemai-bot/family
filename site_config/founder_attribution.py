@@ -1,12 +1,21 @@
 """
-معلومات المؤسس للعرض في المحادثة الذكية فقط عند مطابقة عبارات محددة
-(هوية النظام/المطور/المؤسس أو ذكر اسم كاظم صراحة).
+معلومات عامة عن المنصّة للعرض في المحادثة الذكية فقط عند مطابقة عبارات محدّدة
+(سؤال صريح عن هوية المحادث / من طور النظام / من أنت…).
 لا تُعرض هذه البيانات تلقائياً في الترحيب أو الردود العامة.
 """
 
 from __future__ import annotations
 
+import os
 from typing import Any, Dict, Optional
+
+_COMPANY_CONTACT_EMAIL = (
+    (os.getenv("COMPANY_CHAT_ATTRIBUTION_EMAIL") or "").strip()
+    or (os.getenv("ADMIN_OFFICE_EMAIL") or "").strip()
+    or (os.getenv("MAIN_RECEIVER_EMAIL") or "").strip()
+    or "management@family-mall.com"
+)
+_FOUNDER_PUBLIC_PHONE = (os.getenv("FOUNDER_PUBLIC_PHONE") or "").strip()
 
 # عبارات صريحة تُفسَّر كسؤال عن هوية منصّب النظام/المحادثة (وليس استفساراً عاماً عن المنتجات)
 _EXPLICIT_TRIGGERS = (
@@ -36,16 +45,19 @@ _EXPLICIT_TRIGGERS = (
 
 _LLM_WHO_PREFIX = "أنا نموذج لغوي (Language Model).\n\n"
 
-_ATTRIBUTION_BODY = (
-    "تم بناء وتطوير هذا النظام بواسطة كاظم-Kazm؛ لخدمتك وتسهيل التواصل وتتبع طلباتك. "
-    "ونسعى لتطويره على ميزات مستقبلية ذكية تساعدك في اختيار ما يناسبك بدقة، مثل إمكانية تجربة المنتجات "
-    "ومعاينتها في منزلك افتراضياً باستخدام الذكاء الاصطناعي قبل الشراء لضمان أنك تختار الأنسب لك وأنت في مكانك.\n\n"
-    "ولو عندك أي ملاحظة أو تحسين، لا تتردد بالتواصل وإعطاء ملاحظتك مباشرة عبر:\n\n"
-    "+966538344673\n"
-    "+967773216649\n\n"
-    "البريد الإلكتروني: Almthnyalkazm@gmail.com\n\n"
-    "شكراً لك."
-)
+
+def _build_attribution_body() -> str:
+    lines = [
+        "تم تطوير هذه المنصّة لخدمتكم وتيسير التواصل وتتبع الطلبات، وهي جزء من منظومة عمل الشركة.",
+        "نسعى لتحسينها وتوسيع قدراتها بما يخدم تجربتكم.",
+        "",
+        "للملاحظات أو الاقتراحات يمكنكم التواصل مع الفريق عبر القنوات الرسمية:",
+    ]
+    if _FOUNDER_PUBLIC_PHONE:
+        lines.append(f"الهاتف: {_FOUNDER_PUBLIC_PHONE}")
+    lines.append(f"البريد: {_COMPANY_CONTACT_EMAIL}")
+    lines.extend(["", "شكراً لكم."])
+    return "\n".join(lines)
 
 
 def _normalize_for_match(message: str) -> str:
@@ -79,16 +91,13 @@ def _is_who_are_you_question(t_flat: str) -> bool:
 
 
 def message_asks_for_creator_info(message: str) -> bool:
-    """يُرجع True فقط عند عبارات محددة: مطوّر/مؤسس/من أنت… أو ذكر «كاظم» في الرسالة."""
+    """يُرجع True عند عبارات محددة: مطوّر/مؤسس/من أنت… أو من صمم النظام…"""
     t = (message or "").strip()
     if not t:
         return False
     t_flat = _normalize_for_match(message)
     if len(t_flat) < 2:
         return False
-
-    if "كاظم" in t_flat:
-        return True
 
     for phrase in _EXPLICIT_TRIGGERS:
         if phrase.replace("أ", "ا").replace("إ", "ا") in t_flat:
@@ -124,13 +133,11 @@ def message_asks_for_creator_info(message: str) -> bool:
 def build_founder_attribution_message(
     _display_name: str, *, prepend_llm_intro: bool = False
 ) -> str:
-    """النص الكامل بعد التحقق من message_asks_for_creator_info.
-    _display_name يُمرَّر من مسار الشات للتوافق؛ المحتوى ثابت كما طُلب.
-    """
+    """النص الكامل بعد التحقق من message_asks_for_creator_info."""
     parts: list[str] = []
     if prepend_llm_intro:
         parts.append(_LLM_WHO_PREFIX.rstrip())
-    parts.append(_ATTRIBUTION_BODY)
+    parts.append(_build_attribution_body())
     return "\n\n".join(parts)
 
 

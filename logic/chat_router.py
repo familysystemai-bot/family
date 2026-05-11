@@ -2554,6 +2554,36 @@ def dispatch_chat_query():
         or request.remote_addr
         or "anon"
     )
+    # ── واتساب: حظر / إيقاف AI قبل حفظ الرسالة أو استدعاء المحلّل (توفير توكنز) ──
+    if isinstance(_session_id, str) and _session_id.startswith("wa_"):
+        from logic.wa_inbox_repository import (
+            WA_BLOCKED_AI_AUTOREPLY_AR,
+            normalize_wa_contact_number as _norm_wa_d,
+        )
+
+        _wa_digits_early = _norm_wa_d(_session_id[3:])
+        if _wa_digits_early:
+            try:
+                _wa_ctl_early = cs.get_db().wa_contact_get_controls(_wa_digits_early)
+            except Exception:
+                _wa_ctl_early = {"ai_stopped": 0, "banned": 0}
+            if _wa_ctl_early.get("banned"):
+                return jsonify(
+                    {
+                        "products": [],
+                        "message": WA_BLOCKED_AI_AUTOREPLY_AR,
+                        "intent": "wa_blocked",
+                    }
+                )
+            if _wa_ctl_early.get("ai_stopped"):
+                return jsonify(
+                    {
+                        "products": [],
+                        "message": "",
+                        "intent": "wa_ai_stopped",
+                    }
+                )
+
     if message:
         try:
             cs.get_db().save_chat_message(

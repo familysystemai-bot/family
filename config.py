@@ -147,7 +147,7 @@ if not FOUNDER_PASSWORD:
 DEFAULT_BRANCH_PASSWORD = os.getenv("DEFAULT_BRANCH_PASSWORD")
 
 # ——— معلومات المؤسس (تُعرض في المحادثة فقط عند السؤال الصريح عنها) ———
-FOUNDER_PUBLIC_FULL_NAME = os.getenv("FOUNDER_PUBLIC_FULL_NAME", "كاظم نجيب المطحني")
+FOUNDER_PUBLIC_FULL_NAME = os.getenv("FOUNDER_PUBLIC_FULL_NAME", "فريق شركة المناخ")
 FOUNDER_PUBLIC_PHONE = os.getenv("FOUNDER_PUBLIC_PHONE", "0538344673")
 
 # ——— البريد ———

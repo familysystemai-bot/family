@@ -316,6 +316,15 @@ def _session_founder_or_admin():
     return session.get("role") in ("founder", "admin")
 
 
+@app.route("/finance/gate")
+def finance_reports_gate():
+    """مسار مختصر للتقارير المالية (خزنة PIN) للمؤسس فقط."""
+    if not session.get("logged_in") or not _session_founder_only():
+        flash("التقارير المالية متاحة للمؤسس بعد تسجيل الدخول.", "warning")
+        return redirect(url_for("login"))
+    return redirect(url_for("almanakh_finance.finance_gate"))
+
+
 # ==========================================
 # نظام الدخول ولوحة التحكم
 # ==========================================
@@ -3070,7 +3079,9 @@ def process_message(data) -> None:
             )
             return
 
-        # ── TASK 2: فحص تحكم العميل (حظر / إيقاف AI) ──
+        # ── TASK 2: فحص تحكم العميل (حظر / إيقاف AI) — بدون مسار المحلّل ──
+        from logic.wa_inbox_repository import WA_BLOCKED_AI_AUTOREPLY_AR
+
         try:
             _controls = db.wa_contact_get_controls(wa_from)
         except Exception:
@@ -3082,7 +3093,7 @@ def process_message(data) -> None:
             _wa_send_message(
                 send_phone_id,
                 wa_from,
-                "معذرة، تم حظرك لأن النظام مخصص فقط للاستفسارات المتعلقة بالنشاط.",
+                WA_BLOCKED_AI_AUTOREPLY_AR,
             )
             return
 

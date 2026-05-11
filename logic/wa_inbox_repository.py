@@ -17,6 +17,13 @@ def normalize_wa_contact_number(raw: str) -> str:
     return d[:40] if d else ""
 
 
+# رد آلي لواتساب لمن هو في قائمة الحظر — بدون استدعاء الذكاء الاصطناعي (توفير توكنز)
+WA_BLOCKED_AI_AUTOREPLY_AR = (
+    "عذراً، يبدو أنك تستمتع بإرسال رسائل فارغة، لقد قرر النظام أخذ استراحة منك! "
+    "سيتم الرد عليك يدوياً عند توفر الموظف."
+)
+
+
 class WaInboxRepositoryMixin:
     """جدول messages — يُدمج في DatabaseManager."""
 

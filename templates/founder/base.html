@@ -33,7 +33,7 @@
                 <a class="nav-link {% if ep == 'founder_accounts' %}active{% endif %}" href="{{ url_for('founder_accounts') }}">🔐 الحسابات</a>
                 <a class="nav-link {% if ep == 'admin_settings' %}active{% endif %}" href="{{ url_for('admin_settings') }}">⚙️ إعدادات الدخول</a>
                 <a class="nav-link {% if ep and ep.startswith('integrations.') %}active{% endif %}" href="{{ url_for('integrations.integrations_dashboard') }}">🔌 التكاملات</a>
-                <a class="nav-link {% if ep and ep.startswith('almanakh_finance.') %}active{% endif %}" href="{{ url_for('almanakh_finance.finance_gate') }}">📈 التقارير المالية</a>
+                <a class="nav-link {% if ep == 'finance_reports_gate' or (ep and ep.startswith('almanakh_finance.')) %}active{% endif %}" href="{{ url_for('finance_reports_gate') }}">📈 التقارير المالية والتحليل</a>
                 <hr>
                 <a class="nav-link" href="{{ url_for('admin_users') }}">👤 مستخدمي الفروع</a>
                 <a class="nav-link" href="{{ url_for('admin_complaints') }}">📋 الشكاوى</a>

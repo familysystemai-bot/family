@@ -1,15 +1,6 @@
 {% extends "founder/base.html" %}
 {% block title %}الرئيسية — لوحة تحكم النظام{% endblock %}
 
-{% block fd_sidebar_extra %}
-{# معلومات الشركة للشات — الشريط الجانبي؛ الواجهة الرئيسية للتحليلات والكروت #}
-{% if company_info_rows is defined %}
-<div class="fd-sidebar-company-scroll" aria-label="معلومات الشركة للشات">
-    {% include 'partials/company_info_global_block.html' %}
-</div>
-{% endif %}
-{% endblock %}
-
 {% block fd_top_header %}
 <header class="fd-dash-hero" aria-label="هوية العلامة — العائلة">
     {% if founder_logo_url %}
@@ -20,10 +11,36 @@
 {% endblock %}
 {% block content %}
 {% from "macros/csrf.html" import csrf_input %}
-<div class="fd-page-head">
-    <h2 class="fd-page-title">لوحة تحكم النظام</h2>
-    <span class="fd-page-sub">إدارة موحّدة للفروع والمنتجات والإعدادات</span>
+<div class="fd-page-head fd-page-head--with-actions">
+    <div class="fd-page-head__titles">
+        <h2 class="fd-page-title">لوحة تحكم النظام</h2>
+        <span class="fd-page-sub">إدارة موحّدة للفروع والمنتجات والإعدادات</span>
+    </div>
+    {% if company_info_rows is defined %}
+    <button type="button" class="btn fd-btn fd-btn--identity-banner" data-bs-toggle="modal" data-bs-target="#fdCompanyIdentityModal">
+        إعدادات الهوية العامة
+    </button>
+    {% endif %}
 </div>
+
+{% if company_info_rows is defined %}
+<div class="modal fade" id="fdCompanyIdentityModal" tabindex="-1" aria-labelledby="fdCompanyIdentityModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-lg-down">
+        <div class="modal-content fd-company-identity-modal">
+            <div class="modal-header border-secondary-subtle">
+                <h2 class="modal-title fs-5 fw-bold text-dark" id="fdCompanyIdentityModalLabel">إعدادات الهوية العامة للشات</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="إغلاق"></button>
+            </div>
+            <div class="modal-body pt-3">
+                <p class="small text-secondary mb-3">يتم ضبط «أوقات العمل»، «طرق الدفع»، وسياسات التوصيل والاسترجاع ليصل سياقها إلى مساعد الشات الذكي.</p>
+                <div class="fd-company-identity-modal__form-wrap">
+                    {% include 'partials/company_info_global_block.html' %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <section class="fd-premium-overview mb-4" aria-label="ملخص المنصّة">
     {% set pinq_total = founder_inquiry_report|default([])|sum(attribute='pending_cnt') %}

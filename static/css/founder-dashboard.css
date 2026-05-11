@@ -290,6 +290,30 @@ body.fd-dashboard {
   font-weight: 600;
 }
 
+.fd-page-head__titles .fd-page-title {
+  margin-bottom: 0.15rem;
+}
+
+.fd-page-head--with-actions .fd-page-head__titles {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.fd-btn--identity-banner {
+  font-weight: 800;
+  border-radius: 12px;
+  padding: 0.55rem 1.25rem;
+  border: 1px solid rgba(201, 162, 39, 0.55);
+  background: linear-gradient(135deg, #fffefb 0%, #f8f3e6 100%);
+  color: #1a1410 !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+.fd-btn--identity-banner:hover {
+  filter: brightness(1.03);
+  border-color: rgba(201, 162, 39, 0.85);
+  color: #0f172a !important;
+}
 /* ——— Cards ——— */
 .fd-card {
   background: var(--fd-white-card);
@@ -929,15 +953,16 @@ body.fd-dashboard {
 
 .fd-kpi-card {
   border-radius: 14px;
-  padding: 0.72rem 0.82rem;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(15, 81, 50, 0.1);
-  min-height: 88px;
+  padding: 0.85rem 1rem;
+  background: #ffffff;
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  min-height: 96px;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
   position: relative;
   overflow: hidden;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
 }
 
 .fd-kpi-card::after {
@@ -954,24 +979,28 @@ body.fd-dashboard {
 }
 
 .fd-kpi-card__label {
-  font-size: 0.74rem;
+  font-size: 0.78rem;
   font-weight: 700;
-  color: var(--fd-text-soft);
+  color: #374151;
   line-height: 1.35;
 }
 
 .fd-kpi-card__value {
   font-family: "Cairo", "Tajawal", sans-serif;
   font-weight: 800;
-  font-size: 1.55rem;
-  color: var(--fd-green-dark);
-  line-height: 1.1;
+  font-size: 2rem;
+  color: #111827;
+  line-height: 1.08;
   letter-spacing: 0.02em;
+}
+
+.fd-kpi-card--accent .fd-kpi-card__value {
+  color: #0f172a;
 }
 
 .fd-kpi-card__hint {
   font-size: 0.72rem;
-  color: rgba(42, 42, 42, 0.55);
+  color: #6b7280;
   margin-top: 0.12rem;
 }
 
@@ -999,7 +1028,7 @@ body.fd-dashboard {
 .fd-traffic-pill__num {
   font-weight: 800;
   font-size: 1.15rem;
-  color: var(--fd-sidebar-luxury);
+  color: #111827;
 }
 
 .fd-traffic-bar {
@@ -1016,6 +1045,59 @@ body.fd-dashboard {
   border-radius: inherit;
   background: linear-gradient(90deg, #047857, #c9a227);
   transition: width 0.35s ease;
+}
+
+/* نافذة «إعدادات الهوية العامة» — نص داكن على خلفية فاتحة (قراءة أوضح) */
+.fd-company-identity-modal {
+  background: #f6f8fb;
+  color: #111827;
+  border-radius: 16px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+.fd-company-identity-modal .modal-header .btn-close {
+  filter: invert(0);
+}
+
+.fd-company-identity-modal__form-wrap .stat-card {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  background: #ffffff;
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  border-radius: 12px;
+  padding: 1rem 1.1rem !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+}
+
+.fd-company-identity-modal__form-wrap .stat-card h5 {
+  color: #0f172a !important;
+  font-weight: 800;
+}
+
+.fd-company-identity-modal__form-wrap .fw-bold.text-success,
+.fd-company-identity-modal__form-wrap label.text-success {
+  color: #047857 !important;
+}
+
+.fd-company-identity-modal__form-wrap .fw-bold.text-primary,
+.fd-company-identity-modal__form-wrap label.text-primary {
+  color: #1d4ed8 !important;
+}
+
+.fd-company-identity-modal__form-wrap .small.text-muted {
+  color: #4b5563 !important;
+}
+
+.fd-company-identity-modal__form-wrap textarea,
+.fd-company-identity-modal__form-wrap input.form-control-sm,
+.fd-company-identity-modal__form-wrap input.form-control {
+  color: #111827 !important;
+  background-color: #ffffff !important;
+  border-color: rgba(17, 24, 39, 0.12) !important;
+}
+
+.fd-company-identity-modal__form-wrap textarea::placeholder {
+  color: #9ca3af;
 }
 
 /* ——— معلومات الشركة للشات — داخل الشريط الجانبي (لوحة المؤسس) ——— */

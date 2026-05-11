@@ -83,34 +83,12 @@
         }
         .wa-panel {
             display: none;
-            flex-direction: column;
-            min-height: 0;
-            height: 76vh;
-            max-height: 76vh;
-            background: var(--wa-chat-bg);
-        }
-        .wa-panel.is-open {
-            display: flex;
         }
         .wa-chat-header {
-            flex: 0 0 auto;
-            padding: 12px 16px;
-            background: #f7f5f1;
-            border-bottom: 1px solid var(--wa-border);
-            display: flex;
-            align-items: center;
-            gap: 12px;
+            display: none;
         }
         .wa-chat-header .wa-h-avatar {
-            width: 42px;
-            height: 42px;
-            border-radius: 50%;
-            background: linear-gradient(145deg, #7a9a6a, #5c7d52);
-            color: #fff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
+            display: none;
         }
         .wa-chat-header .wa-h-meta small { color: #777; }
         .wa-chat-scroll {
@@ -130,6 +108,40 @@
             font-size: 0.95rem;
             padding: 24px;
             text-align: center;
+        }
+        /* نافذة محادثة علوية */
+        .wa-chat-overlay {
+            z-index: 1055;
+        }
+        .wa-chat-overlay .modal-dialog {
+            max-height: calc(100vh - 1rem);
+        }
+        .wa-modal-chat__hdr {
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            align-items: center;
+            border-bottom: 1px solid var(--wa-border);
+            background: #f7f5f1;
+            padding-block: 0.65rem;
+        }
+        .wa-modal-chat__hdr .wa-h-avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #7a9a6a, #5c7d52);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+        }
+        .wa-modal-chat__body-slot {
+            min-height: 0;
+        }
+        .wa-right-hint {
+            min-height: 76vh;
+            background: linear-gradient(180deg, #faf9f7, #f0ebe4);
+            border-inline-start: 1px solid var(--wa-border);
         }
         .wa-day-sep {
             text-align: center;
@@ -204,8 +216,17 @@
         .wa-contact-stopped { border-right: 4px solid #fd7e14 !important; }
         .wa-contact-badge { font-size: 0.65rem; padding: 2px 5px; border-radius: 4px; vertical-align: middle; }
         /* TASK 2: أزرار تحكم في header */
-        .wa-ctrl-bar { display: flex; gap: 6px; margin-inline-start: auto; }
-        .btn-ctrl { font-size: 0.75rem; padding: 3px 9px; border-radius: 6px; font-weight: 600; }
+        /* أزرار الحظر / وقف AI — لمسة عريضة للجوال */
+        .wa-ctrl-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-inline-start: auto; align-items: center; }
+        .btn-ctrl, .btn-wa-act {
+            font-size: 0.88rem;
+            font-weight: 700;
+            padding: 0.55rem 0.95rem;
+            min-height: 44px;
+            border-radius: 10px;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
         /* TASK 3: ردود AI */
         .wa-bubble-ai {
             background: #e3f2fd !important;
@@ -234,47 +255,61 @@
                 <div class="p-3 text-muted small" id="threadPlaceholder">جاري التحميل…</div>
             </div>
         </div>
-        <div class="col-md-8 p-0 d-flex flex-column" style="min-height: 76vh;">
-            <div class="wa-panel flex-grow-1" id="chatPanel">
-                <div class="wa-chat-header" id="chatHeader">
-                    <div class="wa-h-avatar" id="hdrAvatar">؟</div>
-                    <div class="wa-h-meta">
-                        <div class="fw-semibold" id="hdrName">—</div>
-                        <small id="hdrPhone">—</small>
+        <div class="col-12 col-md-8 wa-right-hint d-none d-md-flex flex-column align-items-center justify-content-center p-4">
+            <div class="text-center px-2" id="desktopChatHint">
+                <div class="fs-5 fw-bold text-secondary mb-2">اختر محادثة</div>
+                <p class="small text-muted mb-0">اضغط على أي عميل لفتح المحادثة في نافذة علوية. أزرار <strong>وقف الذكاء</strong> و<strong>حظر</strong> تمنع الوصول إلى الموديل لتوفير التوكنز.</p>
+            </div>
+        </div>
+    </div>
+    <p class="d-md-none small text-muted px-1 mt-2 mb-3">📱 اضغط على محادثة لفتحها في طبقة منبثقة فوق الشاشة.</p>
+</div>
+
+<div class="modal fade wa-chat-overlay" id="waChatModal" tabindex="-1" aria-labelledby="waChatModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-fullscreen-md-down modal-lg">
+        <div class="modal-content wa-modal-chat d-flex flex-column" style="min-height: 50vh; max-height: 96vh;">
+            <div class="modal-header wa-modal-chat__hdr">
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="إغلاق"></button>
+                <div class="d-flex align-items-center gap-2 flex-grow-1 flex-wrap px-2" style="min-width:0;">
+                    <span class="visually-hidden" id="waChatModalLabel">محادثة واتساب</span>
+                    <div class="wa-h-avatar flex-shrink-0" id="hdrAvatar">؟</div>
+                    <div class="wa-h-meta min-w-0 flex-grow-1" style="min-width:140px;">
+                        <div class="fw-semibold text-truncate" id="hdrName">—</div>
+                        <small class="text-muted d-block text-truncate" id="hdrPhone">—</small>
                     </div>
-                    <!-- TASK 2: أزرار تحكم العميل -->
-                    <div class="wa-ctrl-bar" id="contactCtrlBar">
-                        <button class="btn btn-outline-warning btn-ctrl" id="btnStopAI" title="إيقاف رد AI تلقائياً">⏸ AI</button>
-                        <button class="btn btn-outline-danger btn-ctrl" id="btnBan" title="حظر العميل">🚫 حظر</button>
+                    <div class="wa-ctrl-bar flex-shrink-0 w-100 justify-content-end">
+                        <button type="button" class="btn btn-outline-warning btn-ctrl btn-wa-act" id="btnStopAI" title="يوقف الرد الآلي الذكي لهذا الرقم">⏸ وقف الذكاء</button>
+                        <button type="button" class="btn btn-outline-danger btn-ctrl btn-wa-act" id="btnBan" title="حظر الرقم — رد آلياً دون الذكاء">🚫 حظر الرقم</button>
                     </div>
-                </div>
-                <div class="wa-chat-scroll" id="chatPane"></div>
-                <div class="composer">
-                    <form id="sendForm" class="row g-2 align-items-end">
-                        {% if csrf_token is defined %}
-                        <input type="hidden" name="csrf_token" id="csrfFld" value="{{ csrf_token() }}">
-                        {% endif %}
-                        <div class="col-12">
-                            <label class="form-label small mb-0" for="msgText">رسالة</label>
-                            <textarea class="form-control" id="msgText" name="text" rows="2" placeholder="اكتب الرد…"></textarea>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label small mb-0" for="imgIn">صورة (اختياري)</label>
-                            <input type="file" class="form-control form-control-sm" id="imgIn" name="image" accept="image/png,image/jpeg,image/gif,image/webp">
-                        </div>
-                        <div class="col-md-6 text-md-start">
-                            <button type="submit" class="btn btn-send w-100 mt-4" id="btnSend">إرسال</button>
-                        </div>
-                    </form>
-                    <div id="sendAlert" class="mt-2 small"></div>
                 </div>
             </div>
-            <div class="wa-chat-placeholder flex-grow-1" id="chatEmpty">
-                اختر محادثة من القائمة لعرض الرسائل.
+            <div class="modal-body flex-grow-1 d-flex flex-column p-0 wa-modal-chat__body-slot" style="overflow: hidden;">
+                <div class="wa-chat-scroll flex-grow-1" id="chatPane"></div>
+            </div>
+            <div class="modal-footer flex-column align-items-stretch composer rounded-0 border-top">
+                <form id="sendForm" class="row g-2 align-items-end w-100 m-0">
+                    {% if csrf_token is defined %}
+                    <input type="hidden" name="csrf_token" id="csrfFld" value="{{ csrf_token() }}">
+                    {% endif %}
+                    <div class="col-12">
+                        <label class="form-label small mb-0" for="msgText">رسالة</label>
+                        <textarea class="form-control" id="msgText" name="text" rows="2" placeholder="اكتب الرد…"></textarea>
+                    </div>
+                    <div class="col-12 col-sm-6">
+                        <label class="form-label small mb-0" for="imgIn">صورة (اختياري)</label>
+                        <input type="file" class="form-control form-control-sm" id="imgIn" name="image" accept="image/png,image/jpeg,image/gif,image/webp">
+                    </div>
+                    <div class="col-12 col-sm-6 text-sm-start">
+                        <button type="submit" class="btn btn-send w-100 btn-wa-act" id="btnSend">إرسال</button>
+                    </div>
+                </form>
+                <div id="sendAlert" class="mt-2 small w-100"></div>
             </div>
         </div>
     </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 (function(){
     const API_THREADS = {{ api_threads | tojson }};
@@ -286,9 +321,24 @@
     const API_CONTACT_CONTROL = _base + '/api/contact-control';
 
     const threadList = document.getElementById('threadList');
+    const waChatModalEl = document.getElementById('waChatModal');
+    let waBootstrapModalInst = null;
+    function getWaBootstrapModal() {
+        if (!waChatModalEl || typeof bootstrap === 'undefined') return null;
+        try {
+            if (!waBootstrapModalInst) {
+                waBootstrapModalInst = bootstrap.Modal.getOrCreateInstance(waChatModalEl, {
+                    backdrop: true,
+                    keyboard: true,
+                });
+            }
+            return waBootstrapModalInst;
+        } catch (e) {
+            return null;
+        }
+    }
+
     const chatPane = document.getElementById('chatPane');
-    const chatPanel = document.getElementById('chatPanel');
-    const chatEmpty = document.getElementById('chatEmpty');
     const hdrName = document.getElementById('hdrName');
     const hdrPhone = document.getElementById('hdrPhone');
     const hdrAvatar = document.getElementById('hdrAvatar');
@@ -381,11 +431,12 @@
         if (!btnStopAI || !btnBan) return;
         const stopped = status && status.ai_stopped;
         const banned = status && status.banned;
-        btnStopAI.textContent = stopped ? '▶ استئناف AI' : '⏸ وقف AI';
-        btnStopAI.className = 'btn btn-ctrl ' + (stopped ? 'btn-warning' : 'btn-outline-warning');
-        btnStopAI.title = stopped ? 'استئناف الرد التلقائي' : 'إيقاف رد AI تلقائياً';
-        btnBan.textContent = banned ? '✅ رفع الحظر' : '🚫 حظر';
-        btnBan.className = 'btn btn-ctrl ' + (banned ? 'btn-danger' : 'btn-outline-danger');
+        btnStopAI.textContent = stopped ? '▶ استئناف الذكاء' : '⏸ وقف الذكاء';
+        btnStopAI.className = 'btn btn-ctrl btn-wa-act ' + (stopped ? 'btn-warning' : 'btn-outline-warning');
+        btnStopAI.title = stopped ? 'استئناف الرد التلقائي الذكي' : 'إيقاف رد الذكاء التلقائي لهذا الرقم';
+        btnBan.textContent = banned ? '✅ إلغاء الحظر' : '🚫 حظر الرقم';
+        btnBan.className = 'btn btn-ctrl btn-wa-act ' + (banned ? 'btn-danger' : 'btn-outline-danger');
+        btnBan.title = banned ? 'إلغاء الحظر' : 'حظر الرقم — بدون ذكاء (توفير توكنز)';
     }
 
     async function loadContactStatus(contact) {
@@ -470,18 +521,25 @@
         if (contactStatusCache[contact]) {
             updateCtrlButtons(contactStatusCache[contact]);
         } else {
-            if (btnStopAI) { btnStopAI.textContent = '⏸ وقف AI'; btnStopAI.className = 'btn btn-ctrl btn-outline-warning'; }
-            if (btnBan) { btnBan.textContent = '🚫 حظر'; btnBan.className = 'btn btn-ctrl btn-outline-danger'; }
+            if (btnStopAI) {
+                btnStopAI.textContent = '⏸ وقف الذكاء';
+                btnStopAI.className = 'btn btn-outline-warning btn-ctrl btn-wa-act';
+            }
+            if (btnBan) {
+                btnBan.textContent = '🚫 حظر الرقم';
+                btnBan.className = 'btn btn-outline-danger btn-ctrl btn-wa-act';
+            }
         }
     }
 
     function showChatPanel(show) {
+        const m = getWaBootstrapModal();
         if (show) {
-            chatPanel.classList.add('is-open');
-            chatEmpty.style.display = 'none';
-        } else {
-            chatPanel.classList.remove('is-open');
-            chatEmpty.style.display = '';
+            if (m) {
+                m.show();
+            }
+        } else if (m) {
+            m.hide();
         }
     }
 
@@ -565,11 +623,6 @@
                 showChatPanel(true);
                 loadMessages('top');
                 loadContactStatus(tel);
-                requestAnimationFrame(function() {
-                    try {
-                        chatPanel.scrollIntoView({ block: 'start', behavior: 'auto', inline: 'nearest' });
-                    } catch (e) {}
-                });
             });
             frag.appendChild(div);
         });

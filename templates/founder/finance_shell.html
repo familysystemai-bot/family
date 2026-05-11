@@ -34,7 +34,7 @@
                 <nav class="mm-fin-nav px-2 py-2">
                     <a class="nav-link {% if mm_ep=='almanakh_finance.finance_dashboard' %}active{% endif %}" href="{{ url_for('almanakh_finance.finance_dashboard') }}">📊 لوحة التحكم</a>
                     <a class="nav-link {% if mm_ep=='almanakh_finance.finance_hub' %}active{% endif %}" href="{{ url_for('almanakh_finance.finance_hub') }}">🔗 مركز التكامل</a>
-                    <a class="nav-link" href="{{ url_for('almanakh_finance.finance_gate') }}">🔐 بوابة الرمز</a>
+                    <a class="nav-link" href="{{ url_for('finance_reports_gate') }}">🔐 بوابة الرمز</a>
                     <hr class="border-secondary-subtle opacity-25 my-2">
                     <a class="nav-link" href="{{ url_for('founder_dashboard') }}">↩ الواجهة العامة</a>
                     <a class="nav-link text-warning" href="{{ url_for('almanakh_finance.finance_leave') }}">⌁ مغادرة الخزنة</a>
