@@ -260,6 +260,28 @@ LLM_FIELDS = {
         {"key": "GEMINI_API_KEY", "label": "API Key", "type": "password",
          "help": "من aistudio.google.com → Get API key"},
     ],
+    "mistral": [
+        {"key": "MISTRAL_API_KEY", "label": "API Key", "type": "password",
+         "help": "من console.mistral.ai → API keys"},
+    ],
+    "groq": [
+        {"key": "GROQ_API_KEY", "label": "API Key", "type": "password",
+         "help": "من console.groq.com → API keys (سريع جداً مجاناً)"},
+    ],
+    "openrouter": [
+        {"key": "OPENROUTER_API_KEY", "label": "API Key", "type": "password",
+         "help": "من openrouter.ai/keys — يفتح آلاف النماذج بمفتاح واحد"},
+    ],
+    "cohere": [
+        {"key": "COHERE_API_KEY", "label": "API Key", "type": "password",
+         "help": "من dashboard.cohere.com → API keys"},
+    ],
+    "manus": [
+        {"key": "MANUS_API_KEY", "label": "API Key", "type": "password",
+         "help": "مفتاح Manus AI (واجهة متوافقة OpenAI)"},
+        {"key": "MANUS_BASE_URL", "label": "Base URL (اختياري)", "type": "text",
+         "help": "اتركه فارغًا لاستخدام النقطة الافتراضية https://api.manus.im/v1"},
+    ],
 }
 
 

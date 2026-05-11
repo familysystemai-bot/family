@@ -1,73 +1,316 @@
 {% extends "founder/finance_shell.html" %}
-{% block mm_title %}لوحة التحكم المالية{% endblock %}
+{% block mm_title %}لوحة التحكم المالية — مجمع العائلة{% endblock %}
 {% block mm_extra_head %}
 <meta name="mm-fin-ai-configured" content="{{ 1 if placeholders.has_ai else 0 }}">
+<style>
+/* — قص ذكي للقياس على الجوال — لا يطغى على dashboard-layout.css العام — */
+.mm-fin-page { max-width: 1280px; margin: 0 auto; }
+.mm-fin-welcome {
+    background: linear-gradient(120deg, rgba(15,81,50,0.92) 0%, rgba(26,107,74,0.92) 60%, rgba(201,162,39,0.85) 100%);
+    color: #fff;
+    border-radius: 18px;
+    padding: 1.1rem 1.25rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 12px 32px rgba(15,81,50,0.18);
+}
+.mm-fin-welcome h1 { font-size: clamp(1.05rem, 2.5vw, 1.45rem); margin: 0 0 .25rem 0; font-weight: 800; }
+.mm-fin-welcome p  { font-size: .92rem; margin: 0; opacity: .92; }
+.mm-fin-kpi-card {
+    background: #fff;
+    border-radius: 14px;
+    padding: .95rem 1rem;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.06);
+    border: 1px solid rgba(15,81,50,.08);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+}
+.mm-fin-kpi-card__lbl { font-size: .78rem; color: #5a6a5e; font-weight: 600; }
+.mm-fin-kpi-card__val { font-size: clamp(1.25rem, 3.5vw, 1.85rem); font-weight: 800; color: #0f5132; line-height: 1; }
+.mm-fin-kpi-card__hint { font-size: .73rem; color: #7a8780; }
+.mm-fin-kpi-card--accent { background: linear-gradient(140deg, #f7f0d8 0%, #fff 60%); border-color: rgba(201,162,39,.35); }
+.mm-fin-kpi-card--accent .mm-fin-kpi-card__val { color: #8a6a10; }
+.mm-fin-kpi-card--ok   { border-inline-start: 4px solid #198754; }
+.mm-fin-kpi-card--warn { border-inline-start: 4px solid #fd7e14; }
+.mm-fin-kpi-card--bad  { border-inline-start: 4px solid #dc3545; }
+.mm-fin-section { background: #fff; border-radius: 16px; padding: 1rem 1.1rem; box-shadow: 0 6px 20px rgba(0,0,0,0.06); margin-bottom: 1rem; }
+.mm-fin-section h2 { font-size: 1rem; font-weight: 800; color: #0f5132; margin: 0 0 .6rem 0; }
+.mm-fin-chart-shell { position: relative; min-height: 220px; }
+.mm-fin-mom-card {
+    background: linear-gradient(135deg, #fff 0%, #f5f1e3 100%);
+    border-radius: 14px; padding: 1rem;
+    border: 1px solid rgba(201,162,39,.25);
+    display: flex; flex-direction: column; gap: .5rem; height: 100%;
+}
+.mm-fin-mom-card .pct { font-size: 1.8rem; font-weight: 800; }
+.mm-fin-mom-card .pct.up   { color: #198754; }
+.mm-fin-mom-card .pct.down { color: #dc3545; }
+.mm-fin-mom-card .pct.flat { color: #0f5132; }
+.mm-fin-peak-pill {
+    background: #f5f5dc; color: #0f5132; border-radius: 10px;
+    padding: .55rem .75rem; font-size: .82rem; font-weight: 600;
+    border: 1px solid rgba(15,81,50,.12); margin-bottom: .35rem;
+    display: flex; justify-content: space-between; align-items: center; gap: .5rem;
+}
+.mm-fin-peak-pill__hr { color: #8a6a10; font-weight: 800; }
+.mm-fin-ai-bubble {
+    background: linear-gradient(160deg, #eaf5ef 0%, #fafaf0 100%);
+    border: 1px solid rgba(15,81,50,.15);
+    border-radius: 14px; padding: .9rem 1rem; font-size: .92rem; line-height: 1.7;
+    white-space: pre-wrap; color: #142a1d;
+}
+.mm-fin-rec-list { list-style: none; padding: 0; margin: 0; }
+.mm-fin-rec-list li {
+    background: #fff; border: 1px solid rgba(15,81,50,.1);
+    padding: .55rem .8rem; border-radius: 10px; margin-bottom: .4rem;
+    font-size: .9rem; color: #2a4a35;
+    border-inline-start: 3px solid #c9a227;
+}
+/* — Smart cards بدل الجداول الواسعة على الجوال — */
+.mm-fin-branch-grid { display: grid; gap: .65rem; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.mm-fin-branch-mini {
+    background: #fff; border-radius: 12px; padding: .75rem .85rem;
+    box-shadow: 0 4px 14px rgba(0,0,0,.05); border: 1px solid rgba(15,81,50,.08);
+    display: flex; flex-direction: column; gap: .25rem;
+}
+.mm-fin-branch-mini .nm { font-weight: 800; color: #0f5132; font-size: .95rem; }
+.mm-fin-branch-mini .vl { font-size: 1.15rem; font-weight: 800; color: #8a6a10; }
+.mm-fin-branch-mini .sm { font-size: .76rem; color: #6a7a70; }
+/* — قارئ المحادثة (مانوس) — تموضع منخفض على الجوال + لمسة عريضة — */
+.mm-fin-chat-btn {
+    position: fixed; inset-inline-end: 1rem; bottom: 1rem; z-index: 1080;
+    width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, #c9a227, #8a6a10);
+    color: #fff; font-size: 1.5rem; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 8px 24px rgba(138,106,16,.45); cursor: pointer; user-select: none;
+}
+.mm-fin-chat-panel {
+    position: fixed; inset-inline-end: 1rem; bottom: 5.25rem;
+    width: min(380px, calc(100vw - 1.5rem)); height: min(520px, 70vh);
+    background: #fff; border-radius: 16px; z-index: 1085;
+    box-shadow: 0 16px 36px rgba(0,0,0,.22);
+    border: 1px solid rgba(15,81,50,.15);
+    display: flex; flex-direction: column; overflow: hidden;
+}
+.mm-fin-chat-panel__hdr {
+    background: linear-gradient(135deg, #0f5132, #157a52); color: #fff;
+    padding: .65rem .9rem;
+}
+.mm-fin-chat-panel__msgs {
+    flex: 1; overflow-y: auto; padding: .8rem; background: #fafaf0;
+}
+.mm-fin-chat-panel__msgs .mb-user { background: #c9a227; color: #1a1508; padding: .5rem .75rem; border-radius: 12px 12px 0 12px; margin: .25rem 0 .5rem auto; max-width: 88%; }
+.mm-fin-chat-panel__msgs .mb-ai   { background: #fff; padding: .5rem .75rem; border-radius: 12px 12px 12px 0; margin: .25rem auto .5rem 0; max-width: 88%; border: 1px solid rgba(15,81,50,.12); }
+.mm-fin-chat-panel__foot { padding: .5rem; background: #fff; border-top: 1px solid rgba(0,0,0,.06); }
+@media (max-width: 480px) {
+    .mm-fin-chat-panel { inset-inline-end: .5rem; left: .5rem; width: auto; height: 65vh; }
+}
+</style>
 {% endblock %}
+
 {% block mm_main %}
 <div class="mm-fin-page px-2 px-md-3 pb-5">
-    <section class="mm-fin-kpi-strip row g-2 g-md-3 mb-3">
-        <div class="col-12 col-md-4">
-            <article class="mm-fin-kpi">
-                <span class="mm-fin-kpi__lbl">مبيعات اليوم (تقدير)</span>
-                <span class="mm-fin-kpi__val" id="mnKpiSales">{{ '{:,.0f}'.format(metrics.today_sales | float) }}</span>
-                <span class="mm-fin-kpi__hint">عملة المحلي — مصدر:&nbsp;<span id="mnKpiSrc">{{ metrics.mode }}</span></span>
+    <!-- ترحيب احترافي بالمسؤول -->
+    <section class="mm-fin-welcome" aria-label="ترحيب">
+        <h1>مرحباً بك في مركز التحليلات المالية — مجمع العائلة 📊</h1>
+        <p>لوحة قيادة لحظية للمبيعات، الفروع، الذروات، والاسترجاعات — مدعومة بمحلل ذكي يجيب على أي سؤال.</p>
+    </section>
+
+    <!-- KPIs ديناميكية -->
+    {% set _kpis = metrics.kpis or {} %}
+    {% set _ret  = metrics.returns_signal or {} %}
+    {% set _mom  = metrics.mom_comparison or {} %}
+    {% set _ret_ratio = (_ret.return_ratio_pct or 0)|float %}
+    {% set _mom_pct = (_mom.pct_change or 0)|float %}
+    <section class="row g-2 g-md-3 mb-3" aria-label="مؤشرات الأداء">
+        <div class="col-6 col-lg-3">
+            <article class="mm-fin-kpi-card mm-fin-kpi-card--accent">
+                <span class="mm-fin-kpi-card__lbl">مبيعات اليوم</span>
+                <span class="mm-fin-kpi-card__val" id="mnKpiSales">{{ '{:,.0f}'.format(metrics.today_sales|float) }}</span>
+                <span class="mm-fin-kpi-card__hint">المصدر: <span id="mnKpiSrc">{{ metrics.mode }}</span></span>
             </article>
         </div>
-        <div class="col-6 col-md-4">
-            <article class="mm-fin-kpi mm-fin-kpi--accent">
-                <span class="mm-fin-kpi__lbl">العمليات / التفاعل</span>
-                <span class="mm-fin-kpi__val" id="mnKpiTx">{{ metrics.transaction_count }}</span>
+        <div class="col-6 col-lg-3">
+            <article class="mm-fin-kpi-card">
+                <span class="mm-fin-kpi-card__lbl">العمليات</span>
+                <span class="mm-fin-kpi-card__val" id="mnKpiTx">{{ metrics.transaction_count }}</span>
+                <span class="mm-fin-kpi-card__hint">عدد المعاملات اليوم</span>
             </article>
         </div>
-        <div class="col-6 col-md-4">
-            <article class="mm-fin-kpi">
-                <span class="mm-fin-kpi__lbl">هامش الربح (تقدير %)</span>
-                <span class="mm-fin-kpi__val" id="mnKpiMargin">{{ metrics.profit_margin_estimate_pct }}</span>
+        <div class="col-6 col-lg-3">
+            <article class="mm-fin-kpi-card mm-fin-kpi-card--ok">
+                <span class="mm-fin-kpi-card__lbl">الربح الإجمالي</span>
+                <span class="mm-fin-kpi-card__val" id="mnKpiGross">{{ '{:,.0f}'.format((_kpis.gross_profit or 0)|float) }}</span>
+                <span class="mm-fin-kpi-card__hint">هامش {{ metrics.profit_margin_estimate_pct }}%</span>
+            </article>
+        </div>
+        <div class="col-6 col-lg-3">
+            <article class="mm-fin-kpi-card mm-fin-kpi-card--warn">
+                <span class="mm-fin-kpi-card__lbl">المصاريف التشغيلية</span>
+                <span class="mm-fin-kpi-card__val" id="mnKpiOpex">{{ '{:,.0f}'.format((_kpis.operating_expenses or 0)|float) }}</span>
+                <span class="mm-fin-kpi-card__hint">تقدير 18%</span>
+            </article>
+        </div>
+        <div class="col-6 col-lg-3">
+            <article class="mm-fin-kpi-card mm-fin-kpi-card--ok">
+                <span class="mm-fin-kpi-card__lbl">صافي الربح</span>
+                <span class="mm-fin-kpi-card__val" id="mnKpiNet">{{ '{:,.0f}'.format((_kpis.net_margin_value or 0)|float) }}</span>
+                <span class="mm-fin-kpi-card__hint">صافي الهامش {{ _kpis.net_margin_pct or 0 }}%</span>
+            </article>
+        </div>
+        <div class="col-6 col-lg-3">
+            <article class="mm-fin-kpi-card">
+                <span class="mm-fin-kpi-card__lbl">متوسط الفاتورة</span>
+                <span class="mm-fin-kpi-card__val" id="mnKpiTicket">{{ '{:,.0f}'.format((_kpis.avg_ticket or 0)|float) }}</span>
+                <span class="mm-fin-kpi-card__hint">قيمة العملية الواحدة</span>
+            </article>
+        </div>
+        <div class="col-6 col-lg-3">
+            <article class="mm-fin-kpi-card {% if _ret_ratio >= 7 %}mm-fin-kpi-card--bad{% elif _ret_ratio >= 3 %}mm-fin-kpi-card--warn{% else %}mm-fin-kpi-card--ok{% endif %}">
+                <span class="mm-fin-kpi-card__lbl">نسبة الاسترجاع</span>
+                <span class="mm-fin-kpi-card__val">{{ _ret_ratio }}%</span>
+                <span class="mm-fin-kpi-card__hint">{{ _ret.return_requests or 0 }} طلب</span>
+            </article>
+        </div>
+        <div class="col-6 col-lg-3">
+            <article class="mm-fin-kpi-card {% if _mom_pct >= 0 %}mm-fin-kpi-card--ok{% else %}mm-fin-kpi-card--bad{% endif %}">
+                <span class="mm-fin-kpi-card__lbl">مقارنة الشهر</span>
+                <span class="mm-fin-kpi-card__val">{{ _mom_pct }}%</span>
+                <span class="mm-fin-kpi-card__hint">{{ _mom.current_month_label or '—' }} مقابل {{ _mom.previous_month_label or '—' }}</span>
             </article>
         </div>
     </section>
 
-    <div class="row g-3">
-        <div class="col-12">
-            <div class="mm-fin-card-chart">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h2 class="mm-fin-section-title mb-0">مبيعات مُقدَّرة مقابل استفسارات العملاء</h2>
-                    <span class="small mm-fin-muted" id="mnChartLazyTag">Lazy…</span>
-                </div>
-                <div class="mm-fin-chart-shell">
-                    <canvas id="mnBranchChart" height="260" aria-label="Chart"></canvas>
-                </div>
-            </div>
-        </div>
+    <!-- المخطط البياني + مقارنة الشهر -->
+    <div class="row g-3 mb-3">
         <div class="col-12 col-xl-8">
-            <div class="mm-fin-manukh">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h2 class="mm-fin-section-title mb-0">صندوق مانوس للرؤى</h2>
-                    <button type="button" class="btn btn-sm mm-fin-btn-outline" id="mnRefreshInsights">تحديث</button>
+            <div class="mm-fin-section">
+                <h2>📈 المبيعات المُقدَّرة مقابل الاستفسارات</h2>
+                <div class="mm-fin-chart-shell">
+                    <canvas id="mnBranchChart" height="240" aria-label="Sales vs inquiries chart"></canvas>
                 </div>
-                <div id="mnInsightsBody" class="mm-fin-manukh__body small">جاري تحضير مانوس بحسب ضبط مفاتيح المحلل…</div>
             </div>
         </div>
         <div class="col-12 col-xl-4">
-            <div class="mm-fin-card-flat">
-                <h3 class="h6 text-info mb-2">إشارات المخزون (Lazy)</h3>
-                <div id="mnInventoryBody" class="small mm-fin-muted">—</div>
+            <div class="mm-fin-mom-card h-100">
+                <span class="mm-fin-kpi-card__lbl">مقارنة شهر-بشهر (MoM)</span>
+                {% if _mom %}
+                <span class="pct {% if _mom_pct > 0 %}up{% elif _mom_pct < 0 %}down{% else %}flat{% endif %}">
+                    {{ '{:+.1f}'.format(_mom_pct) }}%
+                </span>
+                <div class="small text-muted">
+                    {{ '{:,.0f}'.format((_mom.current_total or 0)|float) }} هذا الشهر مقابل
+                    {{ '{:,.0f}'.format((_mom.previous_total or 0)|float) }} الشهر السابق
+                </div>
+                <p class="mb-0 small">{{ _mom.verdict or '' }}</p>
+                {% else %}
+                <span class="text-muted small">لا توجد بيانات كافية بعد.</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- ساعات الذروة لكل فرع + الاسترجاع -->
+    <div class="row g-3 mb-3">
+        <div class="col-12 col-lg-7">
+            <div class="mm-fin-section">
+                <h2>⏰ ساعات الذروة في الفروع</h2>
+                {% if metrics.branch_peak_hours and metrics.branch_peak_hours|length > 0 %}
+                <div>
+                    {% for p in metrics.branch_peak_hours[:8] %}
+                    <div class="mm-fin-peak-pill">
+                        <span><strong>{{ p.branch_name }}</strong> · {{ p.total_interactions }} تفاعل</span>
+                        <span class="mm-fin-peak-pill__hr">{{ p.peak_hour_label }}</span>
+                    </div>
+                    <div class="small text-muted mb-2 px-1">↳ {{ p.advice }}</div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted small mb-0">لا توجد بيانات تفاعل بعد لتحديد ساعات الذروة.</p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="col-12 col-lg-5">
+            <div class="mm-fin-section">
+                <h2>♻️ تتبّع المرتجعات</h2>
+                {% if _ret %}
+                <div class="row g-2 mb-2">
+                    <div class="col-6">
+                        <div class="mm-fin-kpi-card">
+                            <span class="mm-fin-kpi-card__lbl">طلبات الاسترجاع</span>
+                            <span class="mm-fin-kpi-card__val">{{ _ret.return_requests or 0 }}</span>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="mm-fin-kpi-card">
+                            <span class="mm-fin-kpi-card__lbl">القيمة المُقدَّرة</span>
+                            <span class="mm-fin-kpi-card__val">{{ '{:,.0f}'.format((_ret.estimated_return_value or 0)|float) }}</span>
+                        </div>
+                    </div>
+                </div>
+                <p class="small text-muted mb-0">{{ _ret.verdict or '' }}</p>
+                {% else %}
+                <p class="text-muted small mb-0">لا توجد بيانات مرتجعات.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- تفصيل الفروع كبطاقات (Smart Cards) -->
+    <div class="mm-fin-section mb-3">
+        <h2>🏬 أداء الفروع</h2>
+        {% if metrics.branches_breakdown %}
+        <div class="mm-fin-branch-grid">
+            {% for b in metrics.branches_breakdown %}
+            <article class="mm-fin-branch-mini">
+                <span class="nm">{{ b.branch_name }}</span>
+                <span class="vl">{{ '{:,.0f}'.format(b.estimated_sales_month | float) }}</span>
+                <span class="sm">📩 {{ b.inquiry_total }} استفسار · ⏳ {{ b.inquiries_pending }} معلق</span>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted small mb-0">لا توجد بيانات فروع بعد.</p>
+        {% endif %}
+    </div>
+
+    <!-- التوصيات الذكية + رؤى مانوس -->
+    <div class="row g-3">
+        <div class="col-12 col-xl-7">
+            <div class="mm-fin-section">
+                <h2>🧠 صندوق رؤى مانوس</h2>
+                <div id="mnInsightsBody" class="mm-fin-ai-bubble">جاري تحضير مانوس بحسب ضبط مفاتيح المحلل…</div>
+                <button type="button" class="btn btn-sm btn-outline-success mt-2" id="mnRefreshInsights">🔄 تحديث الرؤى</button>
+            </div>
+        </div>
+        <div class="col-12 col-xl-5">
+            <div class="mm-fin-section">
+                <h2>💡 توصيات سريعة</h2>
+                {% if metrics.recommendations %}
+                <ul class="mm-fin-rec-list">
+                    {% for r in metrics.recommendations %}
+                    <li>{{ r }}</li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted small mb-0">لا توصيات قابلة للعرض حالياً.</p>
+                {% endif %}
             </div>
         </div>
     </div>
 </div>
 
-<!-- مانوس المحادثة -->
-<div id="mnChatLauncher" class="mm-fin-chat-btn" aria-label="فتح محادثة مانوس" role="button" tabindex="0">💠</div>
-<div id="mnChatPanel" class="mm-fin-chat-panel d-none">
+<!-- زر محادثة مانوس -->
+<div id="mnChatLauncher" class="mm-fin-chat-btn" aria-label="فتح محادثة مانوس" role="button" tabindex="0">💬</div>
+<div id="mnChatPanel" class="mm-fin-chat-panel d-none" aria-label="مساعد مانوس المالي">
     <div class="mm-fin-chat-panel__hdr d-flex justify-content-between align-items-center">
         <span class="fw-bold">مانوس — محللك المالي</span>
-        <button type="button" class="btn btn-sm btn-link text-white-50 text-decoration-none" id="mnChatClose">×</button>
+        <button type="button" class="btn btn-sm btn-link text-white-50 text-decoration-none p-0" id="mnChatClose">✕</button>
     </div>
     <div id="mnChatMsgs" class="mm-fin-chat-panel__msgs small"></div>
-    <div class="mm-fin-chat-panel__foot p-2">
-        <textarea id="mnChatInput" rows="2" class="form-control mb-2 mm-fin-input" placeholder="مثلاً: لماذا انخفضت مبيعات فرع معيّن؟"></textarea>
-        <button type="button" class="btn mm-fin-btn-gold btn-sm w-100" id="mnChatSend">إرسال</button>
+    <div class="mm-fin-chat-panel__foot">
+        <textarea id="mnChatInput" rows="2" class="form-control mb-2" placeholder="اسأل: أيُّ فرع أعلى مبيعاً؟ متى ذروة جدة؟ نسبة الاسترجاع؟"></textarea>
+        <button type="button" class="btn btn-success btn-sm w-100" id="mnChatSend">إرسال</button>
     </div>
 </div>
 {% endblock %}
@@ -75,12 +318,12 @@
 {% block mm_bottom_scripts %}
 <script>
 window.MM_FIN_ENDPOINTS = {
-    metricsJson: "{{ url_for('almanakh_finance.api_metrics') }}",
-    insightsJson: "{{ url_for('almanakh_finance.api_insights') }}",
+    metricsJson:   "{{ url_for('almanakh_finance.api_metrics') }}",
+    insightsJson:  "{{ url_for('almanakh_finance.api_insights') }}",
     inventoryJson: "{{ url_for('almanakh_finance.api_inventory_snippet_lazy') }}",
-    chatJson: "{{ url_for('almanakh_finance.api_finance_chat') }}"
+    chatJson:      "{{ url_for('almanakh_finance.api_finance_chat') }}"
 };
-window.MM_FIN_SSR_BRANCHES = {{ (metrics.branches_breakdown | default([])) | tojson }};
+window.MM_FIN_SSR_METRICS = {{ metrics | tojson }};
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
 <script src="{{ url_for('static', filename='js/almanakh-finance.js') }}" defer></script>

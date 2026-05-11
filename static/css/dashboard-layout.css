@@ -255,7 +255,11 @@ body.fd-dashboard .dash-menu-btn:focus-visible {
     border: none !important;
   }
 
-  /* طبقة التعتيم: تحت الشريط وتحت زر القائمة — لا تغطي الزر */
+  /*
+   * طبقة التعتيم — مرئيّة فقط حين تكون .active
+   * مهم: pointer-events: none عندما تكون غير نشطة، لمنع اعتراض اللمس
+   * (حتى لو تركها CSS قديم بـ display:block لسبب ما).
+   */
   .dash-layout .dash-backdrop.sidebar-overlay,
   .dash-layout .sidebar-overlay {
     display: none;
@@ -276,11 +280,16 @@ body.fd-dashboard .dash-menu-btn:focus-visible {
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
     touch-action: none;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.18s ease;
   }
 
   .dash-layout .sidebar-overlay.active,
   .dash-layout .dash-backdrop.sidebar-overlay.active {
     display: block;
+    pointer-events: auto;
+    opacity: 1;
   }
 
   /* الشريط الجانبي — فوق التعتيم وتحت زر القائمة؛ inset منطقي لـ RTL/LTR */

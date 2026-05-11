@@ -1,98 +1,118 @@
 /**
- * المركز المالي — تحديث KPI، رسم بياني تأجيل، رؤى، مخزون، شات مانوس.
+ * المركز المالي — مجمع العائلة
+ * --------------------------------------------------
+ * يقرأ السياق المالي الكامل من السيرفر (SSR) ثم يحدّثه بنداءات JSON.
+ * يرسم Chart.js للمبيعات والاستفسارات، ويدير محادثة "مانوس".
  */
 (function () {
-  const E = typeof window.MM_FIN_ENDPOINTS !== "undefined" ? window.MM_FIN_ENDPOINTS : {};
+  const E = (typeof window.MM_FIN_ENDPOINTS !== "undefined") ? window.MM_FIN_ENDPOINTS : {};
+  const SSR = (typeof window.MM_FIN_SSR_METRICS !== "undefined") ? window.MM_FIN_SSR_METRICS : {};
   let branchChartInstance = null;
 
-  function nf(n) {
+  // ── أدوات تنسيق ──
+  function nf(n, opts) {
     try {
-      return new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 0 }).format(Number(n || 0));
+      return new Intl.NumberFormat("ar-SA", Object.assign({ maximumFractionDigits: 0 }, opts || {})).format(Number(n || 0));
     } catch (e) {
       return String(n);
     }
   }
 
-  function branchRowsFromPayload(m) {
-    const bb = (m && m.branches_breakdown) || [];
-    if (bb.length) return bb;
-    return Array.isArray(window.MM_FIN_SSR_BRANCHES) ? window.MM_FIN_SSR_BRANCHES : [];
+  function setText(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
   }
 
-  function applyMetrics(m) {
+  // ── KPIs ──
+  function applyKpis(m) {
     if (!m) return;
-    const elSales = document.getElementById("mnKpiSales");
-    const elTx = document.getElementById("mnKpiTx");
-    const elMargin = document.getElementById("mnKpiMargin");
-    const elSrc = document.getElementById("mnKpiSrc");
-    if (elSales) elSales.textContent = nf(m.today_sales);
-    if (elTx) elTx.textContent = nf(m.transaction_count);
-    if (elMargin) elMargin.textContent = String(m.profit_margin_estimate_pct ?? "") + "%";
-    if (elSrc) elSrc.textContent = m.mode === "remote" ? "Amazon API" : m.mode === "internal_fallback" ? "داخلية" : String(m.mode || "—");
-
-    renderBranchChart(branchRowsFromPayload(m));
-    const lazyTag = document.getElementById("mnChartLazyTag");
-    if (lazyTag) lazyTag.textContent = "محدَّث";
+    setText("mnKpiSales", nf(m.today_sales));
+    setText("mnKpiTx", nf(m.transaction_count));
+    setText("mnKpiSrc", m.mode === "remote" ? "ERP / API" : m.mode === "internal_fallback" ? "تقدير داخلي" : String(m.mode || "—"));
+    const k = m.kpis || {};
+    setText("mnKpiGross", nf(k.gross_profit));
+    setText("mnKpiOpex", nf(k.operating_expenses));
+    setText("mnKpiNet", nf(k.net_margin_value));
+    setText("mnKpiTicket", nf(k.avg_ticket));
   }
 
+  // ── Chart.js: مبيعات vs استفسارات لكل فرع ──
   function renderBranchChart(branchRows) {
     const canvas = document.getElementById("mnBranchChart");
     if (!canvas || typeof Chart === "undefined") return;
+    if (!Array.isArray(branchRows) || branchRows.length === 0) {
+      branchRows = [];
+    }
 
     const labels = branchRows.map((b) => b.branch_name || "?");
     const sales = branchRows.map((b) => Number(b.estimated_sales_month) || 0);
     const inquiries = branchRows.map((b) => Number(b.inquiry_total) || 0);
 
-    const data = {
-      labels,
-      datasets: [
-        {
-          label: "مبيعات (تقدير/شهر)",
-          data: sales,
-          borderColor: "#d4af37",
-          backgroundColor: "rgba(212, 175, 55, 0.28)",
-          borderWidth: 2,
-          tension: 0.25,
-          fill: false,
-        },
-        {
-          label: "استفسارات",
-          data: inquiries,
-          borderColor: "#38bdf8",
-          backgroundColor: "rgba(56, 189, 248, 0.22)",
-          borderWidth: 2,
-          tension: 0.25,
-          fill: false,
-        },
-      ],
-    };
-
     if (branchChartInstance) branchChartInstance.destroy();
 
     branchChartInstance = new Chart(canvas, {
-      type: "line",
-      data,
+      type: "bar",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "مبيعات (تقدير شهري)",
+            data: sales,
+            backgroundColor: "rgba(201, 162, 39, 0.78)",
+            borderColor: "#8a6a10",
+            borderWidth: 1,
+            yAxisID: "y",
+          },
+          {
+            label: "استفسارات العملاء",
+            data: inquiries,
+            backgroundColor: "rgba(15, 81, 50, 0.7)",
+            borderColor: "#0f5132",
+            borderWidth: 1,
+            yAxisID: "y1",
+            type: "line",
+            tension: 0.3,
+          },
+        ],
+      },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         interaction: { mode: "index", intersect: false },
-        plugins: { legend: { labels: { color: "#cfd7e8" } } },
+        plugins: {
+          legend: { position: "bottom", labels: { color: "#0f5132", boxWidth: 14 } },
+          tooltip: {
+            backgroundColor: "#0f5132",
+            titleColor: "#fff",
+            bodyColor: "#fafaf0",
+            cornerRadius: 8,
+          },
+        },
         scales: {
           x: {
-            ticks: { color: "#8b96ab", maxRotation: 45 },
-            grid: { color: "rgba(255,255,255,.06)" },
+            ticks: { color: "#3a3a3a", autoSkip: false, maxRotation: 35, minRotation: 0 },
+            grid: { color: "rgba(0,0,0,.05)" },
           },
           y: {
-            ticks: { color: "#8b96ab" },
-            grid: { color: "rgba(255,255,255,.06)" },
+            position: "right",
+            ticks: { color: "#8a6a10" },
+            grid: { color: "rgba(0,0,0,.05)" },
+            title: { display: true, text: "المبيعات", color: "#8a6a10" },
+          },
+          y1: {
+            position: "left",
+            ticks: { color: "#0f5132" },
+            grid: { display: false },
+            title: { display: true, text: "الاستفسارات", color: "#0f5132" },
           },
         },
       },
     });
   }
 
-  function fetchJson(url) {
-    return fetch(url, { credentials: "same-origin", headers: { Accept: "application/json" } }).then((r) => r.json());
+  // ── شبكة ──
+  function fetchJson(url, opts) {
+    return fetch(url, Object.assign({ credentials: "same-origin", headers: { Accept: "application/json" } }, opts || {})).then((r) => r.json());
   }
 
   function loadMetricsDeferred() {
@@ -100,7 +120,8 @@
     fetchJson(E.metricsJson)
       .then((j) => {
         if (!j.ok) return;
-        applyMetrics(j.metrics);
+        applyKpis(j.metrics);
+        renderBranchChart((j.metrics && j.metrics.branches_breakdown) || []);
       })
       .catch(() => {});
   }
@@ -111,47 +132,17 @@
     box.textContent = "جاري قراءة المقاييس ومانوس…";
     try {
       const j = await fetchJson(E.insightsJson);
-      if (!j.ok) box.textContent = j.error ? String(j.error) : "تعذّر جلب الرؤى.";
-      else box.textContent = j.text || "—";
+      if (!j.ok) {
+        box.textContent = j.error ? String(j.error) : "تعذّر جلب الرؤى.";
+      } else {
+        box.textContent = j.text || "—";
+      }
     } catch (_) {
       box.textContent = "خطأ شبكة أو انقطاع.";
     }
   }
 
-  function loadInventory() {
-    const el = document.getElementById("mnInventoryBody");
-    if (!el || !E.inventoryJson) return;
-    fetchJson(E.inventoryJson)
-      .then((j) => {
-        if (!j.ok) return;
-        const sig = j.inventory_signal || {};
-        const n = sig.products_registered;
-        el.innerHTML =
-          n != null ? `المنتجات المُسَجَّلة (مؤشر): <strong>${nf(n)}</strong>` : "—";
-      })
-      .catch(() => {});
-  }
-
-  /** Lazy: رسم ومقاييس عند ظهور البطاقة */
-  function whenVisible(el, fn) {
-    if (!el) return;
-    if (!("IntersectionObserver" in window)) {
-      fn();
-      return;
-    }
-    const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((en) => {
-          if (!en.isIntersecting) return;
-          io.disconnect();
-          fn();
-        });
-      },
-      { rootMargin: "80px", threshold: 0.05 }
-    );
-    io.observe(el);
-  }
-
+  // ── شات مانوس ──
   function setupChat() {
     const launcher = document.getElementById("mnChatLauncher");
     const panel = document.getElementById("mnChatPanel");
@@ -161,29 +152,42 @@
     const msgs = document.getElementById("mnChatMsgs");
     if (!launcher || !panel || !send || !inp || !msgs || !E.chatJson) return;
 
-    const toggle = () => panel.classList.toggle("d-none");
-    launcher.addEventListener("click", toggle);
-    if (close) close.addEventListener("click", toggle);
-    launcher.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter" || ev.key === " ") {
-        ev.preventDefault();
-        toggle();
+    function show(open) {
+      panel.classList.toggle("d-none", !open);
+      if (open) {
+        setTimeout(() => inp.focus(), 50);
       }
+    }
+    function toggle() { show(panel.classList.contains("d-none")); }
+
+    launcher.addEventListener("click", toggle);
+    launcher.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggle(); }
     });
+    if (close) close.addEventListener("click", () => show(false));
 
     function addMsg(text, isUser) {
       const div = document.createElement("div");
-      div.className = "mm-fin-msg" + (isUser ? " mm-fin-msg--user" : "");
+      div.className = isUser ? "mb-user" : "mb-ai";
       div.textContent = text;
       msgs.appendChild(div);
       msgs.scrollTop = msgs.scrollHeight;
     }
 
-    send.addEventListener("click", async () => {
-      const msg = inp.value.trim();
+    // ترحيب أولي
+    addMsg("مرحباً! اسألني عن أي رقم في اللوحة: مبيعات اليوم، الذروات، الفروع، المرتجعات، أو خطة لرفع الهامش.", false);
+
+    async function fire() {
+      const msg = (inp.value || "").trim();
       if (!msg) return;
       addMsg(msg, true);
       inp.value = "";
+      send.disabled = true;
+      const loading = document.createElement("div");
+      loading.className = "mb-ai";
+      loading.textContent = "… يفكّر مانوس";
+      msgs.appendChild(loading);
+      msgs.scrollTop = msgs.scrollHeight;
       try {
         const r = await fetch(E.chatJson, {
           method: "POST",
@@ -192,31 +196,53 @@
           body: JSON.stringify({ message: msg }),
         });
         const j = await r.json().catch(() => ({}));
+        loading.remove();
         if (!r.ok || !j.ok) addMsg(j.error || "تعذّر الرد.", false);
         else addMsg(j.reply || "—", false);
       } catch (_) {
+        loading.remove();
         addMsg("خطأ شبكة.", false);
+      } finally {
+        send.disabled = false;
       }
+    }
+
+    send.addEventListener("click", fire);
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); fire(); }
     });
   }
 
+  // ── Lazy renderer ──
+  function whenVisible(el, fn) {
+    if (!el) { fn(); return; }
+    if (!("IntersectionObserver" in window)) { fn(); return; }
+    const io = new IntersectionObserver(
+      (entries) => entries.forEach((en) => {
+        if (!en.isIntersecting) return;
+        io.disconnect();
+        fn();
+      }),
+      { rootMargin: "80px", threshold: 0.05 }
+    );
+    io.observe(el);
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
-    const chartWrap = document.querySelector(".mm-fin-card-chart") || document.getElementById("mnBranchChart");
-    whenVisible(chartWrap, function () {
-      loadMetricsDeferred();
-    });
+    // الرسم الأولي من SSR
+    applyKpis(SSR);
+    renderBranchChart((SSR && SSR.branches_breakdown) || []);
 
-    const insightsBox = document.querySelector(".mm-fin-manukh");
-    whenVisible(insightsBox, function () {
-      loadInsights();
-    });
+    // تأجيل الرؤى حتى ظهور القسم
+    whenVisible(document.getElementById("mnInsightsBody"), loadInsights);
 
-    whenVisible(document.getElementById("mnInventoryBody"), loadInventory);
+    // أزرار يدوية
+    const refresh = document.getElementById("mnRefreshInsights");
+    if (refresh) refresh.addEventListener("click", loadInsights);
 
-    document.getElementById("mnRefreshInsights")?.addEventListener("click", loadInsights);
-
-    const ssr = Array.isArray(window.MM_FIN_SSR_BRANCHES) ? window.MM_FIN_SSR_BRANCHES : [];
-    renderBranchChart(ssr);
+    // تحديث المقاييس كل 60 ثانية
+    setTimeout(loadMetricsDeferred, 800);
+    setInterval(loadMetricsDeferred, 60000);
 
     setupChat();
   });

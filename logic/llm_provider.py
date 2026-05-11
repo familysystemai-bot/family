@@ -1,32 +1,31 @@
 # -*- coding: utf-8 -*-
 """
-llm_provider — طبقة تجريد للمزوّدات (OpenAI / Anthropic / Gemini).
+llm_provider — طبقة تجريد موحّدة لمزوّدات الذكاء الاصطناعي.
 ==============================================================================
+المزوّدات المدعومة:
+    • OpenAI (GPT-4o, GPT-4.1, …)
+    • Anthropic (Claude)
+    • Google Gemini
+    • Mistral AI
+    • Groq (Llama / Mixtral سريع جداً)
+    • OpenRouter (آلاف النماذج عبر مفتاح واحد)
+    • Cohere (Command-R)
+    • Manus AI (واجهة متوافقة OpenAI)
 
-الغرض:
-    توفير واجهة موحّدة لجميع استدعاءات LLM بحيث:
-    - يمكن للمؤسس اختيار المزوّد ونموذجه من لوحة التحكم
-    - تكيّف الكود تلقائياً مع كل مزوّد
-    - تتبّع التكلفة (tokens) لكل مزوّد على حدة
-    - مرن للإضافة المستقبلية
+اختيار المزوّد من جدول system_settings:
+    ai_provider = "openai" | "anthropic" | "gemini" | "mistral" | ...
+    ai_model    = اسم النموذج (مثل "gpt-4o" أو "manus-pro")
 
-كيفية اختيار المزوّد:
-    من جدول system_settings:
-        ai_provider = "openai" | "anthropic" | "gemini"
-        ai_model    = "gpt-4o" | "claude-3-5-sonnet-20241022" | "gemini-1.5-flash"
-
-    أو من متغيرات البيئة (fallback):
-        AI_PROVIDER, AI_MODEL, OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY
-
-ملاحظة:
-    في الدفعة 5، المفاتيح تُقرأ من Secrets Vault بدل المتغيرات البيئية مباشرة.
-    حالياً نقرأها من os.environ كـ fallback.
+المفاتيح:
+    تُحفظ في system_settings باسم {PROVIDER}_API_KEY (مثل MISTRAL_API_KEY).
+    تُستخدم متغيرات البيئة كـ fallback تلقائي.
 
 الواجهة:
     chat(messages, max_tokens, temperature, json_mode) → ChatResult
     is_available(provider) → bool
-    get_active_provider() → "openai" | ... | None
+    get_active_provider() → str
     get_active_model() → str
+    list_supported_providers() → list[dict]
 """
 from __future__ import annotations
 
@@ -102,12 +101,37 @@ def _openai_api_key_candidates() -> List[str]:
     return out
 
 
+# المزوّدات المدعومة رسمياً — إذا أضفت مزوّداً جديداً، أضِف الـ adapter في dispatcher أدناه.
+SUPPORTED_PROVIDERS = (
+    "openai",
+    "anthropic",
+    "gemini",
+    "mistral",
+    "cohere",
+    "groq",
+    "openrouter",
+    "manus",
+)
+
+# الافتراضات لكل مزوّد (model name)
+_DEFAULT_MODELS: Dict[str, str] = {
+    "openai": "gpt-4o",
+    "anthropic": "claude-3-5-sonnet-20241022",
+    "gemini": "gemini-1.5-flash",
+    "mistral": "mistral-large-latest",
+    "cohere": "command-r-plus",
+    "groq": "llama-3.3-70b-versatile",
+    "openrouter": "openai/gpt-4o-mini",
+    "manus": "manus-pro",
+}
+
+
 def get_active_provider() -> str:
     """المزوّد المختار من لوحة التحكم. الافتراضي: openai."""
     val = _read_setting("ai_provider", "openai").lower().strip()
     if val == "ollama":
         return "openai"
-    if val in ("openai", "anthropic", "gemini"):
+    if val in SUPPORTED_PROVIDERS:
         return val
     return "openai"
 
@@ -117,13 +141,7 @@ def get_active_model() -> str:
     val = _read_setting("ai_model", "").strip()
     if val:
         return val
-    # افتراضات لكل مزوّد
-    defaults = {
-        "openai": "gpt-4o",
-        "anthropic": "claude-3-5-sonnet-20241022",
-        "gemini": "gemini-1.5-flash",
-    }
-    return defaults.get(get_active_provider(), "gpt-4o")
+    return _DEFAULT_MODELS.get(get_active_provider(), "gpt-4o")
 
 
 def _looks_like_openai_model(model: str) -> bool:
@@ -149,12 +167,8 @@ def _normalize_model_for_provider(provider: str, model: str) -> str:
     """
     p = (provider or "").lower().strip()
     m = (model or "").strip()
-    defaults = {
-        "openai": "gpt-4o",
-        "anthropic": "claude-3-5-sonnet-20241022",
-        "gemini": "gemini-1.5-flash",
-    }
-    d = defaults.get(p, "gpt-4o")
+    d = _DEFAULT_MODELS.get(p, "gpt-4o")
+    # Strict validators: openai/anthropic/gemini نعرف أنماط النماذج
     if p == "openai":
         if not m or not _looks_like_openai_model(m):
             if m and m != d:
@@ -185,6 +199,7 @@ def _normalize_model_for_provider(provider: str, model: str) -> str:
                 )
             return d
         return m
+    # المزوّدات الأخرى: لا نحاكم اسم النموذج — نحفظه كما هو إلا عند الفراغ.
     return m or d
 
 
@@ -195,7 +210,8 @@ def _resolve_provider_with_fallback(requested: str) -> str:
         p = "openai"
     if is_available(p):
         return p
-    order = ("openai", "anthropic", "gemini")
+    # Order: نجرّب المزوّدات الشائعة أولاً
+    order = ("openai", "anthropic", "gemini", "groq", "mistral", "openrouter", "cohere", "manus")
     for alt in order:
         if alt != p and is_available(alt):
             logger.warning(
@@ -212,6 +228,19 @@ def openai_api_key_candidates() -> List[str]:
     return _openai_api_key_candidates()
 
 
+# الأسماء البيئية / مفاتيح system_settings لكل مزوّد
+_PROVIDER_API_KEY_VAR: Dict[str, str] = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+    "mistral": "MISTRAL_API_KEY",
+    "cohere": "COHERE_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "manus": "MANUS_API_KEY",
+}
+
+
 def _get_api_key(provider: str) -> str:
     """
     مفتاح API للمزوّد. تُحفظ المفاتيح في لوحة التكاملات داخل system_settings
@@ -220,12 +249,7 @@ def _get_api_key(provider: str) -> str:
     OpenAI: الأولوية لمتغير البيئة OPENAI_API_KEY، ثم لوحة التحكم.
     باقي المزوّدات: قاعدة البيانات ثم البيئة (كما كان).
     """
-    keys_env = {
-        "openai": "OPENAI_API_KEY",
-        "anthropic": "ANTHROPIC_API_KEY",
-        "gemini": "GEMINI_API_KEY",
-    }
-    env_var = keys_env.get(provider, "")
+    env_var = _PROVIDER_API_KEY_VAR.get(provider, "")
     if not env_var:
         return ""
     if provider == "openai":
@@ -235,6 +259,25 @@ def _get_api_key(provider: str) -> str:
     if db_val:
         return db_val
     return (os.environ.get(env_var) or "").strip()
+
+
+# ─── مزوّدات إضافية متوافقة مع OpenAI Chat-Completions ──────────────
+#
+# Mistral / Groq / OpenRouter / Manus تستخدم جميعاً مخطّط OpenAI نفسه
+# (chat/completions JSON)؛ ما يختلف فقط هو Base URL.
+_OPENAI_COMPATIBLE_BASE_URL: Dict[str, str] = {
+    "mistral": "https://api.mistral.ai/v1",
+    "groq": "https://api.groq.com/openai/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    # Manus: واجهة متوافقة OpenAI — قابلة للتخصيص عبر MANUS_BASE_URL في system_settings
+    "manus": "",
+}
+
+
+def _manus_base_url() -> str:
+    """يسمح بتخصيص نقطة منس عبر إعداد MANUS_BASE_URL — وإلا يستخدم Default RestAPI."""
+    custom = _read_setting("MANUS_BASE_URL", "").strip().rstrip("/")
+    return custom or "https://api.manus.im/v1"
 
 
 def get_provider_api_key(provider: str) -> str:
@@ -274,6 +317,25 @@ def is_available(provider: Optional[str] = None) -> bool:
             return False
         try:
             import google.generativeai  # noqa: F401
+            return True
+        except ImportError:
+            return False
+
+    # المزوّدات المتوافقة مع OpenAI HTTP API — يكفي وجود requests + المفتاح.
+    if p in ("mistral", "groq", "openrouter", "manus"):
+        if not _get_api_key(p):
+            return False
+        try:
+            import requests  # noqa: F401
+            return True
+        except ImportError:
+            return False
+
+    if p == "cohere":
+        if not _get_api_key("cohere"):
+            return False
+        try:
+            import requests  # noqa: F401
             return True
         except ImportError:
             return False
@@ -492,6 +554,200 @@ def _chat_gemini(
         return ChatResult(success=False, error=str(e), provider="gemini", model=model)
 
 
+# ─── Adapter عام لمزوّدات OpenAI-Compatible (Mistral / Groq / OpenRouter / Manus) ──
+
+def _chat_openai_compatible(
+    *,
+    provider: str,
+    base_url: str,
+    api_key: str,
+    messages: List[Dict[str, str]],
+    model: str,
+    max_tokens: int,
+    temperature: float,
+    json_mode: bool,
+    extra_headers: Optional[Dict[str, str]] = None,
+) -> ChatResult:
+    """استدعاء أي مزوّد متوافق مع OpenAI chat-completions عبر HTTP."""
+    try:
+        import requests
+    except ImportError:
+        return ChatResult(
+            success=False,
+            error="requests library not installed",
+            provider=provider,
+            model=model,
+        )
+    if not api_key:
+        return ChatResult(
+            success=False,
+            error=f"{provider.upper()}_API_KEY missing",
+            provider=provider,
+            model=model,
+        )
+    url = (base_url or "").strip().rstrip("/") + "/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    if extra_headers:
+        headers.update(extra_headers)
+    body: Dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+    if json_mode:
+        body["response_format"] = {"type": "json_object"}
+    try:
+        r = requests.post(url, headers=headers, json=body, timeout=120)
+        if r.status_code != 200:
+            return ChatResult(
+                success=False,
+                error=(r.text or "")[:380],
+                provider=provider,
+                model=model,
+            )
+        data = r.json()
+        choices = data.get("choices") or [{}]
+        msg = (choices[0].get("message") or {}).get("content") or ""
+        usage = data.get("usage") or {}
+        pt = int(usage.get("prompt_tokens") or 0)
+        ct = int(usage.get("completion_tokens") or 0)
+        return ChatResult(
+            text=str(msg).strip(),
+            raw_response=data,
+            tokens_used=int(usage.get("total_tokens") or (pt + ct)),
+            prompt_tokens=pt,
+            completion_tokens=ct,
+            provider=provider,
+            model=model,
+            success=True,
+        )
+    except Exception as e:
+        logger.exception("%s call failed", provider)
+        return ChatResult(success=False, error=str(e)[:380], provider=provider, model=model)
+
+
+def _chat_mistral(messages, model, max_tokens, temperature, json_mode):
+    return _chat_openai_compatible(
+        provider="mistral",
+        base_url=_OPENAI_COMPATIBLE_BASE_URL["mistral"],
+        api_key=_get_api_key("mistral"),
+        messages=messages,
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        json_mode=json_mode,
+    )
+
+
+def _chat_groq(messages, model, max_tokens, temperature, json_mode):
+    return _chat_openai_compatible(
+        provider="groq",
+        base_url=_OPENAI_COMPATIBLE_BASE_URL["groq"],
+        api_key=_get_api_key("groq"),
+        messages=messages,
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        json_mode=json_mode,
+    )
+
+
+def _chat_openrouter(messages, model, max_tokens, temperature, json_mode):
+    extras = {
+        # تعريف اختياري لتطبيقك في لوحة OpenRouter
+        "HTTP-Referer": _read_setting("PUBLIC_BASE_URL", "https://family-mall.com"),
+        "X-Title": "Family-Mall AI Console",
+    }
+    return _chat_openai_compatible(
+        provider="openrouter",
+        base_url=_OPENAI_COMPATIBLE_BASE_URL["openrouter"],
+        api_key=_get_api_key("openrouter"),
+        messages=messages,
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        json_mode=json_mode,
+        extra_headers=extras,
+    )
+
+
+def _chat_manus(messages, model, max_tokens, temperature, json_mode):
+    return _chat_openai_compatible(
+        provider="manus",
+        base_url=_manus_base_url(),
+        api_key=_get_api_key("manus"),
+        messages=messages,
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        json_mode=json_mode,
+    )
+
+
+def _chat_cohere(messages, model, max_tokens, temperature, json_mode):
+    """Cohere v2 chat — مختلف عن OpenAI لكنه قريب."""
+    try:
+        import requests
+    except ImportError:
+        return ChatResult(success=False, error="requests not installed", provider="cohere", model=model)
+    key = _get_api_key("cohere")
+    if not key:
+        return ChatResult(success=False, error="COHERE_API_KEY missing", provider="cohere", model=model)
+    # Cohere chat v2 endpoint
+    url = "https://api.cohere.com/v2/chat"
+    # تحويل messages → نفس الصيغة المتوقّعة من Cohere
+    cohere_msgs = []
+    for m in messages:
+        role = m.get("role", "user")
+        if role == "system":
+            cohere_msgs.append({"role": "system", "content": m.get("content", "")})
+        elif role == "assistant":
+            cohere_msgs.append({"role": "assistant", "content": m.get("content", "")})
+        else:
+            cohere_msgs.append({"role": "user", "content": m.get("content", "")})
+    body = {
+        "model": model,
+        "messages": cohere_msgs,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+    if json_mode:
+        body["response_format"] = {"type": "json_object"}
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+    }
+    try:
+        r = requests.post(url, headers=headers, json=body, timeout=120)
+        if r.status_code != 200:
+            return ChatResult(success=False, error=(r.text or "")[:380], provider="cohere", model=model)
+        data = r.json()
+        # Cohere response: {message: {content: [{text: ...}]}}
+        msg_obj = data.get("message") or {}
+        parts = msg_obj.get("content") or []
+        text = "".join(p.get("text", "") for p in parts if isinstance(p, dict))
+        usage = (data.get("usage") or {}).get("tokens") or {}
+        pt = int(usage.get("input_tokens") or 0)
+        ct = int(usage.get("output_tokens") or 0)
+        return ChatResult(
+            text=text.strip(),
+            raw_response=data,
+            tokens_used=pt + ct,
+            prompt_tokens=pt,
+            completion_tokens=ct,
+            provider="cohere",
+            model=model,
+            success=True,
+        )
+    except Exception as e:
+        logger.exception("Cohere call failed")
+        return ChatResult(success=False, error=str(e)[:380], provider="cohere", model=model)
+
+
 # ─── الواجهة الرئيسية ─────────────────────────────────────────────────
 
 def chat(
@@ -529,6 +785,11 @@ def chat(
         "openai": _chat_openai,
         "anthropic": _chat_anthropic,
         "gemini": _chat_gemini,
+        "mistral": _chat_mistral,
+        "groq": _chat_groq,
+        "openrouter": _chat_openrouter,
+        "manus": _chat_manus,
+        "cohere": _chat_cohere,
     }.get(p)
     if fn is None:
         return ChatResult(success=False, error=f"unknown provider: {p}", provider=p, model=m)
@@ -556,20 +817,21 @@ def chat(
 def list_supported_providers() -> List[Dict[str, Any]]:
     """
     للوحة المؤسس: قائمة المزوّدات وحالة توفر كل واحد.
+    تُستخدم لعرض الحالة في صفحة التكاملات (Integrations / LLM).
     """
     return [
         {
             "id": "openai",
             "name": "OpenAI (GPT)",
             "available": is_available("openai"),
-            "default_model": "gpt-4o",
+            "default_model": _DEFAULT_MODELS["openai"],
             "models": ["gpt-4o", "gpt-4.1", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
         },
         {
             "id": "anthropic",
             "name": "Anthropic (Claude)",
             "available": is_available("anthropic"),
-            "default_model": "claude-3-5-sonnet-20241022",
+            "default_model": _DEFAULT_MODELS["anthropic"],
             "models": [
                 "claude-opus-4-5",
                 "claude-sonnet-4-5",
@@ -581,7 +843,66 @@ def list_supported_providers() -> List[Dict[str, Any]]:
             "id": "gemini",
             "name": "Google Gemini",
             "available": is_available("gemini"),
-            "default_model": "gemini-1.5-flash",
-            "models": ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash-exp"],
+            "default_model": _DEFAULT_MODELS["gemini"],
+            "models": [
+                "gemini-1.5-pro",
+                "gemini-1.5-flash",
+                "gemini-2.0-flash-exp",
+                "gemini-2.5-flash",
+                "gemini-2.5-pro",
+            ],
+        },
+        {
+            "id": "mistral",
+            "name": "Mistral AI",
+            "available": is_available("mistral"),
+            "default_model": _DEFAULT_MODELS["mistral"],
+            "models": [
+                "mistral-large-latest",
+                "mistral-medium-latest",
+                "mistral-small-latest",
+                "open-mistral-nemo",
+            ],
+        },
+        {
+            "id": "groq",
+            "name": "Groq (Llama / Mixtral)",
+            "available": is_available("groq"),
+            "default_model": _DEFAULT_MODELS["groq"],
+            "models": [
+                "llama-3.3-70b-versatile",
+                "llama-3.1-70b-versatile",
+                "llama-3.1-8b-instant",
+                "mixtral-8x7b-32768",
+                "gemma2-9b-it",
+            ],
+        },
+        {
+            "id": "openrouter",
+            "name": "OpenRouter (Multi-Model)",
+            "available": is_available("openrouter"),
+            "default_model": _DEFAULT_MODELS["openrouter"],
+            "models": [
+                "openai/gpt-4o-mini",
+                "openai/gpt-4o",
+                "anthropic/claude-3.5-sonnet",
+                "google/gemini-pro-1.5",
+                "meta-llama/llama-3.3-70b-instruct",
+                "qwen/qwen-2.5-72b-instruct",
+            ],
+        },
+        {
+            "id": "cohere",
+            "name": "Cohere (Command-R)",
+            "available": is_available("cohere"),
+            "default_model": _DEFAULT_MODELS["cohere"],
+            "models": ["command-r-plus", "command-r", "command-r-08-2024"],
+        },
+        {
+            "id": "manus",
+            "name": "Manus AI",
+            "available": is_available("manus"),
+            "default_model": _DEFAULT_MODELS["manus"],
+            "models": ["manus-pro", "manus-lite", "manus-coder"],
         },
     ]

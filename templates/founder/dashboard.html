@@ -2,11 +2,11 @@
 {% block title %}الرئيسية — لوحة تحكم النظام{% endblock %}
 
 {% block fd_top_header %}
-<header class="fd-dash-hero" aria-label="هوية العلامة — العائلة">
+<header class="fd-dash-hero" aria-label="هوية العلامة — مجمع العائلة">
     {% if founder_logo_url %}
-    <img src="{{ founder_logo_url }}" class="fd-dash-hero__site-img" alt="شعار العائلة" decoding="async" onerror="this.classList.add('site-logo-hidden');">
+    <img src="{{ founder_logo_url }}" class="fd-dash-hero__site-img" alt="شعار مجمع العائلة" decoding="async" onerror="this.classList.add('site-logo-hidden');">
     {% endif %}
-    <h1 class="fd-dash-hero__name">العائلة</h1>
+    <h1 class="fd-dash-hero__name">مجمع العائلة</h1>
 </header>
 {% endblock %}
 {% block content %}
@@ -335,7 +335,7 @@
             <p class="fd-identity-glass__hint">واجهة العملاء، لوحة الفرع، لوحة الإدارة، والحملات — ملف واحد: <code class="text-success">uploads/logo.png</code></p>
             <div class="fd-identity-preview" data-label="معاينة الشعار العام">
                 {% if logo_url %}
-                <img src="{{ logo_url }}?v={{ site_logo_cache_bust }}" alt="شعار العائلة — الواجهة العامة" class="fd-identity-preview__img">
+                <img src="{{ logo_url }}?v={{ site_logo_cache_bust }}" alt="شعار مجمع العائلة — الواجهة العامة" class="fd-identity-preview__img">
                 {% else %}
                 <div class="fd-identity-preview__empty">
                     <span>لا يوجد شعار مرفوع — ارفع شعاراً من النموذج أدناه.</span>
@@ -360,7 +360,7 @@
             <p class="fd-identity-glass__hint">يظهر في الشريط الجانبي، ترويسة الصفحات، وبطاقة الترحيب فقط — ملف: <code class="text-success">uploads/founder_logo.png</code></p>
             <div class="fd-identity-preview" data-label="معاينة شعار لوحة النظام">
                 {% if founder_logo_url %}
-                <img src="{{ founder_logo_url }}" alt="شعار العائلة — لوحة النظام" class="fd-identity-preview__img">
+                <img src="{{ founder_logo_url }}" alt="شعار مجمع العائلة — لوحة النظام" class="fd-identity-preview__img">
                 {% else %}
                 <div class="fd-identity-preview__empty">
                     <span>لا يوجد شعار لهذه اللوحة — ارفع شعاراً من النموذج أدناه.</span>
