@@ -1,15 +1,12 @@
 /**
  * المركز المالي — مجمع العائلة
- * --------------------------------------------------
- * يقرأ السياق المالي الكامل من السيرفر (SSR) ثم يحدّثه بنداءات JSON.
- * يرسم Chart.js للمبيعات والاستفسارات، ويدير محادثة "مانوس".
+ * قراءة السياق من SSR ثم تحديث عبر metrics.json؛ مخطط ثنائي المحور للأشهر الستة؛ مانوس عائم.
  */
 (function () {
-  const E = (typeof window.MM_FIN_ENDPOINTS !== "undefined") ? window.MM_FIN_ENDPOINTS : {};
-  const SSR = (typeof window.MM_FIN_SSR_METRICS !== "undefined") ? window.MM_FIN_SSR_METRICS : {};
-  let branchChartInstance = null;
+  const E = typeof window.MM_FIN_ENDPOINTS !== "undefined" ? window.MM_FIN_ENDPOINTS : {};
+  const SSR = typeof window.MM_FIN_SSR_METRICS !== "undefined" ? window.MM_FIN_SSR_METRICS : {};
+  let dualAxisChart = null;
 
-  // ── أدوات تنسيق ──
   function nf(n, opts) {
     try {
       return new Intl.NumberFormat("ar-SA", Object.assign({ maximumFractionDigits: 0 }, opts || {})).format(Number(n || 0));
@@ -23,55 +20,122 @@
     if (el) el.textContent = val;
   }
 
-  // ── KPIs ──
   function applyKpis(m) {
     if (!m) return;
-    setText("mnKpiSales", nf(m.today_sales));
-    setText("mnKpiTx", nf(m.transaction_count));
-    setText("mnKpiSrc", m.mode === "remote" ? "ERP / API" : m.mode === "internal_fallback" ? "تقدير داخلي" : String(m.mode || "—"));
-    const k = m.kpis || {};
-    setText("mnKpiGross", nf(k.gross_profit));
-    setText("mnKpiOpex", nf(k.operating_expenses));
-    setText("mnKpiNet", nf(k.net_margin_value));
-    setText("mnKpiTicket", nf(k.avg_ticket));
-  }
+    const live = m.live || {};
 
-  // ── Chart.js: مبيعات vs استفسارات لكل فرع ──
-  function renderBranchChart(branchRows) {
-    const canvas = document.getElementById("mnBranchChart");
-    if (!canvas || typeof Chart === "undefined") return;
-    if (!Array.isArray(branchRows) || branchRows.length === 0) {
-      branchRows = [];
+    setText("mnKpiSales", nf(m.today_sales));
+
+    const src =
+      m.mode === "remote"
+        ? "POS"
+        : m.mode === "internal_fallback"
+          ? "معاينة"
+          : m.mode === "remote_error"
+            ? "خطأ POS"
+            : String(m.mode || "—");
+
+    const trendEl = document.getElementById("mnKpiSalesTrend");
+    const pct = m.sales_vs_yesterday_pct;
+    if (trendEl) {
+      if (pct !== null && pct !== undefined && !Number.isNaN(Number(pct))) {
+        const n = Number(pct);
+        trendEl.textContent =
+          (n >= 0 ? "+" : "") + n.toLocaleString("ar-SA", { maximumFractionDigits: 1 }) + "% عن أمس";
+        trendEl.classList.remove("mm-fin-dash-analytics__trend-up", "mm-fin-dash-analytics__trend-down");
+        trendEl.classList.add(n >= 0 ? "mm-fin-dash-analytics__trend-up" : "mm-fin-dash-analytics__trend-down");
+      } else {
+        trendEl.innerHTML =
+          '<span id="mnKpiSrc">' + src.replace(/</g, "&lt;") + "</span> — المصدر الفعلي للمبالغ";
+      }
     }
 
-    const labels = branchRows.map((b) => b.branch_name || "?");
-    const sales = branchRows.map((b) => Number(b.estimated_sales_month) || 0);
-    const inquiries = branchRows.map((b) => Number(b.inquiry_total) || 0);
+    const srcOnly = document.getElementById("mnKpiSrc");
+    if (srcOnly && pct !== null && pct !== undefined && !Number.isNaN(Number(pct))) {
+      srcOnly.textContent = src;
+    }
 
-    if (branchChartInstance) branchChartInstance.destroy();
+    setText("mnKpiWa", nf(live.whatsapp_active_24h));
+    const waTrendEl = document.getElementById("mnKpiWaTrend");
+    if (waTrendEl) {
+      const wt = live.whatsapp_trend_vs_prev_pct;
+      if (wt !== null && wt !== undefined && String(wt) !== "") {
+        const wn = Number(wt);
+        waTrendEl.textContent =
+          (wn >= 0 ? "+" : "") + wn.toLocaleString("ar-SA", { maximumFractionDigits: 1 }) + "% عن اليوم السابق";
+        waTrendEl.classList.remove("mm-fin-dash-analytics__trend-up", "mm-fin-dash-analytics__trend-down");
+        waTrendEl.classList.add(wn >= 0 ? "mm-fin-dash-analytics__trend-up" : "mm-fin-dash-analytics__trend-down");
+      }
+    }
 
-    branchChartInstance = new Chart(canvas, {
-      type: "bar",
+    const cv = Number(live.conversion_rate_pct || 0);
+    setText("mnKpiConv", cv.toLocaleString("ar-SA", { maximumFractionDigits: 1 }) + "%");
+  }
+
+  function chartMonthsSelection() {
+    const sel = document.getElementById("mnChartPeriod");
+    const raw = sel ? parseInt(String(sel.value), 10) : 6;
+    return Number.isFinite(raw) && raw > 0 ? raw : 6;
+  }
+
+  function renderDualAxisChart(m) {
+    const canvas = document.getElementById("mnDualAxisChart");
+    if (!canvas || typeof Chart === "undefined") return;
+
+    const labels = Array.isArray(m.six_month_labels_chart)
+      ? m.six_month_labels_chart.map(function (x) {
+          return String(x);
+        })
+      : [];
+    const salRaw = Array.isArray(m.six_month_sales_series_chart)
+      ? m.six_month_sales_series_chart.map(function (x) {
+          return Number(x) || 0;
+        })
+      : [];
+    const inqRaw = Array.isArray(m.six_month_inquiries_series_chart)
+      ? m.six_month_inquiries_series_chart.map(function (x) {
+          return Number(x) || 0;
+        })
+      : [];
+
+    const mo = chartMonthsSelection();
+    const len = labels.length || 1;
+    const k = Math.min(mo, len);
+    const L = labels.slice(-k);
+    const S = salRaw.slice(-k);
+    const Q = inqRaw.slice(-k);
+
+    if (dualAxisChart) dualAxisChart.destroy();
+
+    const gridMuted = "rgba(148, 163, 184, 0.12)";
+    const tickMuted = "#94a3b8";
+
+    dualAxisChart = new Chart(canvas, {
+      type: "line",
       data: {
-        labels,
+        labels: L,
         datasets: [
           {
-            label: "مبيعات (تقدير شهري)",
-            data: sales,
-            backgroundColor: "rgba(201, 162, 39, 0.78)",
-            borderColor: "#8a6a10",
-            borderWidth: 1,
+            label: "المبيعات",
+            data: S,
+            borderColor: "#4ADE80",
+            backgroundColor: "rgba(74, 222, 128, 0.15)",
             yAxisID: "y",
+            tension: 0.35,
+            fill: false,
+            pointRadius: 3,
+            borderWidth: 2,
           },
           {
-            label: "استفسارات العملاء",
-            data: inquiries,
-            backgroundColor: "rgba(15, 81, 50, 0.7)",
-            borderColor: "#0f5132",
-            borderWidth: 1,
+            label: "الاستفسارات",
+            data: Q,
+            borderColor: "#3B82F6",
+            backgroundColor: "rgba(59, 130, 246, 0.12)",
             yAxisID: "y1",
-            type: "line",
-            tension: 0.3,
+            tension: 0.35,
+            fill: false,
+            pointRadius: 3,
+            borderWidth: 2,
           },
         ],
       },
@@ -80,50 +144,58 @@
         maintainAspectRatio: false,
         interaction: { mode: "index", intersect: false },
         plugins: {
-          legend: { position: "bottom", labels: { color: "#0f5132", boxWidth: 14 } },
+          legend: {
+            position: "bottom",
+            labels: { color: tickMuted, boxWidth: 10, padding: 12, font: { size: 11 } },
+          },
           tooltip: {
-            backgroundColor: "#0f5132",
-            titleColor: "#fff",
-            bodyColor: "#fafaf0",
-            cornerRadius: 8,
+            backgroundColor: "rgba(11, 17, 30, 0.95)",
+            titleColor: "#e2e8f0",
+            bodyColor: "#cbd5f5",
+            borderColor: "rgba(212, 175, 55, 0.35)",
+            borderWidth: 1,
           },
         },
         scales: {
           x: {
-            ticks: { color: "#3a3a3a", autoSkip: false, maxRotation: 35, minRotation: 0 },
-            grid: { color: "rgba(0,0,0,.05)" },
+            ticks: { color: tickMuted, maxRotation: 0 },
+            grid: { color: gridMuted },
           },
           y: {
             position: "right",
-            ticks: { color: "#8a6a10" },
-            grid: { color: "rgba(0,0,0,.05)" },
-            title: { display: true, text: "المبيعات", color: "#8a6a10" },
+            ticks: { color: "#4ADE80" },
+            grid: { color: gridMuted },
           },
           y1: {
             position: "left",
-            ticks: { color: "#0f5132" },
+            ticks: { color: "#3B82F6" },
             grid: { display: false },
-            title: { display: true, text: "الاستفسارات", color: "#0f5132" },
           },
         },
       },
     });
   }
 
-  // ── شبكة ──
-  function fetchJson(url, opts) {
-    return fetch(url, Object.assign({ credentials: "same-origin", headers: { Accept: "application/json" } }, opts || {})).then((r) => r.json());
+  function setupBranchPick() {
+    const sel = document.getElementById("mnBranchPick");
+    if (!sel) return;
+    const applyFilter = function () {
+      var id = String(sel.value || "0");
+      document.querySelectorAll(".mm-fin-dash-analytics__br-row").forEach(function (row) {
+        var bid = String(row.getAttribute("data-branch-id") || "0");
+        row.style.display = id === "0" || bid === id ? "" : "none";
+      });
+    };
+    sel.addEventListener("change", applyFilter);
+    applyFilter();
   }
 
-  function loadMetricsDeferred() {
-    if (!E.metricsJson) return;
-    fetchJson(E.metricsJson)
-      .then((j) => {
-        if (!j.ok) return;
-        applyKpis(j.metrics);
-        renderBranchChart((j.metrics && j.metrics.branches_breakdown) || []);
-      })
-      .catch(() => {});
+  function fetchJson(url, opts) {
+    return fetch(url, Object.assign({ credentials: "same-origin", headers: { Accept: "application/json" } }, opts || {})).then(
+      function (r) {
+        return r.json();
+      }
+    );
   }
 
   async function loadInsights() {
@@ -142,11 +214,22 @@
     }
   }
 
-  // ── شات مانوس ──
+  function pullMetricsJson() {
+    if (!E.metricsJson) return;
+    fetchJson(E.metricsJson)
+      .then(function (j) {
+        if (!j.ok || !j.metrics) return;
+        window.MM_FIN_LAST_METRICS = j.metrics;
+        applyKpis(j.metrics);
+        renderDualAxisChart(j.metrics);
+      })
+      .catch(function () {});
+  }
+
   function setupChat() {
     const launcher = document.getElementById("mnChatLauncher");
     const panel = document.getElementById("mnChatPanel");
-    const close = document.getElementById("mnChatClose");
+    const closeBtn = document.getElementById("mnChatClose");
     const send = document.getElementById("mnChatSend");
     const inp = document.getElementById("mnChatInput");
     const msgs = document.getElementById("mnChatMsgs");
@@ -154,17 +237,21 @@
 
     function show(open) {
       panel.classList.toggle("d-none", !open);
-      if (open) {
-        setTimeout(() => inp.focus(), 50);
-      }
+      if (open) setTimeout(function () { inp.focus(); }, 50);
     }
-    function toggle() { show(panel.classList.contains("d-none")); }
+
+    function toggle() {
+      show(panel.classList.contains("d-none"));
+    }
 
     launcher.addEventListener("click", toggle);
-    launcher.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggle(); }
+    launcher.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        toggle();
+      }
     });
-    if (close) close.addEventListener("click", () => show(false));
+    if (closeBtn) closeBtn.addEventListener("click", function () { show(false); });
 
     function addMsg(text, isUser) {
       const div = document.createElement("div");
@@ -174,18 +261,20 @@
       msgs.scrollTop = msgs.scrollHeight;
     }
 
-    // ترحيب أولي
-    addMsg("مرحباً! اسألني عن أي رقم في اللوحة: مبيعات اليوم، الذروات، الفروع، المرتجعات، أو خطة لرفع الهامش.", false);
+    addMsg(
+      "مرحباً! أسئلة المبيعات أو الفروع أو واتساب — أنا أقرأ ما يظهر لك الآن على اللوحة.",
+      false
+    );
 
     async function fire() {
-      const msg = (inp.value || "").trim();
+      var msg = (inp.value || "").trim();
       if (!msg) return;
       addMsg(msg, true);
       inp.value = "";
       send.disabled = true;
       const loading = document.createElement("div");
       loading.className = "mb-ai";
-      loading.textContent = "… يفكّر مانوس";
+      loading.textContent = "… يستجيب مانوس";
       msgs.appendChild(loading);
       msgs.scrollTop = msgs.scrollHeight;
       try {
@@ -195,7 +284,9 @@
           headers: { Accept: "application/json", "Content-Type": "application/json" },
           body: JSON.stringify({ message: msg }),
         });
-        const j = await r.json().catch(() => ({}));
+        const j = await r.json().catch(function () {
+          return {};
+        });
         loading.remove();
         if (!r.ok || !j.ok) addMsg(j.error || "تعذّر الرد.", false);
         else addMsg(j.reply || "—", false);
@@ -208,41 +299,56 @@
     }
 
     send.addEventListener("click", fire);
-    inp.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); fire(); }
+    inp.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        fire();
+      }
     });
   }
 
-  // ── Lazy renderer ──
   function whenVisible(el, fn) {
-    if (!el) { fn(); return; }
-    if (!("IntersectionObserver" in window)) { fn(); return; }
+    if (!el) {
+      fn();
+      return;
+    }
+    if (!("IntersectionObserver" in window)) {
+      fn();
+      return;
+    }
     const io = new IntersectionObserver(
-      (entries) => entries.forEach((en) => {
-        if (!en.isIntersecting) return;
-        io.disconnect();
-        fn();
-      }),
+      function (entries) {
+        entries.forEach(function (en) {
+          if (!en.isIntersecting) return;
+          io.disconnect();
+          fn();
+        });
+      },
       { rootMargin: "80px", threshold: 0.05 }
     );
     io.observe(el);
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    // الرسم الأولي من SSR
     applyKpis(SSR);
-    renderBranchChart((SSR && SSR.branches_breakdown) || []);
+    renderDualAxisChart(SSR);
+    setupBranchPick();
+    window.MM_FIN_LAST_METRICS = SSR;
 
-    // تأجيل الرؤى حتى ظهور القسم
+    const period = document.getElementById("mnChartPeriod");
+    if (period) {
+      period.addEventListener("change", function () {
+        renderDualAxisChart(window.MM_FIN_LAST_METRICS || SSR);
+      });
+    }
+
     whenVisible(document.getElementById("mnInsightsBody"), loadInsights);
 
-    // أزرار يدوية
     const refresh = document.getElementById("mnRefreshInsights");
     if (refresh) refresh.addEventListener("click", loadInsights);
 
-    // تحديث المقاييس كل 60 ثانية
-    setTimeout(loadMetricsDeferred, 800);
-    setInterval(loadMetricsDeferred, 60000);
+    setTimeout(pullMetricsJson, 800);
+    setInterval(pullMetricsJson, 60000);
 
     setupChat();
   });

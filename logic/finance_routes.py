@@ -292,6 +292,15 @@ def create_finance_blueprint(database):  # DatabaseManager
         placeholders = {"has_ai": bool(ai["api_key"]), "amazon_url_hint": "***"}
         founder_logo_url = founder_brand_logo_url(db)
 
+        branches_dd: list[dict] = []
+        try:
+            for b in db.get_all_branches() or []:
+                bid = int(b.get("id") or 0)
+                label = ((b.get("city_name") or b.get("branch_name") or "") or str(bid)).strip()
+                branches_dd.append({"id": bid, "label": label})
+        except Exception:
+            branches_dd = []
+
         return render_template(
             "founder/finance_dashboard.html",
             metrics=dash,
@@ -300,6 +309,7 @@ def create_finance_blueprint(database):  # DatabaseManager
             amazon_base_preview=(ac["base_url"] or "")[:64],
             placeholders=placeholders,
             founder_logo_url=founder_logo_url,
+            branches_dd=branches_dd,
         )
 
     @bp.route("/hub", methods=["GET", "POST"])

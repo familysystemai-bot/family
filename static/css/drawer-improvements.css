@@ -1,0 +1,358 @@
+/* ═══════════════════════════════════════════════════════════════════
+   تحسينات تصميم الدرابشور (Drawer) — نسخة محسّنة
+   ═══════════════════════════════════════════════════════════════════ */
+
+:root {
+  --drawer-green-top: #0f5132;
+  --drawer-green-mid: #0a3020;
+  --drawer-green-deep: #062a1c;
+  --drawer-gold: #b8860b;
+  --drawer-gold-light: #d4af37;
+  --drawer-text: rgba(255, 255, 255, 0.94);
+  --drawer-text-secondary: rgba(255, 255, 255, 0.6);
+  --drawer-edge: rgba(255, 255, 255, 0.2);
+  --drawer-hover: rgba(184, 134, 11, 0.15);
+}
+
+/* ── الشريط الجانبي الرئيسي ── */
+.sidebar.dash-sidebar-col .dash-sidebar-panel {
+  background: linear-gradient(
+    180deg,
+    var(--drawer-green-top) 0%,
+    var(--drawer-green-mid) 52%,
+    var(--drawer-green-deep) 100%
+  );
+  border-left: 1px solid var(--drawer-edge);
+  color: var(--drawer-text);
+  position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* تأثير الإضاءة الخفيفة على الخلفية */
+.sidebar.dash-sidebar-col .dash-sidebar-panel::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(184, 134, 11, 0.3), transparent);
+  pointer-events: none;
+}
+
+/* ── صندوق الشعار المحسّن ── */
+.logo-box {
+  text-align: center;
+  padding: 30px 10px;
+  border-bottom: 1px solid rgba(184, 134, 11, 0.2);
+  background: linear-gradient(180deg, rgba(184, 134, 11, 0.1), transparent);
+  position: relative;
+  overflow: hidden;
+}
+
+.logo-box::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(184, 134, 11, 0.3), transparent);
+}
+
+/* حاوية الشعار مع التأثيرات */
+.logo-container {
+  position: relative;
+  display: inline-block;
+  margin-bottom: 15px;
+}
+
+.logo-img {
+  width: 60px;
+  height: 60px;
+  filter: drop-shadow(0 4px 12px rgba(184, 134, 11, 0.3));
+  transition: transform 0.3s ease, filter 0.3s ease;
+  z-index: 2;
+  position: relative;
+}
+
+.logo-container:hover .logo-img {
+  transform: scale(1.08);
+  filter: drop-shadow(0 6px 16px rgba(184, 134, 11, 0.5));
+}
+
+/* التوهج حول الشعار */
+.logo-glow {
+  position: absolute;
+  inset: -8px;
+  background: radial-gradient(circle, rgba(184, 134, 11, 0.2), transparent);
+  border-radius: 50%;
+  animation: glow 3s ease-in-out infinite;
+  z-index: 1;
+}
+
+@keyframes glow {
+  0%, 100% { 
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% { 
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+/* نص الشعار */
+.logo-text {
+  color: var(--drawer-gold);
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: 0.05em;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.logo-subtitle {
+  display: block;
+  color: var(--drawer-text-secondary);
+  font-size: 0.75rem;
+  margin-top: 4px;
+  letter-spacing: 0.03em;
+}
+
+/* ── أقسام القائمة ── */
+.nav-section {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(184, 134, 11, 0.2);
+}
+
+.nav-section-title {
+  display: block;
+  color: rgba(184, 134, 11, 0.7);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.75rem;
+  padding: 0 15px;
+  opacity: 0.8;
+}
+
+/* ── عناصر القائمة المحسّنة ── */
+.nav-link {
+  position: relative;
+  overflow: hidden;
+  color: var(--drawer-text);
+  font-weight: 600;
+  margin: 8px 15px;
+  border-radius: 10px;
+  padding: 12px 15px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* التأثير الشريطي عند التمرير */
+.nav-link::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(184, 134, 11, 0.3),
+    transparent
+  );
+  transform: translateX(-100%);
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+.nav-link:hover::before {
+  transform: translateX(100%);
+}
+
+/* الحالة النشطة والتمرير */
+.nav-link:hover,
+.nav-link.active {
+  background: linear-gradient(
+    90deg,
+    rgba(184, 134, 11, 0.2),
+    rgba(184, 134, 11, 0.1)
+  );
+  color: var(--drawer-gold-light);
+  border-left: 3px solid var(--drawer-gold);
+  padding-left: 12px;
+  box-shadow: inset 0 0 10px rgba(184, 134, 11, 0.1);
+}
+
+.nav-link.active {
+  background: linear-gradient(
+    90deg,
+    rgba(184, 134, 11, 0.3),
+    rgba(184, 134, 11, 0.15)
+  );
+  color: var(--drawer-gold-light);
+  font-weight: 700;
+}
+
+/* ── شارات الإشعارات ── */
+.notification-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: linear-gradient(135deg, #ff6b6b, #ff5252);
+  color: white;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: bold;
+  animation: pulse 2s infinite;
+  box-shadow: 0 2px 8px rgba(255, 82, 82, 0.4);
+}
+
+@keyframes pulse {
+  0%, 100% { 
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% { 
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
+}
+
+/* ── فاصل أفقي محسّن ── */
+.nav-link ~ hr {
+  border: none;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(184, 134, 11, 0.2),
+    transparent
+  );
+  margin: 1rem 0;
+}
+
+/* ── نموذج الإعدادات في الشريط الجانبي ── */
+.sidebar .px-3.pb-3 {
+  padding: 1rem 15px;
+  border-top: 1px solid rgba(184, 134, 11, 0.2);
+  background: linear-gradient(180deg, rgba(184, 134, 11, 0.05), transparent);
+}
+
+.sidebar .form-control,
+.sidebar .form-control-sm {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(184, 134, 11, 0.3);
+  color: var(--drawer-text);
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.sidebar .form-control:focus,
+.sidebar .form-control-sm:focus {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--drawer-gold);
+  box-shadow: 0 0 0 3px rgba(184, 134, 11, 0.1);
+  color: var(--drawer-text);
+}
+
+.sidebar .form-control::placeholder,
+.sidebar .form-control-sm::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ── زر الحفظ في الإعدادات ── */
+.sidebar .btn-sm[type="submit"] {
+  background: linear-gradient(135deg, var(--drawer-gold), #966d09);
+  color: white;
+  border: none;
+  font-weight: 600;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(184, 134, 11, 0.2);
+}
+
+.sidebar .btn-sm[type="submit"]:hover {
+  background: linear-gradient(135deg, #d4af37, var(--drawer-gold));
+  box-shadow: 0 4px 12px rgba(184, 134, 11, 0.4);
+  transform: translateY(-2px);
+}
+
+/* ── زر تسجيل الخروج ── */
+.nav-link.text-danger {
+  color: #ff6b6b;
+  transition: all 0.3s ease;
+}
+
+.nav-link.text-danger:hover {
+  background: rgba(255, 107, 107, 0.15);
+  color: #ff5252;
+  border-left-color: #ff5252;
+}
+
+/* ── تأثيرات على الأجهزة الصغيرة ── */
+@media (max-width: 768px) {
+  .sidebar.dash-sidebar-col .dash-sidebar-panel {
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+  }
+  
+  .nav-link {
+    margin: 6px 12px;
+    padding: 10px 12px;
+    font-size: 0.95rem;
+  }
+  
+  .logo-box {
+    padding: 25px 8px;
+  }
+  
+  .logo-img {
+    width: 50px;
+    height: 50px;
+  }
+}
+
+/* ── تحسينات الأداء ── */
+.nav-link {
+  will-change: background, color, transform;
+}
+
+.logo-img {
+  will-change: transform, filter;
+}
+
+/* ── دعم الوضع الداكن (إذا لزم الأمر) ── */
+@media (prefers-color-scheme: dark) {
+  .sidebar.dash-sidebar-col .dash-sidebar-panel {
+    background: linear-gradient(
+      180deg,
+      var(--drawer-green-top) 0%,
+      var(--drawer-green-mid) 52%,
+      var(--drawer-green-deep) 100%
+    );
+  }
+}
+
+/* ── تقليل الحركة للمستخدمين الذين يفضلونها ── */
+@media (prefers-reduced-motion: reduce) {
+  .nav-link,
+  .logo-img,
+  .logo-glow,
+  .notification-badge {
+    animation: none;
+    transition: none;
+  }
+}

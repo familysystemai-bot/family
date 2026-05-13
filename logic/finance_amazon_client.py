@@ -1,24 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-محرك الذكاء المالي (Financial Intelligence Engine)
-==================================================
-يجلب البيانات من واجهات المحاسبة (Amazon Local Cashier / Onyx Pro / Microsoft ERP)
-ويُكمل النواقص من المؤشرات الداخلية للنظام.
-
-الإثراءات (Trend Analysis):
-    • مقارنة شهر-بشهر (MoM) للمبيعات والمعاملات.
-    • تحليل ساعات الذروة لكل فرع (peak sales-time analysis).
-    • تتبّع المرتجعات (returns) ونسبتها من الإيرادات.
-    • مؤشرات تشغيلية ديناميكية: الربح الإجمالي / المصاريف التشغيلية / صافي الربح.
-    • توصيات ذكية أولية ("Sales in X are up 15% — consider restocking").
-
-الواجهة:
-    fetch_financial_dashboard(...) -> dict موحّد قابل للعرض في dashboard أو
-    لتمريره إلى محلل LLM.
+محرك الذكاء المالي — يجلب بيانات واجهة المحاسبة (POS) مع عدم خلطها بقيم «وهمية»
+عندما تكون مفاتيح الربط مفعّلة. عند تعذّر الوصول لـ POS تُعرض رسالة خطأ وحالة فارغة
+مع مؤشرات حقيقية فقط من قاعدة البيانات المحلية (واتساب / استفسارات الفروع).
 """
 from __future__ import annotations
 
-import calendar
 import logging
 import time
 from datetime import datetime, timedelta
@@ -27,23 +14,14 @@ from typing import Any, Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 
-# ─── أدوات داخلية لحساب المؤشرات ─────────────────────────────────────
-
 def _safe_pct_change(current: float, previous: float) -> float:
-    """نسبة التغيّر (%) — تتعامل مع القسمة على صفر."""
     if previous in (0, 0.0):
         return 100.0 if current > 0 else 0.0
     return round(((current - previous) / previous) * 100.0, 2)
 
 
 def _compute_kpis(today_sales: float, transactions: int, profit_margin_pct: float) -> Dict[str, Any]:
-    """
-    KPIs تشغيلية ديناميكية:
-        gross_profit = today_sales × margin
-        operating_expenses = today_sales × OPEX_RATIO
-        net_margin = gross - opex
-    """
-    OPEX_RATIO = 0.18  # 18% مصاريف تشغيلية افتراضية (يُمكن تخصيصها لاحقاً من system_settings)
+    OPEX_RATIO = 0.18
     margin = max(0.0, min(95.0, float(profit_margin_pct or 0))) / 100.0
     gross_profit = round(today_sales * margin, 2)
     opex = round(today_sales * OPEX_RATIO, 2)
@@ -59,10 +37,6 @@ def _compute_kpis(today_sales: float, transactions: int, profit_margin_pct: floa
 
 
 def _month_buckets(series_labels: List[str], series_values: List[float]) -> Dict[str, float]:
-    """
-    يجمع قيم سلسلة يومية حسب الشهر (YYYY-MM).
-    التواريخ مقبولة في صيغ متعدّدة: YYYY-MM-DD أو MM-DD أو ISO كامل.
-    """
     buckets: Dict[str, float] = {}
     now_year = datetime.utcnow().year
     for lbl, val in zip(series_labels or [], series_values or []):
@@ -83,11 +57,181 @@ def _month_buckets(series_labels: List[str], series_values: List[float]) -> Dict
     return buckets
 
 
+def _rollup_last_months(month_to_value: Dict[str, float], n: int = 6) -> Tuple[List[str], List[float]]:
+    if not month_to_value:
+        return [], []
+    keys = sorted(month_to_value.keys())[-n:]
+    return keys, [round(month_to_value[k], 2) for k in keys]
+
+
+def _month_ar_label(ym_key: str) -> str:
+    """YYYY-MM -> نص مختصر شبيه بتسمية الشارت."""
+    try:
+        y, m = ym_key.split("-", 1)
+        mi = int(m)
+        return f"{mi:02d}/{y[-2:]}"
+    except Exception:
+        return ym_key
+
+
+def _monthly_bundle_from_daily(
+    labels: List[str],
+    vals: List[Any],
+    n_months: int = 6,
+) -> Tuple[List[str], List[float]]:
+    buckets = _month_buckets(labels or [], [float(x or 0) for x in (vals or [])])
+    ym_keys, num = _rollup_last_months(buckets, n_months)
+    short = [_month_ar_label(k) for k in ym_keys]
+    return short, num
+
+
+def _parse_msg_ts(ts_raw: Any) -> Optional[datetime]:
+    s = str(ts_raw or "").strip().replace("Z", "").replace("T", " ")
+    if not s:
+        return None
+    if "+" in s:
+        s = s.split("+", 1)[0].strip()
+    part = (s.replace(" ", "T").split(".", 1)[0])[:19]
+    try:
+        if len(part) >= 19:
+            return datetime.strptime(part[:19], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        pass
+    try:
+        return datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        pass
+    try:
+        return datetime.strptime(s[:16], "%Y-%m-%d %H:%M")
+    except ValueError:
+        pass
+    try:
+        return datetime.strptime(s[:10], "%Y-%m-%d")
+    except ValueError:
+        pass
+    try:
+        return datetime.fromisoformat(s.replace(" ", "T")[:19])
+    except ValueError:
+        return None
+
+
+def _whatsapp_inbound_24h_pair(db: Any) -> Tuple[int, int]:
+    conn = db._get_connection()
+    ts_list: List[str] = []
+    try:
+        cur = conn.execute(
+            """
+            SELECT msg_timestamp FROM messages
+            WHERE direction = 'inbound'
+            ORDER BY id DESC LIMIT 15000
+            """
+        )
+        for r in cur.fetchall():
+            row = dict(r) if hasattr(r, "keys") else {"msg_timestamp": r[0]}
+            ts_list.append(str(row.get("msg_timestamp") or "")[:26])
+    except Exception as e:
+        logger.debug("_whatsapp_inbound_24h_pair: %s", e)
+        return 0, 0
+    finally:
+        conn.close()
+
+    now = datetime.now()
+    c1 = now - timedelta(days=1)
+    c2 = now - timedelta(days=2)
+    cur_w = prv = 0
+    for ts in ts_list:
+        d = _parse_msg_ts(ts)
+        if not d:
+            continue
+        if d >= c1:
+            cur_w += 1
+        elif d >= c2:
+            prv += 1
+    return cur_w, prv
+
+
+def _conversion_rate_pct(db: Any) -> float:
+    try:
+        rows = db.summarize_inquiries_by_branch() or []
+    except Exception:
+        return 0.0
+    answered = sum(int(r.get("answered_cnt") or 0) for r in rows)
+    total = sum(int(r.get("total_cnt") or 0) for r in rows)
+    if not total:
+        return 0.0
+    return round((answered / total) * 100.0, 1)
+
+
+def _db_live_dashboard_layer(db: Any) -> Dict[str, Any]:
+    wa_now, wa_prev = _whatsapp_inbound_24h_pair(db)
+    wa_trend = _safe_pct_change(float(wa_now), float(wa_prev))
+    conversion = _conversion_rate_pct(db)
+    try:
+        ds = db.get_daily_chat_series(days=200)
+    except Exception:
+        ds = {"labels": [], "values": []}
+    sm_lab, sm_inq = _monthly_bundle_from_daily(
+        list(ds.get("labels") or []),
+        list(ds.get("values") or []),
+        6,
+    )
+    zeros = [0.0] * len(sm_lab)
+    return {
+        "conversion_rate_pct": conversion,
+        "whatsapp_active_24h": int(wa_now),
+        "whatsapp_prev_24h": int(wa_prev),
+        "whatsapp_trend_vs_prev_pct": wa_trend,
+        "six_month_labels_chart": sm_lab,
+        "six_month_inquiries_series_chart": sm_inq,
+        "six_month_sales_series_chart": zeros,
+        "analytics_period_note": "(بيانات واتساب / الشات المحلّية)",
+    }
+
+
+def _sales_trend_vs_yesterday_pct(today: float, yesterday: float) -> Optional[float]:
+    if today <= 0 and yesterday <= 0:
+        return None
+    return _safe_pct_change(float(today), float(yesterday))
+
+
+def _extract_remote_sales_yesterday(data: Dict[str, Any]) -> Optional[float]:
+    for k in ("yesterday_sales", "sales_yesterday", "total_sales_yesterday"):
+        try:
+            v = data.get(k)
+            if v is not None:
+                return float(v)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _month_rows_from_remote(data: Dict[str, Any]) -> Optional[Tuple[List[str], List[float], List[float]]]:
+    mr = data.get("months") or data.get("monthly")
+    if not isinstance(mr, list) or len(mr) < 2:
+        return None
+    labels: List[str] = []
+    sales: List[float] = []
+    inq: List[float] = []
+    for raw in mr[-24:]:
+        if not isinstance(raw, dict):
+            continue
+        lab = raw.get("label") or raw.get("month") or raw.get("key")
+        if lab is None:
+            continue
+        labels.append(str(lab).strip())
+        try:
+            sales.append(float(raw.get("sales") or raw.get("sales_sar") or raw.get("revenue") or 0))
+            inq.append(float(raw.get("inquiries") or raw.get("chats") or raw.get("wa_count") or 0))
+        except (TypeError, ValueError):
+            sales.append(0.0)
+            inq.append(0.0)
+    if len(labels) < 1:
+        return None
+    n = len(labels)
+    return labels[max(0, n - 6) :], sales[max(0, n - 6) :], inq[max(0, n - 6) :]
+
+
 def _build_mom_comparison(labels: List[str], values: List[float]) -> Dict[str, Any]:
-    """
-    مقارنة شهر-بشهر: يأخذ سلسلة يومية ويُولّد:
-        current_month_total / previous_month_total / pct_change / verdict
-    """
     months = _month_buckets(labels, values)
     if not months:
         return {
@@ -96,7 +240,7 @@ def _build_mom_comparison(labels: List[str], values: List[float]) -> Dict[str, A
             "current_total": 0.0,
             "previous_total": 0.0,
             "pct_change": 0.0,
-            "verdict": "لا توجد بيانات كافية للمقارنة الشهرية بعد.",
+            "verdict": "",
         }
     sorted_keys = sorted(months.keys())
     cur_k = sorted_keys[-1]
@@ -105,15 +249,13 @@ def _build_mom_comparison(labels: List[str], values: List[float]) -> Dict[str, A
     prev_v = round(months[prev_k], 2) if prev_k != cur_k else 0.0
     pct = _safe_pct_change(cur_v, prev_v)
     if cur_k == prev_k:
-        verdict = "البيانات تغطي شهراً واحداً فقط — المقارنة الشهرية لم تصبح متاحة بعد."
+        verdict = ""
     elif pct >= 10:
-        verdict = f"نمو ممتاز {pct:+.1f}% مقارنة بالشهر السابق — استمرّ بالاستراتيجية الحالية."
+        verdict = f"نمو {pct:+.1f}% عن الشهر السابق."
     elif pct >= 0:
-        verdict = f"نمو طفيف {pct:+.1f}% — استقرار في الأداء."
-    elif pct >= -10:
-        verdict = f"تراجع طفيف {pct:+.1f}% — راجع الحملات النشطة وحركة المخزون."
+        verdict = f"استقرار نسبي {pct:+.1f}%."
     else:
-        verdict = f"تراجع ملحوظ {pct:+.1f}% — يستوجب تحليلاً فورياً للأسباب."
+        verdict = f"تراجع {pct:+.1f}% يستحق المتابعة."
     return {
         "current_month_label": cur_k,
         "previous_month_label": prev_k,
@@ -125,11 +267,6 @@ def _build_mom_comparison(labels: List[str], values: List[float]) -> Dict[str, A
 
 
 def _peak_hours_per_branch(db: Any) -> List[Dict[str, Any]]:
-    """
-    تحليل ساعات الذروة في كل فرع — يستنتج من جدول `messages` (waitsapp inbox)
-    أن أعلى تفاعل عميل في فرع X يكون في الساعة Y.
-    هذا مؤشّر تقريبيّ ممتاز للذروة قبل توفّر بيانات الفواتير الفعلية.
-    """
     out: List[Dict[str, Any]] = []
     try:
         branches = db.get_all_branches() or []
@@ -138,8 +275,6 @@ def _peak_hours_per_branch(db: Any) -> List[Dict[str, Any]]:
     if not branches:
         return out
 
-    # نسحب الطوابع الزمنية ونحسب الذروة في Python لتفادي اختلافات SQL
-    # بين SQLite (strftime) و PostgreSQL (date_part / to_char).
     conn = None
     raw_ts: List[Tuple[int, str]] = []
     try:
@@ -155,14 +290,15 @@ def _peak_hours_per_branch(db: Any) -> List[Dict[str, Any]]:
         )
         for r in cur.fetchall():
             try:
-                bid = int((dict(r) if not isinstance(r, dict) else r).get("branch_id") or 0)
-                ts = str((dict(r) if not isinstance(r, dict) else r).get("msg_timestamp") or "")
+                row = dict(r) if hasattr(r, "keys") else {"branch_id": r[0], "msg_timestamp": r[1]}
+                bid = int(row.get("branch_id") or 0)
+                ts = str(row.get("msg_timestamp") or "")
             except (TypeError, ValueError):
                 continue
             if ts:
                 raw_ts.append((bid, ts))
     except Exception as e:
-        logger.debug("peak_hours fallback (messages query failed): %s", e)
+        logger.debug("peak_hours: %s", e)
         raw_ts = []
     finally:
         try:
@@ -171,11 +307,9 @@ def _peak_hours_per_branch(db: Any) -> List[Dict[str, Any]]:
         except Exception:
             pass
 
-    # تجميع: لكل فرع، عدّ التفاعلات في كل ساعة (0-23)
     by_branch: Dict[int, Dict[int, int]] = {}
     for bid, ts in raw_ts:
         try:
-            # يدعم: "2026-05-12 14:33:00" و ISO 8601 — نأخذ الجزء بعد T أو المسافة
             t = ts.replace("T", " ")
             time_part = t.split(" ", 1)[1] if " " in t else t
             hh = int(time_part.split(":", 1)[0])
@@ -190,21 +324,19 @@ def _peak_hours_per_branch(db: Any) -> List[Dict[str, Any]]:
         bid = int(b.get("id") or 0)
         name = (b.get("city_name") or b.get("branch_name") or str(bid)).strip()
         hour_map = by_branch.get(bid, {})
-        # رتّب الساعات حسب أعلى عدد تفاعلات
         hours = sorted(hour_map.items(), key=lambda x: -x[1])
         peak_hour = hours[0][0] if hours else None
         total = sum(h[1] for h in hours)
-        # توصية متخصصة
         if peak_hour is None:
-            advice = "لا توجد بيانات كافية لتحديد ساعة الذروة بعد."
+            advice = "لا توجد بيانات كافية بعد."
         elif 7 <= peak_hour <= 11:
-            advice = "ذروة صباحية — تأكد من تجهيز الفرع قبل الساعة 9 صباحاً."
+            advice = "ذروة صباحية — تأكد من الجاهزية المبكرة."
         elif 12 <= peak_hour <= 16:
-            advice = "ذروة منتصف اليوم — جدول وردية إضافية بين 12 و4 عصراً."
+            advice = "ذروة منتصف النهار."
         elif 17 <= peak_hour <= 21:
-            advice = "ذروة مسائية — كثّف العروض بعد الساعة 5 مساءً."
+            advice = "ذروة مسائية."
         else:
-            advice = "ذروة ليلية متأخرة — قيّم جدوى تمديد ساعات العمل."
+            advice = "ذروة خارج أوقات الذروة المعتادة."
         out.append(
             {
                 "branch_id": bid,
@@ -220,10 +352,6 @@ def _peak_hours_per_branch(db: Any) -> List[Dict[str, Any]]:
 
 
 def _estimate_returns(db: Any, today_sales: float) -> Dict[str, Any]:
-    """
-    تقدير المرتجعات: حالياً نستنبطها من الشكاوى المتعلقة بالاسترجاع.
-    عند الربط الفعلي بـ ERP، استبدل هذا بـ SELECT من جدول الفواتير الفعلية.
-    """
     refund_count = 0
     try:
         conn = db._get_connection()
@@ -249,13 +377,13 @@ def _estimate_returns(db: Any, today_sales: float) -> Dict[str, Any]:
     est_value = round(refund_count * avg_ticket * 0.6, 2)
     ratio = round((est_value / today_sales) * 100, 2) if today_sales > 0 else 0.0
     if ratio == 0:
-        msg = "لا توجد طلبات استرجاع نشطة — مؤشر إيجابي."
+        msg = "لا توجد طلبات استرجاع نشطة ضمن هذا السياق."
     elif ratio < 3:
-        msg = f"نسبة الاسترجاع منخفضة ({ratio}%) — ضمن المتوسط الصحّي."
+        msg = "نسبة الاسترجاع منخفضة ضمن هذا التقدير."
     elif ratio < 7:
-        msg = f"نسبة الاسترجاع {ratio}% — راقب جودة منتجات الفروع الأعلى."
+        msg = "نسبة الاسترجاع متوسطة — راقب جودة التوريد والشحن."
     else:
-        msg = f"نسبة الاسترجاع {ratio}% مرتفعة — تحقق من التغليف، التوصيل، ومطابقة المواصفات."
+        msg = "نسبة الاسترجاع مرتفعة — تحقق من سبب الزيادة."
     return {
         "return_requests": refund_count,
         "estimated_return_value": est_value,
@@ -265,49 +393,29 @@ def _estimate_returns(db: Any, today_sales: float) -> Dict[str, Any]:
 
 
 def _branch_recommendation(branches: List[Dict[str, Any]]) -> List[str]:
-    """ينتج توصيات ذكية أولية على مستوى الفروع — قبل تمريرها للـ LLM."""
     out: List[str] = []
     if not branches:
         return out
-    sorted_b = sorted(branches, key=lambda r: -(r.get("estimated_sales_month") or 0))
-    if sorted_b:
-        top = sorted_b[0]
-        out.append(
-            f"فرع {top.get('branch_name')} يقود المبيعات هذا الشهر — فكّر بزيادة المخزون."
-        )
+    sorted_b = sorted(branches, key=lambda r: -(float(r.get("estimated_sales_month") or 0)))
+    top = sorted_b[0]
+    out.append(f"يقود فرع «{top.get('branch_name')}» أعلى ظهور في بيانات POS الحالية.")
     if len(sorted_b) >= 2:
         bottom = sorted_b[-1]
-        out.append(
-            f"فرع {bottom.get('branch_name')} الأقل أداءً — راجع الحملات والعرض."
-        )
-    pending_hot = [b for b in sorted_b if int(b.get("inquiries_pending") or 0) >= 5]
-    if pending_hot:
-        names = "، ".join(b.get("branch_name", "—") for b in pending_hot[:3])
-        out.append(
-            f"استفسارات معلّقة كثيرة في: {names} — تابع الردود لتقليل التسرب."
-        )
-    return out
+        out.append(f"راقب نشاط فرع «{bottom.get('branch_name')}» مقارنة بالبقية.")
+    return out[:4]
 
-
-# ─── جلب من قاعدة البيانات الداخلية (fallback) ───────────────────────
 
 def _fallback_from_db(db: Any) -> Dict[str, Any]:
-    """عند تعذر الـ API الخارجي: نحسب نشاطاً تقريبياً من المحادثات والاستفسارات."""
     labels: List[str] = []
-    sales_like: List[float] = []
     inquiry_vals: List[int] = []
     try:
-        series = db.get_daily_chat_series(days=60)  # 60 يوماً لدعم مقارنة الشهر
+        series = db.get_daily_chat_series(days=60)
         labels[:] = series.get("labels") or []
         base = series.get("values") or []
-        sales_like = [float(max(0, int(v))) * 42.7 for v in base]
         inquiry_vals = [int(max(0, int(v))) for v in base]
+        sales_like = [float(max(0, int(v))) * 42.7 for v in base]
     except Exception:
-        for i in range(30):
-            d = (datetime.utcnow().date() - timedelta(days=29 - i)).isoformat()[5:]
-            labels.append(d)
-            inquiry_vals.append(0)
-            sales_like.append(0.0)
+        labels, sales_like, inquiry_vals = [], [], []
 
     branch_cards: List[Dict[str, Any]] = []
     try:
@@ -332,44 +440,217 @@ def _fallback_from_db(db: Any) -> Dict[str, Any]:
     except Exception:
         branch_cards = []
 
-    today_sale = round(sum(v for v in sales_like[-1:]), 2) if sales_like else 0.0
-    tx_count = int(inquiry_vals[-1]) if inquiry_vals else 0
-    if today_sale == 0:
-        today_sale = round(5420 + tx_count * 31, 2)
-    if tx_count == 0:
-        tx_count = 12
-    margin_pct = round(22.5 + min(35, tx_count % 17), 1)
-
+    live = _db_live_dashboard_layer(db)
+    tx_count_last = int(inquiry_vals[-1]) if inquiry_vals else 0
+    today_sale = round(sum(float(x) for x in sales_like[-1:]), 2) if sales_like else 0.0
+    if today_sale <= 0 and tx_count_last > 0:
+        today_sale = round(tx_count_last * 127.0, 2)
+    tx_count = tx_count_last if tx_count_last > 0 else 1
+    margin_pct = 22.8
     kpis = _compute_kpis(today_sale, tx_count, margin_pct)
-    mom = _build_mom_comparison(labels, sales_like)
-    peaks = _peak_hours_per_branch(db)
-    returns = _estimate_returns(db, today_sale)
-    advice = _branch_recommendation(branch_cards)
 
-    return {
+    merged: Dict[str, Any] = {
         "mode": "internal_fallback",
+        "pos_connected": False,
+        "pos_error": "",
         "updated_at": int(time.time()),
         "today_sales": today_sale,
-        "transaction_count": tx_count,
+        "transaction_count": int(tx_count),
         "profit_margin_estimate_pct": margin_pct,
-        # KPIs ديناميكية ↓
         "kpis": kpis,
-        # سلاسل العرض
         "timeseries_days": labels,
-        "series_sales_estimate": sales_like,
+        "series_sales_estimate": [],
         "series_inquiries": inquiry_vals,
-        # تفصيل الفروع
         "branches_breakdown": branch_cards,
         "inventory_signal": {},
-        # تحليلات الذكاء المالي ↓
-        "mom_comparison": mom,
-        "branch_peak_hours": peaks,
-        "returns_signal": returns,
-        "recommendations": advice,
+        "mom_comparison": _build_mom_comparison(labels, inquiry_vals[:180]),
+        "branch_peak_hours": _peak_hours_per_branch(db),
+        "returns_signal": _estimate_returns(db, max(today_sale, 1.0)),
+        "recommendations": _branch_recommendation(branch_cards),
+        "six_month_labels_chart": live["six_month_labels_chart"],
+        "six_month_inquiries_series_chart": live["six_month_inquiries_series_chart"],
+        "six_month_sales_series_chart": live["six_month_sales_series_chart"],
+        "live": live,
+        "sales_vs_yesterday_pct": None,
+        "recommended_branch_slug": "",
     }
 
+    fb = merged
+    if not fb["six_month_sales_series_chart"] or sum(fb["six_month_sales_series_chart"]) <= 0:
+        fb["six_month_sales_series_chart"] = [0.0] * len(fb["six_month_labels_chart"])
+    return fb
 
-# ─── جلب من API خارجي + توحيد المخطط ────────────────────────────────
+
+def _normalize_remote_payload(data: Dict[str, Any], db: Any, live_sup: Dict[str, Any]) -> Dict[str, Any]:
+    for nest_key in ("dashboard", "result", "summary", "payload", "report"):
+        inner = data.get(nest_key)
+        if isinstance(inner, dict):
+            merged_in = dict(data)
+            merged_in.update(inner)
+            data = merged_in
+            break
+    if isinstance(data.get("data"), dict):
+        nested = data.get("data")
+        merged_in = dict(data)
+        merged_in.update({k: v for k, v in nested.items()})
+        data = merged_in
+
+    extracted = _month_rows_from_remote(data)
+    if extracted:
+        mlab, msal, miq = extracted
+        lbl_ch, sal_ch, inq_ch = mlab[-6:], msal[-6:], miq[-6:]
+    else:
+        inquiry_vals_remote = data.get("inquiry_series") or []
+        lbl_d = data.get("labels") or data.get("dates") or []
+        ss = data.get("sales_series") or []
+        if isinstance(ss, list) and isinstance(lbl_d, list) and len(ss) == len(lbl_d):
+            if isinstance(inquiry_vals_remote, list) and len(inquiry_vals_remote) == len(lbl_d):
+                iq_row = inquiry_vals_remote
+            else:
+                iq_row = [0.0] * len(lbl_d)
+            smb = _month_buckets(lbl_d, [float(x or 0) for x in ss])
+            inb = _month_buckets(lbl_d, [float(x or 0) for x in iq_row])
+            all_months = sorted(set(smb.keys()) | set(inb.keys()))
+            ym_tail = all_months[-6:]
+            lbl_ch = [_month_ar_label(k) for k in ym_tail]
+            sal_ch = [round(float(smb.get(k, 0) or 0), 2) for k in ym_tail]
+            inq_ch = [round(float(inb.get(k, 0) or 0), 2) for k in ym_tail]
+        else:
+            lbl_ch = live_sup["six_month_labels_chart"]
+            sal_ch = [0.0] * len(lbl_ch)
+            inq_ch = live_sup["six_month_inquiries_series_chart"]
+
+    branches_in = data.get("branches") if isinstance(data.get("branches"), list) else []
+    branch_cards: List[Dict[str, Any]] = []
+    inquiries_map: Dict[str, int] = {}
+    try:
+        for r in db.summarize_inquiries_by_branch() or []:
+            inquiries_map[(r.get("branch_name") or "").strip()] = int(r.get("total_cnt") or 0)
+    except Exception:
+        pass
+
+    today_sales_r = float(data.get("today_sales") or data.get("total_sales_day") or data.get("revenue_day") or 0)
+    yest = _extract_remote_sales_yesterday(data)
+    trend_vs_y = (
+        _sales_trend_vs_yesterday_pct(today_sales_r, yest) if yest is not None else None
+    )
+
+    tx_count = int(data.get("transaction_count") or data.get("tx") or 0)
+    margin_pct = float(data.get("profit_margin_pct") or data.get("margin_pct") or 0)
+
+    ach_list = []
+    mx = 0.0
+    if branches_in:
+        for item in branches_in[:48]:
+            if not isinstance(item, dict):
+                continue
+            nm = str(item.get("name") or item.get("branch_name") or item.get("city") or "").strip()
+            sal = float(item.get("sales") or item.get("amount") or item.get("revenue_month") or 0)
+            tgt = float(item.get("target") or item.get("goal") or item.get("budget") or 0)
+            ach = float(item.get("achievement_pct") or item.get("pct") or 0)
+            if ach <= 0 and tgt > 0 and sal > 0:
+                ach = round(min(999.0, sal / tgt * 100.0), 1)
+            inq_b = inquiries_map.get(nm, int(item.get("inquiries") or 0))
+            bid = int(item.get("id") or item.get("branch_id") or 0)
+            mx = max(mx, sal or ach)
+            branch_cards.append(
+                {
+                    "branch_id": bid,
+                    "branch_name": nm or "?",
+                    "estimated_sales_month": sal,
+                    "inquiry_total": inq_b,
+                    "inquiries_pending": int(item.get("pending") or 0),
+                    "achievement_pct": ach,
+                    "target_ref": tgt,
+                }
+            )
+            ach_list.append(ach)
+
+    merged: Dict[str, Any] = {
+        "mode": "remote",
+        "pos_connected": True,
+        "pos_error": "",
+        "updated_at": int(time.time()),
+        "today_sales": today_sales_r,
+        "transaction_count": tx_count,
+        "profit_margin_estimate_pct": margin_pct,
+        "timeseries_days": [],  # reserved
+        "series_sales_estimate": [],
+        "series_inquiries": [],
+        "branches_breakdown": branch_cards,
+        "inventory_signal": data.get("inventory") if isinstance(data.get("inventory"), dict) else {},
+        "six_month_labels_chart": lbl_ch,
+        "six_month_sales_series_chart": sal_ch,
+        "six_month_inquiries_series_chart": inq_ch,
+        "live": live_sup,
+        "sales_vs_yesterday_pct": trend_vs_y,
+        "recommended_branch_slug": "",
+    }
+
+    merged["kpis"] = _compute_kpis(
+        merged["today_sales"], merged["transaction_count"], merged["profit_margin_estimate_pct"]
+    )
+    lbl_for_mom: List[str] = []
+    val_for_mom: List[float] = []
+    if isinstance(data.get("labels"), list) and isinstance(data.get("sales_series"), list):
+        for l, z in zip(data["labels"], data["sales_series"]):
+            lbl_for_mom.append(str(l))
+            val_for_mom.append(float(z or 0))
+    elif lbl_ch:
+        lbl_for_mom = list(lbl_ch)
+        val_for_mom = list(map(float, sal_ch))
+    merged["mom_comparison"] = _build_mom_comparison(lbl_for_mom, val_for_mom)
+    merged["branch_peak_hours"] = _peak_hours_per_branch(db)
+    merged["returns_signal"] = _estimate_returns(db, max(merged["today_sales"], 0.01))
+
+    rr = data.get("returns") or data.get("refunds")
+    if isinstance(rr, dict):
+        rr_m = merged["returns_signal"]
+        for k in ("return_requests", "estimated_return_value", "return_ratio_pct"):
+            if rr.get(k) is not None:
+                rr_m[k] = rr.get(k)
+
+    merged["recommendations"] = _branch_recommendation(branch_cards)
+
+    mxv = mx if mx > 0 else 1.0
+    for b in merged["branches_breakdown"]:
+        sal = float(b.get("estimated_sales_month") or 0)
+        b["relative_bar_pct"] = round(min(100.0, (sal / mxv) * 100.0), 1)
+        if float(b.get("achievement_pct") or 0) <= 0:
+            b["achievement_pct"] = round(b["relative_bar_pct"], 1)
+
+    return merged
+
+
+def _remote_error_dashboard(db: Any, err: str) -> Dict[str, Any]:
+    live = _db_live_dashboard_layer(db)
+    z = len(live["six_month_labels_chart"])
+    return {
+        "mode": "remote_error",
+        "pos_connected": False,
+        "pos_error": err,
+        "updated_at": int(time.time()),
+        "today_sales": 0.0,
+        "transaction_count": 0,
+        "profit_margin_estimate_pct": 0.0,
+        "kpis": _compute_kpis(0.0, 1, 0.0),
+        "timeseries_days": [],
+        "series_sales_estimate": [],
+        "series_inquiries": [],
+        "branches_breakdown": [],
+        "inventory_signal": {},
+        "six_month_labels_chart": live["six_month_labels_chart"],
+        "six_month_sales_series_chart": [0.0] * z,
+        "six_month_inquiries_series_chart": live["six_month_inquiries_series_chart"],
+        "mom_comparison": _build_mom_comparison([], []),
+        "branch_peak_hours": _peak_hours_per_branch(db),
+        "returns_signal": _estimate_returns(db, 1.0),
+        "recommendations": [],
+        "live": live,
+        "sales_vs_yesterday_pct": None,
+        "recommended_branch_slug": "",
+    }
+
 
 def fetch_financial_dashboard(
     *,
@@ -377,23 +658,21 @@ def fetch_financial_dashboard(
     base_url: str,
     api_key: str,
     api_secret: str,
-    timeout_seconds: float = 12.0,
+    timeout_seconds: float = 14.0,
     erp_kind: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """
-    محاولة جلب JSON من واجهة المحاسبة (Amazon Local Cashier / Onyx Pro / MS ERP).
-    إن لم تتوفر البيانات → fallback من القاعدة الداخلية.
-
-    إذا حُدِّد erp_kind فإننا نُجرّب نقطة الطرف المخصصة لـ ERP المعين أولاً.
-    """
     bu = (base_url or "").strip().rstrip("/")
     ak = (api_key or "").strip()
     sec = (api_secret or "").strip()
-    if not bu or not ak:
-        logger.info("accounting fetch skipped — missing URL or API key")
-        return _fallback_from_db(db)
 
-    # نقاط طرف معروفة لكل نظام محاسبة (يمكن إضافة المزيد)
+    if not bu.startswith(("http://", "https://")) or not ak:
+        logger.info("accounting fetch skipped — missing POS URL/API key → internal preview")
+        out = _fallback_from_db(db)
+        out.setdefault("credentials_missing", True)
+        return out
+
+    live_first = _db_live_dashboard_layer(db)
+
     candidate_paths: List[str] = []
     kind = (erp_kind or "").strip().lower()
     if kind == "onyx":
@@ -402,129 +681,56 @@ def fetch_financial_dashboard(
         candidate_paths += ["/v1/dashboard", "/dashboard/summary"]
     elif kind in ("microsoft", "dynamics", "ms"):
         candidate_paths += ["/api/data/v9.2/finance_dashboard", "/api/finance/summary"]
-    # الشائعة
+
     candidate_paths += [
         "/v1/dashboard",
         "/api/dashboard",
         "/dashboard/summary",
         "/api/v1/finance/summary",
     ]
-    # إزالة المكرّر مع الحفاظ على الترتيب
+
     seen = set()
     candidate_paths = [p for p in candidate_paths if not (p in seen or seen.add(p))]
 
     try:
         import requests as _rq
     except ImportError:
-        logger.warning("requests not installed")
-        return _fallback_from_db(db)
+        return _remote_error_dashboard(db, "مكتبة requests غير مثبتة على الخادم.")
 
     headers = {
         "Accept": "application/json",
-        "User-Agent": "FamilyMall-FinIntel/2.0",
+        "User-Agent": "AlManakhFinance/3.0",
         "X-API-Key": ak,
         "X-API-Secret": sec,
         "Authorization": f"Bearer {ak}",
     }
 
+    last_status: Optional[int] = None
     for path in candidate_paths:
         u = bu + path
         try:
             r = _rq.get(u, headers=headers, timeout=timeout_seconds)
+            last_status = r.status_code
             if r.status_code != 200:
+                logger.debug("[POS] %s → HTTP %s", u, r.status_code)
                 continue
-            data = r.json()
-            if isinstance(data, dict):
-                normalized = _normalize_remote_payload(data, db)
-                normalized["mode"] = "remote"
-                return normalized
+            payload = r.json()
+            if not isinstance(payload, dict):
+                continue
+            return _normalize_remote_payload(payload, db, live_first)
         except Exception as ex:
-            logger.debug("fetch attempt failed %s: %s", u, ex)
+            logger.debug("[POS] %s failed: %s", u, ex)
 
-    logger.info("financial remote fetch exhausted — fallback")
-    return _fallback_from_db(db)
-
-
-def _normalize_remote_payload(data: Dict[str, Any], db: Any) -> Dict[str, Any]:
-    branches_in = data.get("branches") if isinstance(data.get("branches"), list) else []
-    branch_cards: List[Dict[str, Any]] = []
-
-    inquiries_map: Dict[str, int] = {}
+    detail = ""
     try:
-        for r in db.summarize_inquiries_by_branch() or []:
-            inquiries_map[(r.get("branch_name") or "").strip()] = int(r.get("total_cnt") or 0)
+        if last_status:
+            detail = f"آخر محاولة: HTTP {last_status}. "
     except Exception:
         pass
 
-    total_sales = float(data.get("today_sales") or data.get("total_sales_day") or 0)
-    for item in branches_in[:60]:
-        if not isinstance(item, dict):
-            continue
-        nm = str(
-            item.get("name") or item.get("branch_name") or item.get("city") or ""
-        ).strip()
-        sal = float(item.get("sales") or item.get("amount") or 0)
-        inq = inquiries_map.get(nm, int(item.get("inquiries") or 0))
-        branch_cards.append(
-            {
-                "branch_id": int(item.get("id") or item.get("branch_id") or 0),
-                "branch_name": nm or "?",
-                "estimated_sales_month": sal,
-                "inquiry_total": inq,
-                "inquiries_pending": int(item.get("pending") or 0),
-            }
-        )
-
-    inquiry_vals = data.get("inquiry_series")
-    labels = data.get("labels") or data.get("dates")
-    ss = data.get("sales_series")
-    tx_count = int(data.get("transaction_count") or data.get("tx") or 0)
-    margin_pct = float(data.get("profit_margin_pct") or data.get("margin_pct") or 24.5)
-
-    merged: Dict[str, Any] = {
-        "mode": "remote",
-        "updated_at": int(time.time()),
-        "today_sales": total_sales or float(data.get("revenue_day") or 0),
-        "transaction_count": tx_count,
-        "profit_margin_estimate_pct": margin_pct,
-        "timeseries_days": labels if isinstance(labels, list) else [],
-        "series_sales_estimate": ss if isinstance(ss, list) else [],
-        "series_inquiries": inquiry_vals if isinstance(inquiry_vals, list) else [],
-        "branches_breakdown": branch_cards,
-        "inventory_signal": (
-            data.get("inventory") if isinstance(data.get("inventory"), dict) else {}
-        ),
-    }
-
-    fb = _fallback_from_db(db)
-    for k in ("today_sales", "transaction_count", "profit_margin_estimate_pct"):
-        if not merged[k]:
-            merged[k] = fb[k]
-    if not merged["series_sales_estimate"]:
-        merged["timeseries_days"] = fb["timeseries_days"]
-        merged["series_sales_estimate"] = fb["series_sales_estimate"]
-        merged["series_inquiries"] = fb["series_inquiries"]
-    if not merged["branches_breakdown"]:
-        merged["branches_breakdown"] = fb["branches_breakdown"]
-
-    # KPIs الديناميكية + التحليلات
-    merged["kpis"] = _compute_kpis(
-        merged["today_sales"], merged["transaction_count"], merged["profit_margin_estimate_pct"]
+    msg = detail + (
+        "تعذّر جلب JSON من نقطة نقطة البيع. تحقّق من الـ Base URL والمفتاح؛ "
+        "وتأكّد أن الـ API تعيد حقلاً واحداً على الأقل مثل "
+        "`today_sales` أو `months` ضمن الغلاف JSON."
     )
-    merged["mom_comparison"] = _build_mom_comparison(
-        merged["timeseries_days"], merged["series_sales_estimate"]
-    )
-    merged["branch_peak_hours"] = _peak_hours_per_branch(db)
-    merged["returns_signal"] = _estimate_returns(db, merged["today_sales"])
-    merged["recommendations"] = _branch_recommendation(merged["branches_breakdown"])
-
-    # دمج الرسائل الواردة (refund/returns) من الـ remote إن وُجدت
-    remote_returns = data.get("returns") or data.get("refunds")
-    if isinstance(remote_returns, dict):
-        rr = merged["returns_signal"]
-        for k in ("return_requests", "estimated_return_value", "return_ratio_pct"):
-            if remote_returns.get(k) is not None:
-                rr[k] = remote_returns.get(k)
-        merged["returns_signal"] = rr
-
-    return merged
+    return _remote_error_dashboard(db, msg)

@@ -1279,7 +1279,7 @@ END $$;
 
     def get_daily_chat_series(self, days: int = 30) -> Dict[str, Any]:
         from datetime import date, timedelta
-        days = max(7, min(int(days), 90))
+        days = max(7, min(int(days), 200))
         end = date.today()
         start = end - timedelta(days=days - 1)
         conn = self._get_connection()

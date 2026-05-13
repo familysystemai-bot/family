@@ -1,0 +1,452 @@
+/* ═══════════════════════════════════════════════════════════════════
+   تصميم موحد فاخر لجميع لوحات المؤسس
+   يصلح جميع المشاكل: Z-index، الألوان، الخطوط، الجوال
+   ═══════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* الألوان الفاخرة الموحدة */
+  --luxury-primary: #0a3020;
+  --luxury-primary-light: #0f5132;
+  --luxury-accent: #d4af37;
+  --luxury-accent-dark: #b8860b;
+  --luxury-white: #ffffff;
+  --luxury-bg: #f8f9fa;
+  --luxury-text: #1a1a1a;
+  --luxury-text-soft: #666666;
+  --luxury-border: rgba(212, 175, 55, 0.15);
+  --luxury-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  --luxury-shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+/* ── إصلاح Z-index والطبقات ── */
+.fd-company-identity-modal {
+  z-index: 9999 !important;
+  position: fixed !important;
+}
+
+.modal-backdrop {
+  z-index: 9998 !important;
+}
+
+.modal-dialog {
+  z-index: 9999 !important;
+}
+
+.modal-content {
+  z-index: 9999 !important;
+}
+
+/* إزالة أي backdrop شفاف قد يحجب التحكم */
+.sidebar-overlay,
+.dash-backdrop {
+  z-index: 1000 !important;
+}
+
+/* ── الخطوط الموحدة ── */
+html, body, * {
+  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+}
+
+html.fd-dashboard,
+html.dash-html {
+  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+  font-size: 1rem;
+  line-height: 1.6;
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+}
+
+body.fd-dashboard,
+body.dash-body {
+  background: var(--luxury-bg) !important;
+  color: var(--luxury-text) !important;
+  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+}
+
+/* ── الهيدرات والعناوين ── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+  font-weight: 700 !important;
+  color: var(--luxury-primary) !important;
+}
+
+/* ── بطاقات التحليلات المالية ── */
+.mm-fin-dash-analytics__kpi {
+  background: var(--luxury-white) !important;
+  border-radius: 20px !important;
+  padding: 25px !important;
+  box-shadow: var(--luxury-shadow) !important;
+  border: 1px solid var(--luxury-border) !important;
+  position: relative;
+  overflow: hidden;
+}
+
+.mm-fin-dash-analytics__kpi::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 5px;
+  height: 100%;
+  background: var(--luxury-accent);
+}
+
+.mm-fin-dash-analytics__kpi-lbl {
+  display: block;
+  font-size: 0.9rem !important;
+  font-weight: 700 !important;
+  color: var(--luxury-text-soft) !important;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.mm-fin-dash-analytics__kpi-val {
+  display: block;
+  font-size: 2.2rem !important;
+  font-weight: 800 !important;
+  color: var(--luxury-primary) !important;
+  margin-bottom: 5px;
+  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+}
+
+.mm-fin-dash-analytics__kpi-val--gold {
+  color: var(--luxury-accent-dark) !important;
+}
+
+.mm-fin-dash-analytics__kpi-val--green {
+  color: #15803d !important;
+}
+
+.mm-fin-dash-analytics__kpi-val--blue {
+  color: #1d4ed8 !important;
+}
+
+.mm-fin-dash-analytics__kpi-hint {
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.mm-fin-dash-analytics__trend-up {
+  color: #16a34a !important;
+}
+
+.mm-fin-dash-analytics__trend-down {
+  color: #dc2626 !important;
+}
+
+/* ── بطاقات الرسوم البيانية ── */
+.mm-fin-dash-analytics__card {
+  background: var(--luxury-white) !important;
+  border-radius: 20px !important;
+  padding: 30px !important;
+  box-shadow: var(--luxury-shadow) !important;
+  margin-bottom: 30px !important;
+  border: 1px solid rgba(0, 0, 0, 0.03) !important;
+}
+
+.mm-fin-dash-analytics__card-title {
+  font-size: 1.25rem !important;
+  font-weight: 700 !important;
+  color: var(--luxury-primary) !important;
+  margin: 0 !important;
+  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+}
+
+/* ── الهيدر الرئيسي ── */
+.mm-fin-dash-analytics__title {
+  font-size: 1.8rem !important;
+  font-weight: 800 !important;
+  color: var(--luxury-primary) !important;
+  position: relative;
+  padding-bottom: 10px;
+  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+}
+
+.mm-fin-dash-analytics__title::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 60px;
+  height: 4px;
+  background: var(--luxury-accent);
+  border-radius: 2px;
+}
+
+/* ── أداء الفروع ── */
+.mm-fin-dash-analytics__br-row {
+  background: var(--luxury-white) !important;
+  border-radius: 15px !important;
+  padding: 15px !important;
+  margin-bottom: 12px !important;
+  border: 1px solid var(--luxury-border) !important;
+  box-shadow: var(--luxury-shadow-sm) !important;
+}
+
+.mm-fin-dash-analytics__br-name {
+  font-weight: 700 !important;
+  color: var(--luxury-primary) !important;
+  font-size: 1rem !important;
+  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+}
+
+.mm-fin-dash-analytics__br-sales {
+  font-weight: 800 !important;
+  color: var(--luxury-accent-dark) !important;
+  font-size: 1.1rem !important;
+  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+}
+
+.mm-fin-dash-analytics__br-fill {
+  background: linear-gradient(90deg, var(--luxury-primary), var(--luxury-accent)) !important;
+  height: 8px !important;
+  border-radius: 4px !important;
+}
+
+/* ── مانوس الذكي ── */
+.mm-fin-dash-analytics__manus-strip {
+  background: linear-gradient(90deg, var(--luxury-primary), var(--luxury-primary-light)) !important;
+  color: white !important;
+  padding: 15px 20px !important;
+  border-radius: 15px !important;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mm-fin-dash-analytics__manus-badge {
+  background: var(--luxury-accent) !important;
+  color: var(--luxury-primary) !important;
+  padding: 4px 12px !important;
+  border-radius: 20px !important;
+  font-weight: 800 !important;
+  font-size: 0.75rem !important;
+}
+
+.mm-fin-dash-analytics__manus-body {
+  padding: 15px !important;
+  background: rgba(212, 175, 55, 0.05) !important;
+  border-radius: 10px !important;
+  margin: 15px 0 !important;
+  color: var(--luxury-text) !important;
+  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+}
+
+/* ── البنرات ── */
+.mm-fin-dash-analytics__banner {
+  padding: 15px 20px !important;
+  border-radius: 12px !important;
+  margin-bottom: 20px !important;
+  font-weight: 600 !important;
+  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+}
+
+.mm-fin-dash-analytics__banner--ok {
+  background: #d1fae5 !important;
+  color: #065f46 !important;
+  border: 1px solid #a7f3d0 !important;
+}
+
+.mm-fin-dash-analytics__banner--warn {
+  background: #fef3c7 !important;
+  color: #92400e !important;
+  border: 1px solid #fde68a !important;
+}
+
+.mm-fin-dash-analytics__banner--muted {
+  background: #f3f4f6 !important;
+  color: #374151 !important;
+  border: 1px solid #e5e7eb !important;
+}
+
+/* ── تحسينات الجوال (Mobile-First) ── */
+@media (max-width: 768px) {
+  .mm-fin-dash-analytics {
+    padding: 15px !important;
+  }
+  
+  .mm-fin-dash-analytics__title {
+    font-size: 1.5rem !important;
+  }
+  
+  .mm-fin-dash-analytics__kpis {
+    grid-template-columns: 1fr !important;
+    gap: 15px !important;
+  }
+  
+  .mm-fin-dash-analytics__kpi {
+    padding: 18px !important;
+  }
+  
+  .mm-fin-dash-analytics__kpi-val {
+    font-size: 1.8rem !important;
+  }
+  
+  .mm-fin-dash-analytics__card {
+    padding: 18px !important;
+    margin-bottom: 20px !important;
+  }
+  
+  .mm-fin-dash-analytics__card-head {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+  
+  .mm-fin-dash-analytics__br-row {
+    padding: 12px !important;
+  }
+  
+  .mm-fin-dash-analytics__br-name {
+    font-size: 0.95rem !important;
+  }
+  
+  .mm-fin-dash-analytics__br-sales {
+    font-size: 1rem !important;
+  }
+}
+
+/* ── إصلاح الاختيارات والأزرار ── */
+.form-select,
+.form-control {
+  border: 1px solid var(--luxury-border) !important;
+  border-radius: 10px !important;
+  padding: 10px 12px !important;
+  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+  color: var(--luxury-text) !important;
+}
+
+.form-select:focus,
+.form-control:focus {
+  border-color: var(--luxury-accent) !important;
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.1) !important;
+}
+
+.btn {
+  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+  font-weight: 700 !important;
+}
+
+.mm-fin-dash-analytics__btn-send,
+.mm-fin-dash-analytics__btn-ghost {
+  background: var(--luxury-accent) !important;
+  color: var(--luxury-primary) !important;
+  border: none !important;
+  font-weight: 700 !important;
+  border-radius: 10px !important;
+}
+
+.mm-fin-dash-analytics__btn-send:hover,
+.mm-fin-dash-analytics__btn-ghost:hover {
+  background: var(--luxury-accent-dark) !important;
+  color: white !important;
+}
+
+/* ── الشريط الجانبي المحسّن ── */
+.fd-sidebar,
+.sidebar {
+  background: linear-gradient(180deg, var(--luxury-primary) 0%, #062a1c 100%) !important;
+  color: rgba(255, 255, 255, 0.94) !important;
+}
+
+.nav-link {
+  color: rgba(255, 255, 255, 0.7) !important;
+  font-weight: 600 !important;
+  border-radius: 10px !important;
+  padding: 12px 15px !important;
+  transition: all 0.3s ease !important;
+  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+}
+
+.nav-link:hover,
+.nav-link.active {
+  background: rgba(212, 175, 55, 0.2) !important;
+  color: var(--luxury-accent) !important;
+  border-left: 3px solid var(--luxury-accent) !important;
+}
+
+/* ── تفاصيل إضافية ── */
+.mm-fin-dash-analytics__details {
+  background: var(--luxury-white) !important;
+  border-radius: 15px !important;
+  padding: 20px !important;
+  border: 1px solid var(--luxury-border) !important;
+  margin-top: 20px !important;
+}
+
+.mm-fin-dash-analytics__details summary {
+  font-weight: 700 !important;
+  color: var(--luxury-primary) !important;
+  cursor: pointer;
+  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+}
+
+.mm-fin-dash-analytics__subhead {
+  font-weight: 700 !important;
+  color: var(--luxury-primary) !important;
+  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+}
+
+/* ── شريط التنقل السريع ── */
+.mm-fin-dash-analytics__nav {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+
+.mm-fin-dash-analytics__nav a {
+  padding: 10px 15px !important;
+  background: var(--luxury-white) !important;
+  border: 1px solid var(--luxury-border) !important;
+  border-radius: 10px !important;
+  color: var(--luxury-primary) !important;
+  font-weight: 600 !important;
+  text-decoration: none !important;
+  transition: all 0.3s ease !important;
+  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+}
+
+.mm-fin-dash-analytics__nav a:hover,
+.mm-fin-dash-analytics__nav a.active {
+  background: var(--luxury-accent) !important;
+  color: var(--luxury-primary) !important;
+  border-color: var(--luxury-accent) !important;
+}
+
+/* ── إصلاح الـ Chat Panel ── */
+.mm-fin-chat-panel {
+  z-index: 10000 !important;
+  background: var(--luxury-white) !important;
+  border-radius: 15px !important;
+  box-shadow: var(--luxury-shadow) !important;
+}
+
+.mm-fin-chat-panel__hdr {
+  background: var(--luxury-primary) !important;
+  color: white !important;
+  padding: 15px !important;
+  border-radius: 15px 15px 0 0 !important;
+  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+}
+
+.mm-fin-chat-panel__msgs {
+  background: rgba(212, 175, 55, 0.03) !important;
+  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+}
+
+/* ── زر FAB (Floating Action Button) ── */
+.mm-fin-dash-analytics__fab {
+  z-index: 5000 !important;
+  background: var(--luxury-accent) !important;
+  color: var(--luxury-primary) !important;
+  box-shadow: var(--luxury-shadow) !important;
+}
+
+.mm-fin-dash-analytics__fab:hover {
+  background: var(--luxury-accent-dark) !important;
+}

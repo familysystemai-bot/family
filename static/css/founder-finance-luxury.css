@@ -1,0 +1,192 @@
+/* ═══════════════════════════════════════════════════════════════════
+   تصميم التحليلات المالية الفاخر (Founder Finance Luxury)
+   ═══════════════════════════════════════════════════════════════════ */
+
+:root {
+  --luxury-gold: #d4af37;
+  --luxury-gold-deep: #b8860b;
+  --luxury-green: #0a3020;
+  --luxury-green-light: #0f5132;
+  --luxury-white: #ffffff;
+  --luxury-text: #1a1a1a;
+  --luxury-text-soft: #666666;
+  --luxury-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  --luxury-radius: 20px;
+}
+
+/* ── حاوية التحليلات الرئيسية ── */
+.mm-fin-dash-analytics {
+  padding: 20px;
+  background: #f8f9fa;
+  min-height: 100vh;
+}
+
+/* ── الهيدر ── */
+.mm-fin-dash-analytics__header {
+  margin-bottom: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.mm-fin-dash-analytics__title {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: var(--luxury-green);
+  position: relative;
+  padding-bottom: 10px;
+}
+
+.mm-fin-dash-analytics__title::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 60px;
+  height: 4px;
+  background: var(--luxury-gold);
+  border-radius: 2px;
+}
+
+/* ── بطاقات الـ KPI الفاخرة ── */
+.mm-fin-dash-analytics__kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.mm-fin-dash-analytics__kpi {
+  background: var(--luxury-white);
+  border-radius: var(--luxury-radius);
+  padding: 25px;
+  box-shadow: var(--luxury-shadow);
+  border: 1px solid rgba(212, 175, 55, 0.1);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.3s ease;
+}
+
+.mm-fin-dash-analytics__kpi:hover {
+  transform: translateY(-5px);
+}
+
+.mm-fin-dash-analytics__kpi::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 5px;
+  height: 100%;
+  background: var(--luxury-gold);
+}
+
+.mm-fin-dash-analytics__kpi-lbl {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--luxury-text-soft);
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.mm-fin-dash-analytics__kpi-val {
+  display: block;
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: var(--luxury-green);
+  margin-bottom: 5px;
+}
+
+.mm-fin-dash-analytics__kpi-val--gold { color: var(--luxury-gold-deep); }
+.mm-fin-dash-analytics__kpi-val--green { color: #15803d; }
+.mm-fin-dash-analytics__kpi-val--blue { color: #1d4ed8; }
+
+.mm-fin-dash-analytics__kpi-hint {
+  font-size: 0.85rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.mm-fin-dash-analytics__trend-up { color: #16a34a; }
+.mm-fin-dash-analytics__trend-down { color: #dc2626; }
+
+/* ── بطاقات الرسوم البيانية ── */
+.mm-fin-dash-analytics__card {
+  background: var(--luxury-white);
+  border-radius: var(--luxury-radius);
+  padding: 30px;
+  box-shadow: var(--luxury-shadow);
+  margin-bottom: 30px;
+  border: 1px solid rgba(0, 0, 0, 0.03);
+}
+
+.mm-fin-dash-analytics__card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 25px;
+}
+
+.mm-fin-dash-analytics__card-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--luxury-green);
+  margin: 0;
+}
+
+/* ── تحسينات الجوال (Mobile-First) ── */
+@media (max-width: 768px) {
+  .mm-fin-dash-analytics {
+    padding: 15px;
+  }
+  
+  .mm-fin-dash-analytics__title {
+    font-size: 1.5rem;
+  }
+  
+  .mm-fin-dash-analytics__kpis {
+    grid-template-columns: 1fr;
+  }
+  
+  .mm-fin-dash-analytics__kpi {
+    padding: 20px;
+  }
+  
+  .mm-fin-dash-analytics__kpi-val {
+    font-size: 1.8rem;
+  }
+  
+  .mm-fin-dash-analytics__card {
+    padding: 20px;
+  }
+  
+  .mm-fin-dash-analytics__card-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+}
+
+/* ── تأثيرات إضافية ── */
+.mm-fin-dash-analytics__manus-strip {
+  background: linear-gradient(90deg, var(--luxury-green), var(--luxury-green-light));
+  color: white;
+  padding: 15px 20px;
+  border-radius: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mm-fin-dash-analytics__manus-badge {
+  background: var(--luxury-gold);
+  color: var(--luxury-green);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-weight: 800;
+  font-size: 0.75rem;
+}

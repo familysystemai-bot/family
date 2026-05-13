@@ -81,7 +81,17 @@ from logic.media_uploads import (
 
 ensure_upload_dir()
 
-logger = logging.getLogger(__name__)
+# استيراد المكتبات الجديدة
+try:
+    from logic.logger_config import app_logger, error_logger, security_logger
+    logger = app_logger
+except ImportError:
+    logger = logging.getLogger(__name__)
+
+try:
+    from logic.api_response import APIResponse
+except ImportError:
+    APIResponse = None
 
 # الملفات العامة (CSS/JS) من /static/؛ الشعار يُخزَّن تحت static/uploads/ ويُعرَض عبر url_for('static', filename='uploads/...')
 # لا تغيّر static_folder إلى uploads فقط — سيُعطّل كل الموارد الثابتة.
@@ -3378,6 +3388,39 @@ def whatsapp_webhook():
     threading.Thread(target=process_message, args=(data,), daemon=True).start()
     return jsonify({"status": "ok"}), 200
 
+
+# ── معالجات الأخطاء العامة ──
+@app.errorhandler(404)
+def not_found(error):
+    """معالج الصفحة غير الموجودة."""
+    logger.warning(f"404 Not Found: {request.path}")
+    if APIResponse:
+        return APIResponse.not_found("الصفحة غير موجودة")
+    return jsonify({"ok": False, "error": "الصفحة غير موجودة"}), 404
+
+@app.errorhandler(403)
+def forbidden(error):
+    """معالج الوصول الممنوع."""
+    logger.warning(f"403 Forbidden: {request.path} - {request.remote_addr}")
+    if APIResponse:
+        return APIResponse.forbidden("غير مصرح بالوصول إلى هذا المورد")
+    return jsonify({"ok": False, "error": "غير مصرح"}), 403
+
+@app.errorhandler(500)
+def internal_error(error):
+    """معالج الخطأ الداخلي."""
+    logger.exception(f"500 Internal Server Error: {error}")
+    if APIResponse:
+        return APIResponse.error("خطأ داخلي في الخادم", 500)
+    return jsonify({"ok": False, "error": "خطأ داخلي"}), 500
+
+@app.errorhandler(400)
+def bad_request(error):
+    """معالج الطلب السيء."""
+    logger.warning(f"400 Bad Request: {error}")
+    if APIResponse:
+        return APIResponse.error("طلب سيء", 400)
+    return jsonify({"ok": False, "error": "طلب سيء"}), 400
 
 if __name__ == '__main__':
     app.run(host=FLASK_HOST, port=FLASK_PORT, debug=FLASK_DEBUG)
