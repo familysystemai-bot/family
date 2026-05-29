@@ -1,0 +1,973 @@
+/**
+ * mobile-system.css — Design System موحد للجوال والتابلت والديسكتوب
+ * نظام العائلة FAMILY — يُحمَّل في جميع اللوحات الثلاث
+ */
+
+/* ═══════════════════════════════════════════════════
+   1. Design Tokens
+   ═══════════════════════════════════════════════════ */
+:root {
+  /* Brand Colors */
+  --ms-green-dark:    #0f5132;
+  --ms-green-mid:     #1a6b4a;
+  --ms-green-light:   #d1fae5;
+  --ms-gold:          #c9a227;
+  --ms-gold-soft:     #fdf3d7;
+  --ms-gold-dim:      #a88620;
+
+  /* Backgrounds */
+  --ms-bg:            #f5f4ef;
+  --ms-surface:       #ffffff;
+  --ms-surface-soft:  #fafaf7;
+  --ms-surface-2:     #f0efe9;
+
+  /* Text */
+  --ms-text:          #1a1a1a;
+  --ms-text-soft:     #4b5563;
+  --ms-text-muted:    #9ca3af;
+
+  /* Borders */
+  --ms-border:        #e4e0d6;
+  --ms-border-soft:   #ede9de;
+
+  /* Semantic */
+  --ms-danger:        #dc2626;
+  --ms-danger-bg:     #fef2f2;
+  --ms-warning:       #d97706;
+  --ms-warning-bg:    #fffbeb;
+  --ms-success:       #059669;
+  --ms-success-bg:    #f0fdf4;
+  --ms-info:          #2563eb;
+  --ms-info-bg:       #eff6ff;
+
+  /* Shadows */
+  --ms-shadow-sm:     0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --ms-shadow:        0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+  --ms-shadow-md:     0 8px 24px rgba(0,0,0,0.10), 0 4px 8px rgba(0,0,0,0.04);
+  --ms-shadow-lg:     0 16px 40px rgba(0,0,0,0.12);
+
+  /* Radii */
+  --ms-radius-sm:     8px;
+  --ms-radius:        12px;
+  --ms-radius-lg:     16px;
+  --ms-radius-xl:     20px;
+
+  /* Spacing */
+  --ms-space-1:       4px;
+  --ms-space-2:       8px;
+  --ms-space-3:       12px;
+  --ms-space-4:       16px;
+  --ms-space-5:       20px;
+  --ms-space-6:       24px;
+  --ms-space-8:       32px;
+
+  /* Safe area (notch/home bar) */
+  --ms-safe-top:      env(safe-area-inset-top, 0px);
+  --ms-safe-bottom:   env(safe-area-inset-bottom, 0px);
+  --ms-safe-left:     env(safe-area-inset-left, 0px);
+  --ms-safe-right:    env(safe-area-inset-right, 0px);
+
+  /* Touch targets */
+  --ms-touch-min:     44px;
+  --ms-touch-comfortable: 48px;
+
+  /* Z-index */
+  --ms-z-base:        1;
+  --ms-z-dropdown:    100;
+  --ms-z-sticky:      200;
+  --ms-z-overlay:     1040;
+  --ms-z-sidebar:     1050;
+  --ms-z-fab:         1060;
+  --ms-z-toast:       1070;
+}
+
+/* ═══════════════════════════════════════════════════
+   2. Base Reset للجوال
+   ═══════════════════════════════════════════════════ */
+*, *::before, *::after {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior-y: none;
+}
+
+/* منع التكبير التلقائي على iOS */
+input, select, textarea {
+  font-size: max(16px, 1em) !important;
+}
+
+@media (max-width: 768px) {
+  html { scroll-behavior: smooth; }
+  body { font-size: 15px; }
+}
+
+/* ═══════════════════════════════════════════════════
+   3. Typography موحدة
+   ═══════════════════════════════════════════════════ */
+.ms-h1 { font-size: clamp(1.5rem, 5vw, 2.25rem); font-weight: 800; line-height: 1.25; }
+.ms-h2 { font-size: clamp(1.25rem, 4vw, 1.75rem); font-weight: 700; line-height: 1.3; }
+.ms-h3 { font-size: clamp(1.1rem, 3vw, 1.375rem); font-weight: 700; line-height: 1.4; }
+.ms-h4 { font-size: clamp(0.95rem, 2.5vw, 1.125rem); font-weight: 600; line-height: 1.45; }
+.ms-label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.ms-caption { font-size: 0.75rem; font-weight: 500; color: var(--ms-text-muted); }
+
+/* ═══════════════════════════════════════════════════
+   4. KPI Cards — موحدة لجميع اللوحات
+   ═══════════════════════════════════════════════════ */
+.ms-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+@media (min-width: 576px) {
+  .ms-kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+}
+
+@media (min-width: 768px) {
+  .ms-kpi-grid { grid-template-columns: repeat(4, 1fr); gap: 14px; }
+}
+
+@media (min-width: 992px) {
+  .ms-kpi-grid { grid-template-columns: repeat(4, 1fr); gap: 16px; }
+}
+
+.ms-kpi-card {
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-border);
+  border-radius: var(--ms-radius-lg);
+  padding: 16px 14px;
+  box-shadow: var(--ms-shadow-sm);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.ms-kpi-card::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--ms-green-dark), var(--ms-gold));
+  opacity: 0.4;
+}
+
+.ms-kpi-card--danger::before { background: linear-gradient(90deg, #dc2626, #f97316); opacity: 0.7; }
+.ms-kpi-card--warning::before { background: linear-gradient(90deg, #d97706, #fbbf24); opacity: 0.7; }
+.ms-kpi-card--success::before { background: linear-gradient(90deg, #059669, #34d399); opacity: 0.7; }
+.ms-kpi-card--gold::before { background: linear-gradient(90deg, var(--ms-gold), #f5c842); opacity: 0.9; }
+
+.ms-kpi-card:active { transform: scale(0.98); }
+
+.ms-kpi-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  margin-bottom: 10px;
+  background: var(--ms-surface-2);
+}
+
+.ms-kpi-icon--green  { background: var(--ms-green-light); }
+.ms-kpi-icon--gold   { background: var(--ms-gold-soft); }
+.ms-kpi-icon--danger { background: var(--ms-danger-bg); }
+.ms-kpi-icon--warn   { background: var(--ms-warning-bg); }
+
+.ms-kpi-value {
+  font-size: clamp(1.75rem, 6vw, 2.5rem);
+  font-weight: 800;
+  color: var(--ms-text);
+  line-height: 1;
+  margin-bottom: 4px;
+  letter-spacing: -0.02em;
+}
+
+.ms-kpi-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ms-text-soft);
+  line-height: 1.3;
+}
+
+.ms-kpi-hint {
+  font-size: 0.7rem;
+  color: var(--ms-text-muted);
+  margin-top: 2px;
+}
+
+/* ═══════════════════════════════════════════════════
+   5. Cards موحدة
+   ═══════════════════════════════════════════════════ */
+.ms-card {
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-border);
+  border-radius: var(--ms-radius-lg);
+  padding: 20px;
+  box-shadow: var(--ms-shadow-sm);
+  margin-bottom: 16px;
+}
+
+@media (max-width: 768px) {
+  .ms-card { padding: 14px; border-radius: var(--ms-radius); }
+}
+
+.ms-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--ms-border-soft);
+}
+
+.ms-card-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ms-text);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ms-card-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 99px;
+  background: var(--ms-surface-2);
+  color: var(--ms-text-soft);
+}
+
+/* ═══════════════════════════════════════════════════
+   6. Buttons موحدة وملائمة للجوال
+   ═══════════════════════════════════════════════════ */
+.ms-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: var(--ms-touch-min);
+  padding: 10px 18px;
+  border-radius: var(--ms-radius);
+  font-weight: 700;
+  font-size: 0.9rem;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 0.15s ease, opacity 0.15s ease, filter 0.15s ease;
+  -webkit-user-select: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.ms-btn:active { transform: scale(0.97); }
+
+.ms-btn-primary {
+  background: linear-gradient(180deg, var(--ms-green-mid) 0%, var(--ms-green-dark) 100%);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(15,81,50,0.25);
+}
+.ms-btn-primary:hover { filter: brightness(1.08); color: #fff; }
+
+.ms-btn-gold {
+  background: linear-gradient(135deg, var(--ms-gold) 0%, var(--ms-gold-dim) 100%);
+  color: #1a1508;
+  box-shadow: 0 4px 12px rgba(201,162,39,0.3);
+}
+.ms-btn-gold:hover { filter: brightness(1.06); color: #1a1508; }
+
+.ms-btn-outline {
+  background: var(--ms-surface);
+  color: var(--ms-green-dark);
+  border: 1.5px solid var(--ms-border);
+}
+.ms-btn-outline:hover { border-color: var(--ms-green-mid); background: var(--ms-green-light); }
+
+.ms-btn-danger {
+  background: var(--ms-danger-bg);
+  color: var(--ms-danger);
+  border: 1.5px solid rgba(220,38,38,0.2);
+}
+.ms-btn-danger:hover { background: #fee2e2; }
+
+.ms-btn-sm {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  border-radius: var(--ms-radius-sm);
+}
+
+.ms-btn-icon {
+  width: var(--ms-touch-min);
+  height: var(--ms-touch-min);
+  padding: 0;
+  border-radius: var(--ms-radius);
+  font-size: 1.1rem;
+}
+
+.ms-btn-block { width: 100%; }
+
+/* ═══════════════════════════════════════════════════
+   7. Mobile Table → Cards Pattern
+   ═══════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+  .ms-table-desktop { display: none !important; }
+  .ms-cards-mobile  { display: block !important; }
+}
+@media (min-width: 641px) {
+  .ms-table-desktop { display: block !important; }
+  .ms-cards-mobile  { display: none !important; }
+}
+
+/* بطاقات الجوال للسجلات */
+.ms-record-card {
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-border);
+  border-radius: var(--ms-radius);
+  padding: 14px;
+  margin-bottom: 10px;
+  box-shadow: var(--ms-shadow-sm);
+  position: relative;
+}
+
+.ms-record-card--complaint {
+  border-right: 3px solid var(--ms-gold);
+}
+
+.ms-record-card--inquiry {
+  border-right: 3px solid var(--ms-info);
+}
+
+.ms-record-card--open {
+  border-right: 3px solid var(--ms-warning);
+}
+
+.ms-record-card--resolved {
+  border-right: 3px solid var(--ms-success);
+}
+
+.ms-record-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.ms-record-card__title {
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: var(--ms-text);
+}
+
+.ms-record-card__meta {
+  font-size: 0.72rem;
+  color: var(--ms-text-muted);
+}
+
+.ms-record-card__body {
+  font-size: 0.84rem;
+  color: var(--ms-text-soft);
+  line-height: 1.5;
+  margin-bottom: 10px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ms-record-card__footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ═══════════════════════════════════════════════════
+   8. Badges موحدة
+   ═══════════════════════════════════════════════════ */
+.ms-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 99px;
+  white-space: nowrap;
+}
+
+.ms-badge-open     { background: var(--ms-warning-bg); color: #92400e; border: 1px solid #fcd34d; }
+.ms-badge-resolved { background: var(--ms-success-bg); color: #065f46; border: 1px solid #6ee7b7; }
+.ms-badge-pending  { background: var(--ms-danger-bg);  color: #991b1b; border: 1px solid #fca5a5; }
+.ms-badge-answered { background: var(--ms-success-bg); color: #065f46; border: 1px solid #6ee7b7; }
+.ms-badge-info     { background: var(--ms-info-bg);    color: #1e40af; border: 1px solid #93c5fd; }
+.ms-badge-gold     { background: var(--ms-gold-soft);  color: #78350f; border: 1px solid #fde68a; }
+
+/* ═══════════════════════════════════════════════════
+   9. Forms — تجربة جوال محسّنة
+   ═══════════════════════════════════════════════════ */
+.ms-form-group {
+  margin-bottom: 14px;
+}
+
+.ms-form-label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--ms-text-soft);
+  margin-bottom: 6px;
+}
+
+.ms-form-control {
+  display: block;
+  width: 100%;
+  min-height: var(--ms-touch-min);
+  padding: 10px 14px;
+  background: var(--ms-surface);
+  border: 1.5px solid var(--ms-border);
+  border-radius: var(--ms-radius);
+  font-size: 16px; /* منع zoom على iOS */
+  color: var(--ms-text);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.ms-form-control:focus {
+  outline: none;
+  border-color: var(--ms-green-mid);
+  box-shadow: 0 0 0 3px rgba(26,107,74,0.12);
+}
+
+.ms-form-control::placeholder {
+  color: var(--ms-text-muted);
+  font-weight: 400;
+}
+
+/* ═══════════════════════════════════════════════════
+   10. Empty States
+   ═══════════════════════════════════════════════════ */
+.ms-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--ms-text-muted);
+}
+
+.ms-empty__icon {
+  font-size: 3rem;
+  margin-bottom: 12px;
+  opacity: 0.6;
+  display: block;
+}
+
+.ms-empty__title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ms-text-soft);
+  margin-bottom: 6px;
+}
+
+.ms-empty__desc {
+  font-size: 0.82rem;
+  color: var(--ms-text-muted);
+  max-width: 260px;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+
+/* ═══════════════════════════════════════════════════
+   11. Mobile Bottom Navigation Bar
+   ═══════════════════════════════════════════════════ */
+.ms-bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: calc(56px + var(--ms-safe-bottom));
+  padding-bottom: var(--ms-safe-bottom);
+  background: var(--ms-surface);
+  border-top: 1px solid var(--ms-border);
+  box-shadow: 0 -4px 16px rgba(0,0,0,0.08);
+  z-index: var(--ms-z-sidebar);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+@media (max-width: 768px) {
+  .ms-bottom-nav { display: flex; }
+
+  /* إضافة padding للـ main content ليظهر فوق الـ Bottom Nav */
+  .dash-main.has-bottom-nav {
+    padding-bottom: calc(72px + var(--ms-safe-bottom)) !important;
+  }
+}
+
+.ms-bottom-nav__list {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  width: 100%;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ms-bottom-nav__item {
+  flex: 1;
+  min-width: 0;
+}
+
+.ms-bottom-nav__link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  height: 56px;
+  text-decoration: none;
+  color: var(--ms-text-muted);
+  font-size: 0.65rem;
+  font-weight: 600;
+  transition: color 0.15s ease;
+  padding: 6px 4px;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.ms-bottom-nav__link:hover,
+.ms-bottom-nav__link.active {
+  color: var(--ms-green-dark);
+}
+
+.ms-bottom-nav__icon {
+  font-size: 1.3rem;
+  line-height: 1;
+  position: relative;
+}
+
+.ms-bottom-nav__badge {
+  position: absolute;
+  top: -4px;
+  left: -6px;
+  min-width: 16px;
+  height: 16px;
+  background: var(--ms-danger);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 800;
+  border-radius: 99px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  line-height: 1;
+}
+
+/* ═══════════════════════════════════════════════════
+   12. Topbar للجوال (فوق المحتوى)
+   ═══════════════════════════════════════════════════ */
+.ms-topbar {
+  display: none;
+  /* fixed بدل sticky لتجنب تداخل عند التمرير */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background: var(--ms-surface);
+  border-bottom: 1px solid var(--ms-border);
+  box-shadow: var(--ms-shadow-sm);
+  /* z-index أقل من Bootstrap modals (1055) وأكبر من المحتوى */
+  z-index: 1030;
+  padding: 0 14px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+@media (max-width: 768px) {
+  .ms-topbar { display: flex; }
+
+  /*
+   * الـ topbar أصبح fixed فيحتاج المحتوى لـ padding-top بمقدار ارتفاعه (56px) + مسافة إضافية
+   * يطبّق على جميع لوحات .dash-main و .fd-main.dash-main تلقائياً
+   */
+  .dash-main,
+  .fd-main.dash-main {
+    padding-top: 72px !important;
+  }
+}
+
+.ms-topbar__menu-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: none;
+  background: var(--ms-surface-2);
+  color: var(--ms-text);
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.ms-topbar__menu-btn:active { background: var(--ms-border); }
+
+.ms-topbar__title {
+  flex: 1;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--ms-text);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ms-topbar__actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════
+   13. Reply Panel (تحسين للجوال)
+   ═══════════════════════════════════════════════════ */
+.ms-reply-panel {
+  background: var(--ms-surface-2);
+  border: 1px solid var(--ms-border);
+  border-radius: var(--ms-radius);
+  padding: 12px;
+  margin-top: 10px;
+  display: none;
+  animation: ms-slide-down 0.2s ease;
+}
+
+.ms-reply-panel.show { display: block; }
+
+@keyframes ms-slide-down {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ═══════════════════════════════════════════════════
+   14. Tables — تحسين للعرض
+   ═══════════════════════════════════════════════════ */
+.ms-table-wrap {
+  border-radius: var(--ms-radius);
+  border: 1px solid var(--ms-border);
+  overflow: hidden;
+}
+
+.ms-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--ms-surface);
+  font-size: 0.88rem;
+}
+
+.ms-table thead th {
+  background: linear-gradient(180deg, #0f5132 0%, #0c4229 100%);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 10px 12px;
+  white-space: nowrap;
+  border: none;
+}
+
+.ms-table tbody td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--ms-border-soft);
+  color: var(--ms-text);
+  vertical-align: middle;
+}
+
+.ms-table tbody tr:last-child td { border-bottom: none; }
+.ms-table tbody tr:hover { background: rgba(15,81,50,0.03); }
+
+/* ═══════════════════════════════════════════════════
+   15. Section Headers — فواصل احترافية
+   ═══════════════════════════════════════════════════ */
+.ms-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ms-section-title {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--ms-text);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ms-section-divider {
+  height: 1px;
+  background: var(--ms-border);
+  margin: 20px 0;
+}
+
+/* ═══════════════════════════════════════════════════
+   16. Flash Messages تحسين
+   ═══════════════════════════════════════════════════ */
+.ms-flash {
+  border-radius: var(--ms-radius);
+  padding: 12px 14px;
+  font-weight: 600;
+  font-size: 0.88rem;
+  border: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ms-flash-success { background: var(--ms-success-bg); color: #065f46; border-right: 3px solid var(--ms-success); }
+.ms-flash-danger  { background: var(--ms-danger-bg);  color: #991b1b; border-right: 3px solid var(--ms-danger); }
+.ms-flash-warning { background: var(--ms-warning-bg); color: #92400e; border-right: 3px solid var(--ms-warning); }
+.ms-flash-info    { background: var(--ms-info-bg);    color: #1e40af; border-right: 3px solid var(--ms-info); }
+
+/* ═══════════════════════════════════════════════════
+   17. Loading State
+   ═══════════════════════════════════════════════════ */
+.ms-skeleton {
+  background: linear-gradient(90deg, var(--ms-surface-2) 25%, var(--ms-border-soft) 37%, var(--ms-surface-2) 63%);
+  background-size: 400% 100%;
+  animation: ms-shimmer 1.4s ease infinite;
+  border-radius: var(--ms-radius-sm);
+}
+
+@keyframes ms-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* ═══════════════════════════════════════════════════
+   18. Notification Badge على Sidebar
+   ═══════════════════════════════════════════════════ */
+.notification-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  background: var(--ms-danger);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 800;
+  border-radius: 99px;
+  padding: 0 5px;
+  margin-right: auto;
+  margin-left: 4px;
+  line-height: 1;
+  animation: ms-pulse 2s ease-in-out infinite;
+}
+
+@keyframes ms-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+/* ═══════════════════════════════════════════════════
+   19. Sidebar Nav Section Headers
+   ═══════════════════════════════════════════════════ */
+.nav-section { margin-bottom: 4px; }
+
+.nav-section-title {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.45);
+  padding: 10px 14px 4px;
+}
+
+/* ═══════════════════════════════════════════════════
+   20. Quick Actions Grid
+   ═══════════════════════════════════════════════════ */
+.ms-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+@media (min-width: 576px) {
+  .ms-quick-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (min-width: 768px) {
+  .ms-quick-grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+.ms-quick-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 14px 8px;
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-border);
+  border-radius: var(--ms-radius);
+  text-decoration: none;
+  color: var(--ms-text);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: center;
+  transition: all 0.15s ease;
+  min-height: 75px;
+}
+
+.ms-quick-action:hover {
+  background: var(--ms-green-light);
+  border-color: var(--ms-green-mid);
+  color: var(--ms-green-dark);
+  transform: translateY(-1px);
+  box-shadow: var(--ms-shadow);
+}
+
+.ms-quick-action:active { transform: scale(0.97); }
+
+.ms-quick-action__icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+/* ═══════════════════════════════════════════════════
+   21. Collapsible Sections (Accordion-style)
+   ═══════════════════════════════════════════════════ */
+.ms-collapsible-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 14px 16px;
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-border);
+  border-radius: var(--ms-radius);
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background 0.15s ease;
+}
+
+.ms-collapsible-header:active { background: var(--ms-surface-2); }
+
+.ms-collapsible-header__title {
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--ms-text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ms-collapsible-header__arrow {
+  font-size: 0.75rem;
+  color: var(--ms-text-muted);
+  transition: transform 0.2s ease;
+}
+
+.ms-collapsible-header.open .ms-collapsible-header__arrow {
+  transform: rotate(180deg);
+}
+
+.ms-collapsible-body {
+  display: none;
+  padding: 14px;
+  border: 1px solid var(--ms-border);
+  border-top: none;
+  border-radius: 0 0 var(--ms-radius) var(--ms-radius);
+  background: var(--ms-surface);
+  animation: ms-slide-down 0.2s ease;
+}
+
+.ms-collapsible-body.open { display: block; }
+
+/* ═══════════════════════════════════════════════════
+   22. Swipe-able stats row
+   ═══════════════════════════════════════════════════ */
+@media (max-width: 576px) {
+  .ms-stats-scroll {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+  .ms-stats-scroll::-webkit-scrollbar { display: none; }
+  .ms-stats-scroll .ms-kpi-card {
+    flex: 0 0 140px;
+    scroll-snap-align: start;
+  }
+  .ms-kpi-grid { display: block; }
+}
+
+/* ═══════════════════════════════════════════════════
+   23. Responsive utility overrides
+   ═══════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  /* تحسين padding الـ Sidebar للجوال */
+  .dash-layout .sidebar .logo-box {
+    padding: 16px 10px;
+  }
+
+  /* تحسين أزرار الجداول على الجوال */
+  .dash-main .btn:not(.btn-close),
+  .dash-main .btn-gold,
+  .dash-main .ms-btn {
+    min-height: var(--ms-touch-min);
+  }
+
+  /* منع محتوى main من الاختباء خلف الـ Bottom Nav */
+  body.has-bottom-nav .dash-main {
+    padding-bottom: calc(68px + var(--ms-safe-bottom)) !important;
+  }
+
+  /* stat-card تحسين للجوال */
+  .stat-card {
+    padding: 14px !important;
+    border-radius: 12px !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   24. Print styles
+   ═══════════════════════════════════════════════════ */
+@media print {
+  .ms-bottom-nav,
+  .ms-topbar,
+  .dash-menu-btn,
+  .ms-btn-icon { display: none !important; }
+}

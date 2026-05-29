@@ -4,101 +4,254 @@
 <html lang="ar" dir="rtl" class="dash-html">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     {% include "partials/pwa_head.html" %}
-    <title>العائلة FAMILY</title>
+    <title>العائلة FAMILY — {{ session.get('city_name','') }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/dashboard-layout.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/drawer-improvements.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/mobile-system.css') }}" rel="stylesheet">
     <style>
-        :root {
-            --bg-light: #fcfaf5;
-            --sidebar-bg: #f5f5dc;
-            --accent-gold: #b8860b;
-            --text-dark: #3d3d3d;
-            --card-white: #ffffff;
-        }
-        body { background-color: var(--bg-light); color: var(--text-dark); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        .sidebar { background: var(--sidebar-bg); min-height: 100vh; border-left: 2px solid var(--accent-gold); position: sticky; top: 0; box-shadow: 2px 0 10px rgba(0,0,0,0.05); }
-        .logo-box { text-align: center; padding: 25px 10px; border-bottom: 1px solid rgba(184, 134, 11, 0.2); }
-        .logo-img { width: 50px; height: auto; max-height: 50px; object-fit: contain; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1)); }
-        .nav-link { color: var(--text-dark); font-weight: 600; margin: 8px 15px; border-radius: 10px; padding: 12px; transition: 0.3s; }
-        .nav-link:hover, .nav-link.active { background: var(--accent-gold); color: white !important; }
-        .stat-card { background: var(--card-white); border: 1px solid #eaddca; border-radius: 15px; padding: 25px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); height: 100%; }
-        .btn-gold { background: var(--accent-gold); color: white; border: none; font-weight: bold; padding: 10px 20px; }
-        .btn-gold:hover { background: #966d09; color: white; }
-        .form-control, .form-select { border: 1px solid #eaddca; padding: 12px; }
+        body, html { font-family: 'IBM Plex Sans Arabic','Segoe UI', system-ui, sans-serif; }
+        body { background: #f5f4ef; color: #1a1a1a; }
 
-        /* ── شكاوى ── */
-        .complaint-row { border-right: 4px solid var(--accent-gold); transition: background .2s; }
-        .complaint-row:hover { background: #fdf8ee; }
-        .badge-open    { background: #b45309; color: #fff; font-size: .75rem; }
-        .badge-resolved{ background: #15803d; color: #fff; font-size: .75rem; }
-        .badge-return  { background: #7c3aed; color: #fff; font-size: .73rem; }
-        .issue-cell    { max-width: 320px; white-space: pre-wrap; word-break: break-word; font-size: .88rem; }
-        .reply-panel   { background: #fdf8ee; border: 1px solid #eaddca; border-radius: 10px; padding: 14px; margin-top: 8px; display: none; }
-        .reply-panel.show { display: block; }
-        .sent-reply-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 14px; font-size: .87rem; margin-top: 8px; }
-        .emp-badge { background: #dbeafe; color: #1e40af; font-size: .75rem; padding: 2px 6px; border-radius: 6px; }
-        /* ── Mobile complaint cards ── */
-        .branch-complaint-desktop { display: block; }
-        .branch-complaint-mobile { display: none; }
-        @media (max-width: 768px) {
-            .branch-complaint-desktop { display: none !important; }
-            .branch-complaint-mobile { display: block !important; }
-            .bc-card { background: #fff; border: 1px solid #eaddca; border-radius: 12px; padding: 14px; margin-bottom: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
-            .bc-card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-            .bc-card-ticket { font-family: monospace; font-weight: 700; color: var(--accent-gold); }
-            .bc-card-preview { font-size: .85rem; color: #444; line-height: 1.5; white-space: pre-wrap; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 8px; }
-            .bc-card-footer { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-        }
-        /* ── استفسارات العملاء ── */
-        .inq-row { border-right: 4px solid #0ea5e9; transition: background .2s; }
-        .inq-row:hover { background: #f0f9ff; }
-        .badge-inq-pending  { background: #dc2626; color: #fff; font-size: .73rem; }
-        .badge-inq-answered { background: #16a34a; color: #fff; font-size: .73rem; }
-        .inq-reply-panel { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 10px; padding: 14px; margin-top: 8px; display: none; }
-        .inq-reply-panel.show { display: block; }
-        .inq-customer-img { max-width: 120px; border-radius: 8px; border: 2px solid #bae6fd; }
-        /* ── ملخص الفرع (جوال أوضح؛ يقلّل فراغ المحتوى الأول) ── */
-        .branch-overview-card .branch-overview-kpi .border.rounded.p-3 {
-            min-height: 5rem;
+        /* Sidebar */
+        .sidebar { background: transparent; border-left: none; }
+        .logo-box { text-align: center; padding: 18px 10px 14px; }
+        .logo-img  { width: 46px; height: 46px; object-fit: contain; }
+        .logo-text { color: #fff !important; font-size: 0.9rem; margin-top: 6px; }
+        .logo-subtitle { font-size: 0.68rem; color: rgba(255,255,255,0.55); display: block; }
+
+        .nav-link {
+            color: rgba(255,255,255,0.92) !important;
+            font-weight: 600;
+            margin: 2px 8px;
+            border-radius: 10px;
+            padding: 11px 14px;
+            transition: all 0.2s ease;
             display: flex;
-            flex-direction: column;
-            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            min-height: 44px;
+            position: relative;
         }
-        @media (max-width: 768px) {
-            .branch-overview-card { margin-bottom: 1rem !important; }
-            .branch-overview-card .branch-overview-kpi .fs-3 { font-size: 1.5rem !important; }
-            .branch-overview-actions .btn { flex: 1 1 calc(50% - 6px); min-width: 0; font-size: 0.875rem; }
+        .nav-link:hover   { background: rgba(255,255,255,0.11) !important; }
+        .nav-link.active  { background: rgba(201,162,39,0.3) !important; border: 1px solid rgba(255,255,255,0.15); }
+        .nav-link.text-danger { color: #ffb4b4 !important; }
+        .nav-link.text-danger:hover { background: rgba(220,53,69,0.2) !important; color: #fff !important; }
+
+        .nav-section-title {
+            display: block;
+            font-size: 0.62rem;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: rgba(255,255,255,0.4);
+            padding: 10px 14px 3px;
         }
+
+        .branch-role-badge {
+            background: linear-gradient(135deg,#c9a227,#a88620);
+            color:#1a1508;
+            font-size:0.65rem;
+            font-weight:800;
+            padding:3px 10px;
+            border-radius:99px;
+            margin-top:5px;
+            display:inline-block;
+        }
+
+        /* Stat card */
+        .stat-card {
+            background: #fff;
+            border: 1px solid #e4e0d6;
+            border-radius: 14px;
+            padding: 18px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }
+        @media (max-width:768px) { .stat-card { padding: 14px; border-radius: 12px; } }
+
+        /* Table */
+        .table { background: white; font-size: 0.88rem; }
+        .table thead th {
+            background: linear-gradient(180deg,#0f5132 0%,#0c4229 100%);
+            color: #fff; font-weight: 700; font-size: 0.74rem;
+            letter-spacing: 0.04em; padding: 10px 12px; border: none;
+        }
+        .table tbody td { padding: 10px 12px; vertical-align: middle; border-color: #f0ede4; }
+        .table tbody tr:hover { background: rgba(15,81,50,0.03); }
+
+        /* Btn gold */
+        .btn-gold {
+            background: linear-gradient(135deg,#c9a227,#a88620);
+            color:#1a1508; border:none; font-weight:700;
+            min-height:44px; padding:10px 18px; border-radius:10px;
+            transition: filter .15s, transform .1s;
+        }
+        .btn-gold:hover { filter:brightness(1.07); color:#1a1508; }
+        .btn-gold:active { transform:scale(0.97); }
+
+        /* Form */
+        .form-control, .form-select, textarea {
+            border: 1.5px solid #e4e0d6; border-radius: 10px;
+            padding: 10px 14px; font-size: 16px !important;
+            min-height: 44px; transition: border-color .15s, box-shadow .15s;
+        }
+        .form-control:focus, .form-select:focus, textarea:focus {
+            border-color: #1a6b4a;
+            box-shadow: 0 0 0 3px rgba(26,107,74,0.1);
+            outline: none;
+        }
+        textarea { min-height: 80px !important; resize: vertical; }
+
+        /* Complaint specific */
+        .complaint-row { border-right: 3px solid #c9a227; transition: background .15s; }
+        .complaint-row:hover { background: #fdfbf4; }
+        .inq-row { border-right: 3px solid #2563eb; transition: background .15s; }
+        .inq-row:hover { background: #f0f6ff; }
+
+        /* Reply panels */
+        .reply-panel, .inq-reply-panel {
+            background: #f8f7f2; border: 1px solid #e4e0d6;
+            border-radius: 10px; padding: 14px;
+            margin-top: 8px; display: none;
+            animation: slideDown .2s ease;
+        }
+        .reply-panel.show, .inq-reply-panel.show { display: block; }
+        @keyframes slideDown { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+
+        .sent-reply-box {
+            background: #f0fdf4; border: 1px solid #bbf7d0;
+            border-radius: 8px; padding: 10px 14px;
+            font-size: .86rem; margin-top: 8px;
+        }
+        .emp-badge {
+            background: #dbeafe; color: #1e40af;
+            font-size: .72rem; padding: 2px 7px; border-radius: 6px; font-weight: 700;
+        }
+
+        /* Issue cell */
+        .issue-cell { max-width: 260px; white-space: pre-wrap; word-break: break-word; font-size:.86rem; }
+        .inq-customer-img { max-width:100px; border-radius:8px; border:2px solid #bae6fd; }
+
+        /* Mobile complaint card */
+        .bc-card {
+            background: #fff; border: 1px solid #e4e0d6;
+            border-radius: 12px; padding: 14px;
+            margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+            border-right: 3px solid #c9a227;
+        }
+        .bc-card-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+        .bc-card-ticket { font-family:monospace; font-weight:800; color:#c9a227; font-size:.88rem; }
+        .bc-card-preview {
+            font-size:.84rem; color:#4b5563; line-height:1.5;
+            white-space:pre-wrap; word-break:break-word;
+            display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+            margin-bottom:10px;
+        }
+        .bc-card-footer { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+
+        /* Mobile inquiry card */
+        .inq-card {
+            background: #fff; border: 1px solid #e4e0d6;
+            border-radius: 12px; padding: 14px;
+            margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+            border-right: 3px solid #2563eb;
+        }
+
+        /* Section separator */
+        .ms-section-sep {
+            height: 1px;
+            background: linear-gradient(to left, transparent, #e4e0d6, transparent);
+            margin: 24px 0;
+        }
+
+        /* Desktop topbar title */
+        .branch-topbar {
+            display: none;
+            align-items: center; justify-content: space-between;
+            padding: 10px 0 18px; margin-bottom: 16px;
+            border-bottom: 1px solid #e4e0d6; gap: 12px; flex-wrap: wrap;
+        }
+        @media (min-width:769px) { .branch-topbar { display:flex; } }
+
+        .branch-topbar__title { font-size:1.35rem; font-weight:800; color:#1a1a1a; margin:0; }
+        .branch-topbar__title span { color:#0f5132; }
+
+        /* Settings modal trigger btn */
+        .settings-fab {
+            position: fixed;
+            bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+            left: max(16px, env(safe-area-inset-left, 16px));
+            width: 44px; height: 44px;
+            background: var(--ms-surface);
+            border: 1px solid var(--ms-border);
+            border-radius: 50%;
+            box-shadow: var(--ms-shadow-md);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.1rem;
+            cursor: pointer;
+            z-index: var(--ms-z-fab);
+            transition: transform .15s;
+            text-decoration: none;
+        }
+        .settings-fab:active { transform: scale(0.94); }
+        @media (min-width:769px) { .settings-fab { display:none; } }
+
+        /* Section scroll anchor offset */
+        [id^="branch-"] { scroll-margin-top: 70px; }
     </style>
 </head>
-<body class="dash-body">
-    <div class="container-fluid dash-layout">
-        <button type="button" class="dash-menu-btn" aria-label="فتح القائمة" aria-controls="branch-dash-sidebar" aria-expanded="false">☰</button>
-        <div class="dash-backdrop sidebar-overlay" data-dash-close="true" aria-hidden="true"></div>
-        <div class="row g-0 flex-nowrap dash-row">
+<body class="dash-body has-bottom-nav">
+<!-- ════ Mobile Topbar ════ -->
+<div class="ms-topbar" id="branch-ms-topbar">
+    <button type="button" class="ms-topbar__menu-btn"
+            aria-label="فتح القائمة" id="branch-topbar-menu-btn">☰</button>
+    {% set br_city = (session.get('city_name') or '') | trim %}
+    <span class="ms-topbar__title">
+        {% if br_city.startswith('فرع') %}{{ br_city }}{% else %}فرع {{ br_city }}{% endif %}
+    </span>
+    <div class="ms-topbar__actions">
+        {% if pending_inquiries_count > 0 %}
+        <a href="#branch-inquiries-block" class="btn btn-sm"
+           style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;font-weight:700;min-height:36px;display:flex;align-items:center;border-radius:8px;padding:0 10px;font-size:0.78rem;text-decoration:none;">
+            🔔 {{ pending_inquiries_count }}
+        </a>
+        {% endif %}
+    </div>
+</div>
 
-            <!-- ── Sidebar ── -->
-            <aside id="branch-dash-sidebar" class="col-md-2 sidebar p-0 dash-sidebar-col">
-                <div class="dash-sidebar-panel">
+<div class="container-fluid dash-layout">
+    <div class="dash-backdrop sidebar-overlay" data-dash-close="true" aria-hidden="true"></div>
+    <button type="button" class="dash-menu-btn" style="display:none"
+            aria-controls="branch-dash-sidebar" aria-expanded="false">☰</button>
+
+    <div class="row g-0 flex-nowrap dash-row">
+
+        <!-- ════ Sidebar ════ -->
+        <aside id="branch-dash-sidebar" class="col-md-2 sidebar p-0 dash-sidebar-col">
+            <div class="dash-sidebar-panel">
                 <div class="logo-box">
                     <div class="logo-container">
                         {{ site_logo_pair('logo-img', 'site-logo-k--sidebar-dash') }}
                         <div class="logo-glow"></div>
                     </div>
-                    <h5 class="mt-3 fw-bold logo-text">العائلة FAMILY</h5>
+                    <h5 class="logo-text">العائلة FAMILY</h5>
                     <small class="logo-subtitle">نظام إدارة متكامل</small>
                 </div>
-                <nav class="nav flex-column mt-3">
-                    <!-- الملاحة الرئيسية -->
+
+                <nav class="nav flex-column mt-2 pb-4">
+                    <!-- الرئيسية -->
                     <div class="nav-section">
-                        <small class="nav-section-title">الملاحة الرئيسية</small>
-                        <a class="nav-link active" href="{{ url_for('dashboard') }}#branch-overview-block">🏠 الرئيسية / ملخص</a>
+                        <small class="nav-section-title">الرئيسية</small>
+                        <a class="nav-link active" href="{{ url_for('dashboard') }}#branch-overview-block">🏠 ملخص اليوم</a>
                     </div>
 
-                    <!-- إدارة المحتوى والمنتجات -->
+                    <!-- المحتوى -->
                     <div class="nav-section">
                         <small class="nav-section-title">إدارة المحتوى</small>
                         <a class="nav-link" href="#branch-categories-block">📂 الفئات والأقسام</a>
@@ -106,13 +259,13 @@
                         <a class="nav-link" href="/products">📦 المنتجات</a>
                     </div>
 
-                    <!-- التسويق والحملات -->
+                    <!-- التسويق -->
                     <div class="nav-section">
-                        <small class="nav-section-title">التسويق والحملات</small>
-                        <a class="nav-link" href="{{ url_for('campaigns.branch_campaigns') }}">📢 الحملات الإعلانية</a>
+                        <small class="nav-section-title">التسويق</small>
+                        <a class="nav-link" href="{{ url_for('campaigns.branch_campaigns') }}">📢 الحملات</a>
                     </div>
 
-                    <!-- التواصل والدعم -->
+                    <!-- التواصل -->
                     <div class="nav-section">
                         <small class="nav-section-title">التواصل والدعم</small>
                         <a class="nav-link" href="{{ url_for('wa_inbox.branch_messages_page') }}">💬 واتساب</a>
@@ -125,219 +278,213 @@
                         </a>
                     </div>
 
-                    <!-- البحث والخدمات -->
+                    <!-- البحث -->
                     <div class="nav-section">
-                        <small class="nav-section-title">البحث والخدمات</small>
-                        <a class="nav-link" href="#branch-product-requests-block">🔎 طلبات البحث عن منتج</a>
-                        <a class="nav-link" href="#branch-services-block">🛠️ خدمات الفرع (للذكاء الاصطناعي)</a>
+                        <small class="nav-section-title">البحث</small>
+                        <a class="nav-link" href="#branch-product-requests-block">🔎 طلبات المنتجات</a>
+                        <a class="nav-link" href="#branch-services-block">🛠️ خدمات الذكاء الاصطناعي</a>
                     </div>
 
                     <!-- التحليلات -->
                     <div class="nav-section">
-                        <small class="nav-section-title">التحليلات والتقارير</small>
-                        <a class="nav-link" href="#liveAnalyticsOffcanvas" data-bs-toggle="offcanvas" data-bs-target="#liveAnalyticsOffcanvas" aria-controls="liveAnalyticsOffcanvas">📊 التحليلات الحية</a>
+                        <small class="nav-section-title">التحليلات</small>
+                        <a class="nav-link" href="#liveAnalyticsOffcanvas"
+                           data-bs-toggle="offcanvas" data-bs-target="#liveAnalyticsOffcanvas">📊 التحليلات الحية</a>
                     </div>
 
-                    <hr class="mx-3">
-
-                    <!-- ── إعدادات الفرع (بريد + جوال) ── -->
-                    <div class="px-3 pb-3">
-                        <small class="fw-bold d-block mb-2" style="color:var(--accent-gold); font-size:.8rem;">⚙️ بيانات التواصل</small>
-                        <form action="/branch/settings/contact" method="POST">
-                            {{ csrf_input() }}
-                            <div class="mb-2">
-                                <label class="form-label" style="font-size:.75rem; color:#555;">📧 البريد الإلكتروني</label>
-                                <input type="email" name="branch_email" class="form-control form-control-sm"
-                                       value="{{ branch_info.complaint_email or '' }}"
-                                       placeholder="email@example.com">
-                            </div>
-                            <div class="mb-2">
-                                <label class="form-label" style="font-size:.75rem; color:#555;">📱 رقم الجوال</label>
-                                <input type="tel" name="branch_phone" class="form-control form-control-sm"
-                                       value="{{ branch_info.phone or '' }}"
-                                       placeholder="05xxxxxxxx">
-                            </div>
-                            <button type="submit" class="btn btn-sm w-100" style="background:var(--accent-gold);color:#fff;font-weight:600;">حفظ البيانات</button>
-                        </form>
-                    </div>
-
-                    <hr class="mx-3">
+                    <hr class="mx-2 my-2">
                     <a class="nav-link text-danger" href="/logout">🚪 تسجيل الخروج</a>
                 </nav>
+            </div>
+        </aside>
+
+        <!-- ════ Main ════ -->
+        <div class="col-md-10 p-3 p-md-4 dash-main" id="branch-main-content">
+
+            <!-- Flash -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="mb-3">
+                {% for category, message in messages %}
+                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show"
+                     role="alert" style="border-radius:12px;font-weight:600;">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
-            </aside>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endwith %}
 
-            <!-- ── Main ── -->
-            <div class="col-md-10 p-4 dash-main">
+            {% set open_count   = branch_complaints | selectattr('status', 'ne', 'resolved') | list | length %}
+            {% set n_complaints = branch_complaints | length %}
+            {% set n_products   = products | length %}
+            {% set n_cats       = main_categories | length %}
+            {% set n_prod_req   = branch_product_requests | length %}
+            {% set br_city_raw  = (session.get('city_name') or '') | trim %}
 
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                <div class="mb-3">
-                    {% for category, message in messages %}
-                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="إغلاق"></button>
-                    </div>
-                    {% endfor %}
+            <!-- Desktop title -->
+            <div class="branch-topbar">
+                <h1 class="branch-topbar__title">
+                    {% if br_city_raw.startswith('فرع') %}<span>{{ br_city_raw }}</span>
+                    {% else %}فرع <span>{{ br_city_raw }}</span>{% endif %}
+                </h1>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm ms-btn ms-btn-outline"
+                            data-bs-toggle="offcanvas" data-bs-target="#liveAnalyticsOffcanvas"
+                            style="min-height:36px;">📊 التحليلات</button>
+                    <a href="{{ url_for('wa_inbox.branch_messages_page') }}"
+                       class="btn btn-sm ms-btn ms-btn-outline" style="min-height:36px;">💬 واتساب</a>
                 </div>
-                {% endif %}
-                {% endwith %}
+            </div>
 
-                {% set open_count = branch_complaints | selectattr('status', 'ne', 'resolved') | list | length %}
-                {% set n_complaints = branch_complaints | length %}
-                {% set n_products = products | length %}
-                {% set n_cats = main_categories | length %}
-                {% set n_prod_req = branch_product_requests | length %}
-                {% set br_city_raw = (session.get('city_name') or '') | trim %}
-
-                <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-3 flex-wrap gap-2">
-                    <h2 class="fw-bold mb-0">
-                        {% if br_city_raw.startswith('فرع') %}
-                        <span style="color: var(--accent-gold);">{{ br_city_raw }}</span>
-                        {% else %}
-                        فرع <span style="color: var(--accent-gold);">{{ br_city_raw }}</span>
-                        {% endif %}
-                    </h2>
-                </div>
-
-                {# ملخص تنفيذي في الأعلى — خدمات الفرع تُعرض أسفلاً ورابطها من الشريط الجانبي #}
-                <div id="branch-overview-block" class="stat-card mb-4 branch-overview-card">
-                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
-                        <h5 class="fw-bold mb-0" style="color: var(--accent-gold);">📊 ملخص اليوم — الفرع</h5>
+            <!-- ═══ KPI Overview ═══ -->
+            <div id="branch-overview-block" class="mb-4">
+                <div class="ms-kpi-grid">
+                    <div class="ms-kpi-card {% if open_count > 0 %}ms-kpi-card--warning{% else %}ms-kpi-card--success{% endif %}">
+                        <div class="ms-kpi-icon {% if open_count > 0 %}ms-kpi-icon--warn{% else %}ms-kpi-icon--green{% endif %}">📋</div>
+                        <div class="ms-kpi-value" style="{% if open_count > 0 %}color:#d97706{% else %}color:#059669{% endif %}">{{ open_count }}</div>
+                        <div class="ms-kpi-label">شكاوى مفتوحة</div>
+                        <div class="ms-kpi-hint">{{ n_complaints }} إجمالي</div>
                     </div>
-                    <div class="row g-2 g-md-3 branch-overview-kpi mb-3">
-                        <div class="col-6 col-md">
-                            <div class="border rounded p-3 text-center bg-light h-100">
-                                <div class="small text-muted">شكاوى مفتوحة</div>
-                                <div class="fs-3 fw-bold {% if open_count > 0 %}text-danger{% else %}text-success{% endif %}">{{ open_count }}</div>
-                                <div class="small text-muted">{{ n_complaints }} إجمالي</div>
-                            </div>
-                        </div>
-                        <div class="col-6 col-md">
-                            <div class="border rounded p-3 text-center bg-light h-100">
-                                <div class="small text-muted">طلبات بانتظار الرد</div>
-                                <div class="fs-3 fw-bold {% if pending_inquiries_count > 0 %}text-warning{% else %}text-success{% endif %}">{{ pending_inquiries_count }}</div>
-                                <div class="small text-muted">استفسارات العملاء</div>
-                            </div>
-                        </div>
-                        <div class="col-6 col-md">
-                            <div class="border rounded p-3 text-center bg-light h-100">
-                                <div class="small text-muted">المنتجات</div>
-                                <div class="fs-3 fw-bold text-dark">{{ n_products }}</div>
-                                <div class="small text-muted">مسجلة للفرع</div>
-                            </div>
-                        </div>
-                        <div class="col-6 col-md">
-                            <div class="border rounded p-3 text-center bg-light h-100">
-                                <div class="small text-muted">الفئات</div>
-                                <div class="fs-3 fw-bold text-dark">{{ n_cats }}</div>
-                                <div class="small text-muted">طلب بحث منتجات: {{ n_prod_req }}</div>
-                            </div>
-                        </div>
+                    <div class="ms-kpi-card {% if pending_inquiries_count > 0 %}ms-kpi-card--danger{% else %}ms-kpi-card--success{% endif %}">
+                        <div class="ms-kpi-icon {% if pending_inquiries_count > 0 %}ms-kpi-icon--danger{% else %}ms-kpi-icon--green{% endif %}">🔔</div>
+                        <div class="ms-kpi-value" style="{% if pending_inquiries_count > 0 %}color:#dc2626{% else %}color:#059669{% endif %}">{{ pending_inquiries_count }}</div>
+                        <div class="ms-kpi-label">طلبات بانتظار الرد</div>
+                        <div class="ms-kpi-hint">استفسارات العملاء</div>
                     </div>
-                    <div class="d-flex flex-wrap gap-2 branch-overview-actions">
-                        <button type="button" class="btn btn-gold btn-sm" data-bs-toggle="offcanvas" data-bs-target="#liveAnalyticsOffcanvas" aria-controls="liveAnalyticsOffcanvas">📊 تحليلات وتقارير</button>
-                        <a href="{{ url_for('wa_inbox.branch_messages_page') }}" class="btn btn-outline-secondary btn-sm">💬 محادثات واتساب</a>
-                        <a href="/products" class="btn btn-outline-secondary btn-sm">📦 المنتجات</a>
-                        <a href="#branch-complaints-block" class="btn btn-outline-secondary btn-sm">📋 الشكاوى</a>
-                        <a href="#branch-services-block" class="btn btn-outline-secondary btn-sm d-md-none">🛠️ خدمات الفرع</a>
+                    <div class="ms-kpi-card">
+                        <div class="ms-kpi-icon ms-kpi-icon--gold">📦</div>
+                        <div class="ms-kpi-value">{{ n_products }}</div>
+                        <div class="ms-kpi-label">المنتجات</div>
+                        <div class="ms-kpi-hint">مسجلة للفرع</div>
                     </div>
-                    <p class="small text-muted mt-3 mb-0">لضبط أسماء الخدمات المعروضة للذكاء الاصطناعي انتقل إلى <strong>خدمات الفرع</strong> من القائمة أو الزر أعلاه.</p>
+                    <div class="ms-kpi-card ms-kpi-card--gold">
+                        <div class="ms-kpi-icon ms-kpi-icon--gold">📂</div>
+                        <div class="ms-kpi-value">{{ n_cats }}</div>
+                        <div class="ms-kpi-label">الفئات</div>
+                        <div class="ms-kpi-hint">طلب بحث: {{ n_prod_req }}</div>
+                    </div>
                 </div>
 
-                <!-- ── الفئات ── -->
-                <div class="row g-4 mb-5" id="branch-categories-block">
+                <!-- Quick Actions (Desktop) -->
+                <div class="d-none d-md-flex flex-wrap gap-2 mt-3">
+                    <button type="button" class="btn ms-btn ms-btn-primary btn-sm"
+                            data-bs-toggle="offcanvas" data-bs-target="#liveAnalyticsOffcanvas">📊 تحليلات</button>
+                    <a href="{{ url_for('wa_inbox.branch_messages_page') }}" class="btn ms-btn ms-btn-outline btn-sm">💬 واتساب</a>
+                    <a href="/products" class="btn ms-btn ms-btn-outline btn-sm">📦 المنتجات</a>
+                    <a href="#branch-complaints-block" class="btn ms-btn ms-btn-outline btn-sm">📋 الشكاوى</a>
+                    <a href="#branch-inquiries-block" class="btn ms-btn ms-btn-outline btn-sm">🔔 الطلبات</a>
+                </div>
+            </div>
+
+            <!-- ═══ الفئات والأقسام ═══ -->
+            <div class="ms-section-sep"></div>
+            <div id="branch-categories-block">
+                <div class="ms-section-header mb-3">
+                    <h2 class="ms-section-title">📂 الفئات والأقسام</h2>
+                </div>
+                <div class="row g-3 mb-4">
                     <div class="col-md-6">
                         <div class="stat-card">
-                            <h5 class="mb-4 fw-bold" style="color: var(--accent-gold);">📂 إضافة فئة رئيسية</h5>
+                            <h3 class="ms-card-title mb-3" style="font-size:0.9rem;">➕ إضافة فئة رئيسية</h3>
                             <form action="/branch/add_category" method="POST">
                                 {{ csrf_input() }}
                                 <div class="mb-3">
-                                    <label class="small fw-bold">اسم الفئة</label>
-                                    <input type="text" name="cat_name" class="form-control" placeholder="مثلاً: قسم الملابس" required>
+                                    <label class="ms-form-label">اسم الفئة</label>
+                                    <input type="text" name="cat_name" class="form-control"
+                                           placeholder="مثلاً: قسم الملابس" required autocomplete="off">
                                 </div>
-                                <button type="submit" class="btn btn-gold w-100">حفظ الفئة</button>
+                                <button type="submit" class="btn btn-gold w-100">💾 حفظ الفئة</button>
                             </form>
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="stat-card">
-                            <h5 class="mb-4 fw-bold">📋 الفئات المتاحة</h5>
-                            <div class="list-group">
+                            <h3 class="ms-card-title mb-3" style="font-size:0.9rem;">📋 الفئات المتاحة</h3>
+                            {% if main_categories %}
+                            <div class="d-flex flex-column gap-2">
                                 {% for cat in main_categories %}
-                                <div class="list-group-item d-flex justify-content-between align-items-center bg-light border-0 mb-2 rounded">
-                                    <span class="fw-bold text-dark">
-                                        <a href="{{ url_for('show_sections', category_id=cat['id']) }}" style="text-decoration:none; color: inherit;">
-                                            {{ cat['name'] }}
-                                        </a>
-                                    </span>
-                                    <a href="{{ url_for('show_sections', category_id=cat['id']) }}" class="btn btn-sm btn-outline-secondary">عرض الأقسام الفرعية</a>
-                                </div>
-                                {% else %}
-                                <p class="text-muted mb-0">لا توجد فئات بعد.</p>
+                                <a href="{{ url_for('show_sections', category_id=cat['id']) }}"
+                                   style="display:flex;align-items:center;justify-content:space-between;background:#f5f4ef;border-radius:9px;padding:10px 13px;text-decoration:none;color:#1a1a1a;font-weight:600;font-size:.88rem;transition:background .15s,transform .1s;"
+                                   onmouseover="this.style.background='#e8f5e9'" onmouseout="this.style.background='#f5f4ef'">
+                                    <span>📂 {{ cat['name'] }}</span>
+                                    <span style="font-size:.8rem;color:#6b7280;">الأقسام ›</span>
+                                </a>
                                 {% endfor %}
                             </div>
+                            {% else %}
+                            <div class="ms-empty py-3">
+                                <span class="ms-empty__icon">📂</span>
+                                <div class="ms-empty__title">لا توجد فئات بعد</div>
+                                <div class="ms-empty__desc">أضف أول فئة من النموذج المجاور</div>
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <!-- ══════════════════════════════════════
-                     قسم الشكاوى
-                ══════════════════════════════════════ -->
-                <div class="mb-2 d-flex align-items-center justify-content-between" id="branch-complaints-block">
-                    <h4 class="fw-bold mb-0">📋 شكاوى الفرع</h4>
+            <!-- ═══ الشكاوى ═══ -->
+            <div class="ms-section-sep"></div>
+            <div id="branch-complaints-block">
+                <div class="ms-section-header mb-3">
+                    <h2 class="ms-section-title">📋 شكاوى الفرع</h2>
                     {% if open_count > 0 %}
-                    <span class="badge bg-danger fs-6">{{ open_count }} مفتوحة</span>
+                    <span class="ms-badge ms-badge-pending">{{ open_count }} مفتوحة</span>
                     {% endif %}
                 </div>
 
-                <div class="stat-card mb-5" style="padding: 0; overflow: hidden;">
+                <div class="stat-card mb-4" style="padding:0;overflow:hidden;">
                     {% if branch_complaints %}
-                    <!-- Desktop table -->
-                    <div class="branch-complaint-desktop table-responsive">
+                    <!-- Desktop Table -->
+                    <div class="ms-table-desktop table-responsive">
                         <table class="table table-hover align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>التذكرة</th>
-                                    <th>العميل</th>
-                                    <th>الشكوى</th>
-                                    <th>التصنيف</th>
-                                    <th>التاريخ</th>
-                                    <th>الحالة</th>
-                                    <th style="min-width:160px;">إجراء</th>
-                                </tr>
-                            </thead>
+                            <thead><tr>
+                                <th>التذكرة</th><th>العميل</th><th>الشكوى</th>
+                                <th>التصنيف</th><th>التاريخ</th><th>الحالة</th><th style="min-width:150px;">إجراء</th>
+                            </tr></thead>
                             <tbody>
                             {% for c in branch_complaints %}
                                 {% set st = (c.status or '') | lower %}
                                 {% set is_resolved = st == 'resolved' %}
                             <tr class="complaint-row">
-                                <td><code class="fw-bold" style="color:var(--accent-gold);">{{ c.ticket_code or c.id }}</code></td>
+                                <td><code class="fw-bold" style="color:#c9a227;font-size:.85rem;">{{ c.ticket_code or c.id }}</code></td>
                                 <td>
                                     <div class="fw-bold small">{{ c.customer_name or '—' }}</div>
-                                    {% if c.customer_phone %}<div class="text-muted" style="font-size:.78rem;">📱 {{ c.customer_phone }}</div>{% endif %}
+                                    {% if c.customer_phone %}<div class="text-muted" style="font-size:.75rem;">📱 {{ c.customer_phone }}</div>{% endif %}
                                 </td>
-                                <td class="issue-cell">{{ (c.message or c.issue or '') | truncate(120) }}</td>
+                                <td class="issue-cell">{{ (c.message or c.issue or '') | truncate(100) }}</td>
                                 <td>
                                     <span class="small text-muted">{{ c.complaint_ai_classification or '—' }}</span>
                                     {% if c.employee_name %}<div><span class="emp-badge">{{ c.employee_name }}</span></div>{% endif %}
                                 </td>
-                                <td class="small text-nowrap text-muted">{{ (c.created_at or '—')[:16] }}</td>
+                                <td class="small text-muted text-nowrap">{{ (c.created_at or '—')[:16] }}</td>
                                 <td>
-                                    {% if is_resolved %}<span class="badge rounded-pill badge-resolved">تم الحل</span>
-                                    {% else %}<span class="badge rounded-pill badge-open">قيد المعالجة</span>{% endif %}
+                                    {% if is_resolved %}
+                                    <span class="ms-badge ms-badge-resolved">✅ تم الحل</span>
+                                    {% else %}
+                                    <span class="ms-badge ms-badge-open">⏳ مفتوحة</span>
+                                    {% endif %}
                                 </td>
                                 <td>
                                     {% if c.customer_email or c.customer_phone %}
-                                    <button class="btn btn-sm btn-gold mb-1 w-100" onclick="toggleReply('reply-{{ c.id }}')">💬 رد</button>
+                                    <button class="btn btn-gold btn-sm w-100 mb-1"
+                                            onclick="togglePanel('reply-{{ c.id }}')"
+                                            style="min-height:36px;font-size:.82rem;">💬 رد</button>
                                     <div id="reply-{{ c.id }}" class="reply-panel">
-                                        {% if c.customer_reply_text %}<div class="sent-reply-box mb-2"><div class="small fw-bold text-success mb-1">آخر رد:</div>{{ c.customer_reply_text }}</div>{% endif %}
+                                        {% if c.customer_reply_text %}
+                                        <div class="sent-reply-box mb-2">
+                                            <div class="small fw-bold text-success mb-1">آخر رد:</div>{{ c.customer_reply_text }}
+                                        </div>{% endif %}
                                         <form action="{{ url_for('branch_complaint_reply', complaint_id=c.id) }}" method="post">
                                             {{ csrf_input() }}
-                                            <textarea name="reply_text" class="form-control form-control-sm mb-2" rows="2" placeholder="اكتب ردك…" required></textarea>
+                                            <textarea name="reply_text" class="form-control form-control-sm mb-2"
+                                                      rows="2" placeholder="اكتب ردك…" required></textarea>
                                             <div class="d-flex gap-2">
-                                                <button type="submit" class="btn btn-sm btn-gold flex-grow-1">📤 إرسال</button>
-                                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleReply('reply-{{ c.id }}')">✕</button>
+                                                <button type="submit" class="btn btn-gold flex-grow-1" style="min-height:36px;font-size:.82rem;">📤 إرسال</button>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                        onclick="togglePanel('reply-{{ c.id }}')" style="min-height:36px;">✕</button>
                                             </div>
                                         </form>
                                     </div>
@@ -348,8 +495,9 @@
                             </tbody>
                         </table>
                     </div>
-                    <!-- Mobile cards -->
-                    <div class="branch-complaint-mobile p-2">
+
+                    <!-- Mobile Cards -->
+                    <div class="ms-cards-mobile p-2">
                         {% for c in branch_complaints %}
                         {% set st = (c.status or '') | lower %}
                         {% set is_resolved = st == 'resolved' %}
@@ -357,64 +505,79 @@
                         <div class="bc-card">
                             <div class="bc-card-top">
                                 <span class="bc-card-ticket">#{{ c.ticket_code or c.id }}</span>
-                                <span style="font-size:.72rem;color:#888;">{{ (c.created_at or '')[:10] }}</span>
+                                <span style="font-size:.7rem;color:#9ca3af;">{{ (c.created_at or '')[:10] }}</span>
                             </div>
-                            <div class="fw-bold" style="font-size:.9rem;">{{ c.customer_name or 'عميل' }}</div>
+                            <div class="fw-bold mb-1" style="font-size:.88rem;">{{ c.customer_name or 'عميل' }}</div>
+                            {% if c.customer_phone %}
+                            <div style="font-size:.75rem;color:#6b7280;margin-bottom:6px;">📱 {{ c.customer_phone }}</div>
+                            {% endif %}
                             <div class="bc-card-preview">{{ msg_text }}</div>
-                            <div class="bc-card-footer">
-                                {% if is_resolved %}<span class="badge badge-resolved">تم الحل</span>
-                                {% else %}<span class="badge badge-open">مفتوحة</span>{% endif %}
-                                <span style="font-size:.7rem;color:#666;">{{ c.complaint_ai_classification or '' }}</span>
+                            <div class="bc-card-footer mb-2">
+                                {% if is_resolved %}
+                                <span class="ms-badge ms-badge-resolved">✅ تم الحل</span>
+                                {% else %}
+                                <span class="ms-badge ms-badge-open">⏳ مفتوحة</span>
+                                {% endif %}
+                                {% if c.complaint_ai_classification %}
+                                <span style="font-size:.7rem;color:#6b7280;">{{ c.complaint_ai_classification }}</span>
+                                {% endif %}
                             </div>
                             {% if c.customer_email or c.customer_phone %}
-                            <form action="{{ url_for('branch_complaint_reply', complaint_id=c.id) }}" method="post" class="mt-2">
-                                {{ csrf_input() }}
-                                <textarea name="reply_text" class="form-control form-control-sm mb-1" rows="2" placeholder="رد…" required></textarea>
-                                <button type="submit" class="btn btn-sm btn-gold w-100">💬 رد</button>
-                            </form>
+                            <button class="btn btn-gold w-100" style="font-size:.84rem;min-height:42px;"
+                                    onclick="togglePanel('mob-reply-{{ c.id }}')">💬 رد على العميل</button>
+                            <div id="mob-reply-{{ c.id }}" class="reply-panel mt-2">
+                                {% if c.customer_reply_text %}
+                                <div class="sent-reply-box mb-2">
+                                    <div class="small fw-bold text-success mb-1">آخر رد:</div>{{ c.customer_reply_text }}
+                                </div>{% endif %}
+                                <form action="{{ url_for('branch_complaint_reply', complaint_id=c.id) }}" method="post">
+                                    {{ csrf_input() }}
+                                    <textarea name="reply_text" class="form-control mb-2"
+                                              rows="3" placeholder="اكتب ردك هنا…" required></textarea>
+                                    <div class="d-flex gap-2">
+                                        <button type="submit" class="btn btn-gold flex-grow-1" style="min-height:42px;">📤 إرسال الرد</button>
+                                        <button type="button" class="btn btn-outline-secondary"
+                                                onclick="togglePanel('mob-reply-{{ c.id }}')" style="min-height:42px;padding:0 14px;">✕</button>
+                                    </div>
+                                </form>
+                            </div>
                             {% endif %}
                         </div>
                         {% endfor %}
                     </div>
+
                     {% else %}
-                    <div class="text-center text-muted py-5">
-                        <div style="font-size:2.5rem;">📭</div>
-                        <div class="mt-2">لا توجد شكاوى لهذا الفرع حتى الآن</div>
+                    <div class="ms-empty py-5">
+                        <span class="ms-empty__icon">📭</span>
+                        <div class="ms-empty__title">لا توجد شكاوى</div>
+                        <div class="ms-empty__desc">لم يُسجَّل أي شكاوى لهذا الفرع حتى الآن</div>
                     </div>
                     {% endif %}
                 </div>
-                <!-- ══ نهاية الشكاوى ══ -->
+            </div><!-- /complaints -->
 
-                <!-- ══════════════════════════════════════
-                     قسم طلبات / استفسارات العملاء
-                     (منتج غير مسجل في قاعدة البيانات)
-                ══════════════════════════════════════ -->
-                <div class="mb-2 d-flex align-items-center justify-content-between mt-5" id="branch-inquiries-block">
-                    <h4 class="fw-bold mb-0">🔔 طلبات واستفسارات العملاء</h4>
+            <!-- ═══ طلبات واستفسارات العملاء ═══ -->
+            <div class="ms-section-sep"></div>
+            <div id="branch-inquiries-block">
+                <div class="ms-section-header mb-2">
+                    <h2 class="ms-section-title">🔔 طلبات واستفسارات العملاء</h2>
                     {% if pending_inquiries_count > 0 %}
-                    <span class="badge bg-danger fs-6">{{ pending_inquiries_count }} بانتظار الرد</span>
+                    <span class="ms-badge ms-badge-pending">{{ pending_inquiries_count }} بانتظار الرد</span>
                     {% endif %}
                 </div>
-                <p class="text-muted small mb-3">
-                    هذه طلبات عملاء سألوا عن منتجات غير مسجلة في النظام. ردّ عليهم بالتوفر والسعر وصورة اختيارية.
+                <p class="small text-muted mb-3">
+                    عملاء سألوا عن منتجات غير مسجلة في النظام. ردّ عليهم بالتوفر والسعر وصورة اختيارية.
                 </p>
 
-                <div class="stat-card mb-5" style="padding: 0; overflow: hidden;">
+                <div class="stat-card mb-4" style="padding:0;overflow:hidden;">
                     {% if branch_inquiries %}
-                    <div class="table-responsive">
+                    <!-- Desktop Table -->
+                    <div class="ms-table-desktop table-responsive">
                         <table class="table table-hover align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th style="width:50px;">#</th>
-                                    <th>العميل</th>
-                                    <th>الطلب</th>
-                                    <th>القسم المتوقع</th>
-                                    <th>الصورة</th>
-                                    <th>التاريخ</th>
-                                    <th>الحالة</th>
-                                    <th style="min-width:160px;">إجراء</th>
-                                </tr>
-                            </thead>
+                            <thead><tr>
+                                <th>#</th><th>العميل</th><th>الطلب</th><th>القسم</th>
+                                <th>الصورة</th><th>التاريخ</th><th>الحالة</th><th style="min-width:150px;">إجراء</th>
+                            </tr></thead>
                             <tbody>
                             {% for inq in branch_inquiries %}
                                 {% set inq_done = inq.status == 'answered' %}
@@ -422,82 +585,59 @@
                                 <td class="fw-bold text-muted small">{{ inq.id }}</td>
                                 <td>
                                     <div class="fw-bold small">{{ inq.customer_name or '—' }}</div>
-                                    {% if inq.customer_contact %}
-                                    <div class="text-muted" style="font-size:.78rem;">{{ inq.customer_contact }}</div>
-                                    {% endif %}
+                                    {% if inq.customer_contact %}<div class="text-muted" style="font-size:.75rem;">{{ inq.customer_contact }}</div>{% endif %}
                                 </td>
-                                <td class="issue-cell">{{ (inq.inquiry_text or '') | truncate(100) }}</td>
+                                <td class="issue-cell">{{ (inq.inquiry_text or '') | truncate(80) }}</td>
                                 <td>
                                     {% if inq.category_hint %}
-                                    <span class="badge" style="background:#0ea5e9;color:#fff;">{{ inq.category_hint }}</span>
+                                    <span class="ms-badge ms-badge-info">{{ inq.category_hint }}</span>
                                     {% else %}—{% endif %}
                                 </td>
                                 <td>
                                     {% if inq.customer_image_path %}
                                     <a href="{{ media_url(inq.customer_image_path) }}" target="_blank" rel="noopener">
-                                        <img src="{{ media_url(inq.customer_image_path) }}" class="inq-customer-img" alt="صورة العميل">
+                                        <img src="{{ media_url(inq.customer_image_path) }}" class="inq-customer-img" alt="صورة">
                                     </a>
-                                    {% else %}
-                                    <span class="text-muted small">لا توجد صورة</span>
-                                    {% endif %}
+                                    {% else %}<span class="small text-muted">—</span>{% endif %}
                                 </td>
-                                <td class="small text-nowrap text-muted">{{ (inq.created_at or '—')[:16] }}</td>
+                                <td class="small text-muted text-nowrap">{{ (inq.created_at or '—')[:16] }}</td>
                                 <td>
                                     {% if inq_done %}
-                                    <span class="badge rounded-pill badge-inq-answered">✅ تم الرد</span>
+                                    <span class="ms-badge ms-badge-answered">✅ تم الرد</span>
                                     {% else %}
-                                    <span class="badge rounded-pill badge-inq-pending">⏳ بانتظار الرد</span>
-                                    {% endif %}
-                                    {% if inq.branch_reply %}
-                                    <div class="small text-muted mt-1" style="font-size:.75rem;">
-                                        {{ inq.branch_reply | truncate(40) }}
-                                    </div>
+                                    <span class="ms-badge ms-badge-pending">⏳ بانتظار</span>
                                     {% endif %}
                                 </td>
                                 <td>
-                                    <button class="btn btn-sm w-100 mb-1"
-                                            style="background:#0ea5e9;color:#fff;"
-                                            onclick="toggleReply('inq-reply-{{ inq.id }}')">
-                                        💬 رد على العميل
-                                    </button>
+                                    <button class="btn w-100 mb-1"
+                                            style="background:#2563eb;color:#fff;font-weight:700;min-height:36px;font-size:.82rem;border-radius:8px;"
+                                            onclick="togglePanel('inq-reply-{{ inq.id }}')">💬 رد</button>
                                     <div id="inq-reply-{{ inq.id }}" class="inq-reply-panel">
-                                        <div class="small fw-bold mb-2" style="color:#0369a1;">
-                                            الطلب: {{ inq.inquiry_text or '' }}
-                                        </div>
+                                        <div class="small fw-bold mb-2" style="color:#1e40af;">{{ inq.inquiry_text or '' }}</div>
                                         {% if inq.branch_reply %}
                                         <div class="sent-reply-box mb-2">
-                                            <div class="small fw-bold text-success mb-1">آخر رد مُرسَل:</div>
+                                            <div class="small fw-bold text-success mb-1">آخر رد:</div>
                                             {{ inq.branch_reply }}
-                                            {% if inq.branch_price %}
-                                            <br><strong>السعر:</strong> {{ inq.branch_price }}
-                                            {% endif %}
-                                        </div>
-                                        {% endif %}
+                                            {% if inq.branch_price %}<br><strong>السعر:</strong> {{ inq.branch_price }}{% endif %}
+                                        </div>{% endif %}
                                         <form action="{{ url_for('branch_reply_inquiry', inquiry_id=inq.id) }}"
                                               method="post" enctype="multipart/form-data">
                                             {{ csrf_input() }}
                                             <textarea name="reply_text" class="form-control form-control-sm mb-2"
-                                                      rows="3"
-                                                      placeholder="مثال: نعم متوفر عندنا، تعال الفرع أو تواصل معنا."
+                                                      rows="2" placeholder="ردك على العميل…"
                                                       required>{{ inq.branch_reply or '' }}</textarea>
-                                            <input type="text" name="branch_price"
-                                                   class="form-control form-control-sm mb-2"
-                                                   placeholder="السعر (اختياري) — مثال: 150 ريال"
-                                                   value="{{ inq.branch_price or '' }}">
+                                            <input type="text" name="branch_price" class="form-control form-control-sm mb-2"
+                                                   placeholder="السعر (اختياري)" value="{{ inq.branch_price or '' }}">
                                             <div class="mb-2">
                                                 <label class="small fw-bold mb-1">📷 أرفق صورة (اختياري)</label>
-                                                <input type="file" name="branch_image"
-                                                       class="form-control form-control-sm"
-                                                       accept="image/*">
+                                                <input type="file" name="branch_image" class="form-control form-control-sm" accept="image/*">
                                             </div>
                                             <div class="d-flex gap-2">
-                                                <button type="submit"
-                                                        class="btn btn-sm flex-grow-1"
-                                                        style="background:#0ea5e9;color:#fff;">
-                                                    📤 إرسال الرد
-                                                </button>
-                                                <button type="button" class="btn btn-sm btn-outline-secondary"
-                                                        onclick="toggleReply('inq-reply-{{ inq.id }}')">إلغاء</button>
+                                                <button type="submit" class="btn flex-grow-1"
+                                                        style="background:#2563eb;color:#fff;font-weight:700;min-height:36px;font-size:.82rem;border-radius:8px;">📤 إرسال</button>
+                                                <button type="button" class="btn btn-outline-secondary"
+                                                        onclick="togglePanel('inq-reply-{{ inq.id }}')"
+                                                        style="min-height:36px;padding:0 12px;">إلغاء</button>
                                             </div>
                                         </form>
                                     </div>
@@ -507,66 +647,264 @@
                             </tbody>
                         </table>
                     </div>
+
+                    <!-- Mobile Cards -->
+                    <div class="ms-cards-mobile p-2">
+                        {% for inq in branch_inquiries %}
+                        {% set inq_done = inq.status == 'answered' %}
+                        <div class="inq-card">
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                                <span style="font-weight:700;font-size:.88rem;">{{ inq.customer_name or 'عميل' }}</span>
+                                <span style="font-size:.7rem;color:#9ca3af;">{{ (inq.created_at or '')[:10] }}</span>
+                            </div>
+                            {% if inq.customer_contact %}
+                            <div style="font-size:.75rem;color:#6b7280;margin-bottom:6px;">{{ inq.customer_contact }}</div>
+                            {% endif %}
+                            <div style="font-size:.84rem;color:#4b5563;line-height:1.5;margin-bottom:10px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;">
+                                {{ (inq.inquiry_text or '') | truncate(120) }}
+                            </div>
+                            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+                                {% if inq_done %}
+                                <span class="ms-badge ms-badge-answered">✅ تم الرد</span>
+                                {% else %}
+                                <span class="ms-badge ms-badge-pending">⏳ بانتظار الرد</span>
+                                {% endif %}
+                                {% if inq.category_hint %}
+                                <span class="ms-badge ms-badge-info">{{ inq.category_hint }}</span>
+                                {% endif %}
+                            </div>
+                            {% if inq.customer_image_path %}
+                            <div style="margin-bottom:10px;">
+                                <a href="{{ media_url(inq.customer_image_path) }}" target="_blank">
+                                    <img src="{{ media_url(inq.customer_image_path) }}"
+                                         style="max-width:100px;border-radius:8px;border:2px solid #bae6fd;" alt="صورة العميل">
+                                </a>
+                            </div>
+                            {% endif %}
+                            <button class="btn w-100"
+                                    style="background:#2563eb;color:#fff;font-weight:700;min-height:44px;border-radius:10px;font-size:.88rem;"
+                                    onclick="togglePanel('mob-inq-{{ inq.id }}')">💬 رد على العميل</button>
+                            <div id="mob-inq-{{ inq.id }}" class="inq-reply-panel mt-2">
+                                <div class="small fw-bold mb-2" style="color:#1e40af;">{{ inq.inquiry_text or '' }}</div>
+                                {% if inq.branch_reply %}
+                                <div class="sent-reply-box mb-2">
+                                    <div class="small fw-bold text-success mb-1">آخر رد مُرسَل:</div>
+                                    {{ inq.branch_reply }}
+                                    {% if inq.branch_price %}<br><strong>السعر:</strong> {{ inq.branch_price }}{% endif %}
+                                </div>{% endif %}
+                                <form action="{{ url_for('branch_reply_inquiry', inquiry_id=inq.id) }}"
+                                      method="post" enctype="multipart/form-data">
+                                    {{ csrf_input() }}
+                                    <textarea name="reply_text" class="form-control mb-2"
+                                              rows="3" placeholder="مثال: نعم متوفر، تعال الفرع أو تواصل معنا."
+                                              required>{{ inq.branch_reply or '' }}</textarea>
+                                    <input type="text" name="branch_price" class="form-control mb-2"
+                                           placeholder="السعر (اختياري) — مثال: 150 ريال"
+                                           value="{{ inq.branch_price or '' }}">
+                                    <div class="mb-3">
+                                        <label class="ms-form-label">📷 أرفق صورة (اختياري)</label>
+                                        <input type="file" name="branch_image" class="form-control" accept="image/*">
+                                    </div>
+                                    <div class="d-flex gap-2">
+                                        <button type="submit" class="btn flex-grow-1"
+                                                style="background:#2563eb;color:#fff;font-weight:700;min-height:44px;border-radius:10px;">📤 إرسال الرد</button>
+                                        <button type="button" class="btn btn-outline-secondary"
+                                                onclick="togglePanel('mob-inq-{{ inq.id }}')"
+                                                style="min-height:44px;padding:0 14px;">إلغاء</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+
                     {% else %}
-                    <div class="text-center text-muted py-5">
-                        <div style="font-size:2.5rem;">📭</div>
-                        <div class="mt-2">لا توجد استفسارات جديدة من العملاء</div>
+                    <div class="ms-empty py-5">
+                        <span class="ms-empty__icon">📭</span>
+                        <div class="ms-empty__title">لا توجد استفسارات جديدة</div>
+                        <div class="ms-empty__desc">سيظهر هنا طلبات العملاء عن منتجات غير مسجلة</div>
                     </div>
                     {% endif %}
                 </div>
-                <!-- ══ نهاية طلبات العملاء ══ -->
+            </div><!-- /inquiries -->
 
-                <!-- طلبات بحث عن منتج من الشات (product_requests) -->
-                <div class="mb-2 mt-5" id="branch-product-requests-block">
-                    <h4 class="fw-bold mb-0">🔎 طلبات البحث عن منتج</h4>
-                    <p class="text-muted small mb-3">سُجّلت من محادثة العميل — قائمة موحّدة لكل الفروع (للمتابعة وإضافة المنتجات).</p>
-                </div>
-                <div class="stat-card mb-5" style="padding: 0; overflow: hidden;">
+            <!-- ═══ طلبات البحث عن منتج ═══ -->
+            <div class="ms-section-sep"></div>
+            <div id="branch-product-requests-block">
+                <div class="ms-section-header mb-2">
+                    <h2 class="ms-section-title">🔎 طلبات البحث عن منتج</h2>
                     {% if branch_product_requests %}
-                    <div class="table-responsive">
+                    <span class="ms-badge ms-badge-gold">{{ branch_product_requests|length }}</span>
+                    {% endif %}
+                </div>
+                <p class="text-muted small mb-3">سُجّلت من محادثة العميل — لمتابعة الطلبات وإضافة المنتجات.</p>
+                <div class="stat-card mb-4" style="padding:0;overflow:hidden;">
+                    {% if branch_product_requests %}
+                    <div class="ms-table-desktop table-responsive">
                         <table class="table table-hover align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th style="width:50px;">#</th>
-                                    <th>وصف الطلب</th>
-                                    <th>المستخدم</th>
-                                    <th class="text-nowrap">التاريخ</th>
-                                </tr>
-                            </thead>
+                            <thead><tr><th>#</th><th>وصف الطلب</th><th>المستخدم</th><th>التاريخ</th></tr></thead>
                             <tbody>
                             {% for pr in branch_product_requests %}
-                                <tr>
-                                    <td class="small text-muted">{{ pr.id }}</td>
-                                    <td class="small">{{ (pr.product_description or '') | truncate(200) }}</td>
-                                    <td><code class="small">{{ pr.user_id or '—' }}</code></td>
-                                    <td class="small text-muted">{{ (pr.requested_at or '—')[:16] }}</td>
-                                </tr>
+                            <tr>
+                                <td class="small text-muted">{{ pr.id }}</td>
+                                <td class="small" style="max-width:280px;">{{ (pr.product_description or '') | truncate(200) }}</td>
+                                <td><code class="small">{{ pr.user_id or '—' }}</code></td>
+                                <td class="small text-muted">{{ (pr.requested_at or '—')[:16] }}</td>
+                            </tr>
                             {% endfor %}
                             </tbody>
                         </table>
                     </div>
+                    <div class="ms-cards-mobile p-2">
+                        {% for pr in branch_product_requests %}
+                        <div class="ms-record-card">
+                            <div class="ms-record-card__header">
+                                <span class="ms-record-card__title">🔎 طلب #{{ pr.id }}</span>
+                                <span class="ms-record-card__meta">{{ (pr.requested_at or '')[:10] }}</span>
+                            </div>
+                            <div class="ms-record-card__body">{{ (pr.product_description or '') | truncate(150) }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
                     {% else %}
-                    <div class="text-center text-muted py-4">لا توجد طلبات منتجات مسجّلة حديثاً.</div>
+                    <div class="ms-empty py-4">
+                        <span class="ms-empty__icon">🔎</span>
+                        <div class="ms-empty__title">لا توجد طلبات بحث حديثة</div>
+                    </div>
                     {% endif %}
                 </div>
+            </div><!-- /product requests -->
 
-                <div id="branch-services-block" class="branch-dash-services-anchor">
-                    {% set company_info_scope = 'branch' %}
-                    {% include 'partials/company_info_block.html' %}
+            <!-- ═══ خدمات الفرع للذكاء الاصطناعي ═══ -->
+            <div class="ms-section-sep"></div>
+            <div id="branch-services-block">
+                {% set company_info_scope = 'branch' %}
+                {% include 'partials/company_info_block.html' %}
+            </div>
+
+            <!-- ═══ إعدادات التواصل (Modal) ═══ -->
+            <div class="modal fade" id="branchContactModal" tabindex="-1" aria-labelledby="branchContactModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content" style="border-radius:16px;border:1px solid #e4e0d6;">
+                        <div class="modal-header" style="border-bottom:1px solid #e4e0d6;">
+                            <h5 class="modal-title fw-bold" id="branchContactModalLabel">⚙️ بيانات التواصل</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <form action="/branch/settings/contact" method="POST">
+                                {{ csrf_input() }}
+                                <div class="mb-3">
+                                    <label class="ms-form-label">📧 البريد الإلكتروني</label>
+                                    <input type="email" name="branch_email" class="form-control"
+                                           value="{{ branch_info.complaint_email or '' }}"
+                                           placeholder="email@example.com">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="ms-form-label">📱 رقم الجوال</label>
+                                    <input type="tel" name="branch_phone" class="form-control"
+                                           value="{{ branch_info.phone or '' }}"
+                                           placeholder="05xxxxxxxx">
+                                </div>
+                                <button type="submit" class="btn btn-gold w-100">💾 حفظ البيانات</button>
+                            </form>
+                        </div>
+                    </div>
                 </div>
+            </div>
 
-            </div><!-- /dash-main -->
-        </div>
-    </div>
+        </div><!-- /dash-main -->
+    </div><!-- /dash-row -->
+</div><!-- /container -->
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    {% include 'partials/live_analytics.html' %}
-    <script src="{{ url_for('static', filename='js/dashboard-layout.js') }}" defer></script>
-    <script>
-        function toggleReply(id) {
-            const panel = document.getElementById(id);
-            if (panel) panel.classList.toggle('show');
+<!-- Settings FAB (Mobile) -->
+<a href="#" class="settings-fab" data-bs-toggle="modal" data-bs-target="#branchContactModal"
+   title="إعدادات التواصل" aria-label="إعدادات التواصل">⚙️</a>
+
+<!-- Mobile Bottom Navigation -->
+<nav class="ms-bottom-nav" aria-label="التنقل السريع">
+    <ul class="ms-bottom-nav__list">
+        <li class="ms-bottom-nav__item">
+            <a href="#branch-overview-block" class="ms-bottom-nav__link active">
+                <span class="ms-bottom-nav__icon">🏠</span>
+                <span>الرئيسية</span>
+            </a>
+        </li>
+        <li class="ms-bottom-nav__item">
+            <a href="/products" class="ms-bottom-nav__link">
+                <span class="ms-bottom-nav__icon">📦</span>
+                <span>المنتجات</span>
+            </a>
+        </li>
+        <li class="ms-bottom-nav__item">
+            <a href="#branch-complaints-block" class="ms-bottom-nav__link">
+                <span class="ms-bottom-nav__icon" style="position:relative;">
+                    📋
+                    {% if open_count > 0 %}<span class="ms-bottom-nav__badge">{{ open_count }}</span>{% endif %}
+                </span>
+                <span>الشكاوى</span>
+            </a>
+        </li>
+        <li class="ms-bottom-nav__item">
+            <a href="#branch-inquiries-block" class="ms-bottom-nav__link">
+                <span class="ms-bottom-nav__icon" style="position:relative;">
+                    🔔
+                    {% if pending_inquiries_count > 0 %}<span class="ms-bottom-nav__badge">{{ pending_inquiries_count }}</span>{% endif %}
+                </span>
+                <span>الطلبات</span>
+            </a>
+        </li>
+        <li class="ms-bottom-nav__item">
+            <a href="{{ url_for('wa_inbox.branch_messages_page') }}" class="ms-bottom-nav__link">
+                <span class="ms-bottom-nav__icon">💬</span>
+                <span>واتساب</span>
+            </a>
+        </li>
+    </ul>
+</nav>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+{% include 'partials/live_analytics.html' %}
+<script src="{{ url_for('static', filename='js/dashboard-layout.js') }}" defer></script>
+<script>
+// Toggle reply/inquiry panels
+function togglePanel(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.toggle('show');
+    if (el.classList.contains('show')) {
+        const ta = el.querySelector('textarea');
+        if (ta) setTimeout(() => ta.focus(), 50);
+    }
+}
+
+// ربط زر الـ topbar
+(function(){
+    const topBtn = document.getElementById('branch-topbar-menu-btn');
+    if (!topBtn) return;
+    const origBtn = document.querySelector('.dash-menu-btn');
+    topBtn.addEventListener('click', function() {
+        if (origBtn) origBtn.click();
+        else {
+            const sidebar = document.getElementById('branch-dash-sidebar');
+            const layout  = document.querySelector('.dash-layout');
+            const overlay = document.querySelector('.dash-backdrop.sidebar-overlay');
+            if (sidebar)  sidebar.classList.toggle('open');
+            if (layout)   layout.classList.toggle('dash-nav-open');
+            if (overlay)  overlay.classList.toggle('active');
         }
-    </script>
+    });
+})();
+
+// Bottom nav active state
+(function(){
+    const links = document.querySelectorAll('.ms-bottom-nav__link');
+    links.forEach(l => {
+        l.addEventListener('click', () => {
+            links.forEach(x => x.classList.remove('active'));
+            l.classList.add('active');
+        });
+    });
+})();
+</script>
 </body>
 </html>

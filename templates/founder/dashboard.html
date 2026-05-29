@@ -1,5 +1,6 @@
 {% extends "founder/base.html" %}
 {% block title %}الرئيسية — لوحة تحكم النظام{% endblock %}
+{% block mobile_title %}لوحة تحكم النظام{% endblock %}
 
 {% block fd_top_header %}
 <header class="fd-dash-hero" aria-label="هوية العلامة — مجمع العائلة">
@@ -47,40 +48,49 @@
     {% set acct_early = founder_accounting if founder_accounting is defined else none %}
     <div class="fd-premium-overview__heading">
         <h2 class="fd-premium-overview__title">نظرة المؤسس</h2>
-        <p class="fd-premium-overview__sub">البيانات الأهم قبل التفاصيل — محسَّن للجوال والشاشات الكبيرة</p>
+        <p class="fd-premium-overview__sub">البيانات الأهم — محسَّن للجوال والشاشات الكبيرة</p>
     </div>
-    <div class="fd-premium-grid">
-        <article class="fd-kpi-card fd-kpi-card--accent">
-            <span class="fd-kpi-card__label">الفروع</span>
-            <span class="fd-kpi-card__value">{{ n_branches }}</span>
-            <span class="fd-kpi-card__hint">نقاط حضور وفروع عاملة</span>
-        </article>
-        <article class="fd-kpi-card">
-            <span class="fd-kpi-card__label">المنتجات</span>
-            <span class="fd-kpi-card__value">{{ n_products }}</span>
-            <span class="fd-kpi-card__hint">إجمالي السجل المركزي</span>
-        </article>
-        <article class="fd-kpi-card fd-kpi-card--accent">
-            <span class="fd-kpi-card__label">شكاوى مفتوحة</span>
-            <span class="fd-kpi-card__value">{{ complaints_open | default(0) }}</span>
-            <span class="fd-kpi-card__hint">تحتاج متابعة</span>
-        </article>
-        <article class="fd-kpi-card">
-            <span class="fd-kpi-card__label">شكاوى كلية</span>
-            <span class="fd-kpi-card__value">{{ n_complaints }}</span>
-            <span class="fd-kpi-card__hint">سجل كل الحالات</span>
-        </article>
-        <article class="fd-kpi-card">
-            <span class="fd-kpi-card__label">طلبات بحث منتج</span>
-            <span class="fd-kpi-card__value">{{ founder_product_request_total | default(0) }}</span>
-            <span class="fd-kpi-card__hint">جدول product_requests</span>
-        </article>
-        <article class="fd-kpi-card fd-kpi-card--accent">
-            <span class="fd-kpi-card__label">استفسارات معلّقة</span>
-            <span class="fd-kpi-card__value">{{ pinq_total }}</span>
-            <span class="fd-kpi-card__hint">في تقرير الفروع أسفله</span>
-        </article>
+
+    <!-- KPI Grid: يعمل بشكل swipeable على الجوال -->
+    <div class="ms-kpi-grid" style="margin-bottom:1rem;">
+        <div class="ms-kpi-card ms-kpi-card--gold">
+            <div class="ms-kpi-icon ms-kpi-icon--gold">🏢</div>
+            <div class="ms-kpi-value">{{ n_branches }}</div>
+            <div class="ms-kpi-label">الفروع</div>
+            <div class="ms-kpi-hint">نقاط حضور عاملة</div>
+        </div>
+        <div class="ms-kpi-card">
+            <div class="ms-kpi-icon ms-kpi-icon--green">📦</div>
+            <div class="ms-kpi-value">{{ n_products }}</div>
+            <div class="ms-kpi-label">المنتجات</div>
+            <div class="ms-kpi-hint">السجل المركزي</div>
+        </div>
+        <div class="ms-kpi-card {% if complaints_open|default(0) > 0 %}ms-kpi-card--warning{% else %}ms-kpi-card--success{% endif %}">
+            <div class="ms-kpi-icon {% if complaints_open|default(0) > 0 %}ms-kpi-icon--warn{% else %}ms-kpi-icon--green{% endif %}">⚠️</div>
+            <div class="ms-kpi-value" style="{% if complaints_open|default(0) > 0 %}color:#d97706{% else %}color:#059669{% endif %}">{{ complaints_open | default(0) }}</div>
+            <div class="ms-kpi-label">شكاوى مفتوحة</div>
+            <div class="ms-kpi-hint">تحتاج متابعة</div>
+        </div>
+        <div class="ms-kpi-card">
+            <div class="ms-kpi-icon">📋</div>
+            <div class="ms-kpi-value">{{ n_complaints }}</div>
+            <div class="ms-kpi-label">شكاوى كلية</div>
+            <div class="ms-kpi-hint">سجل كل الحالات</div>
+        </div>
+        <div class="ms-kpi-card">
+            <div class="ms-kpi-icon">🔎</div>
+            <div class="ms-kpi-value">{{ founder_product_request_total | default(0) }}</div>
+            <div class="ms-kpi-label">طلبات بحث</div>
+            <div class="ms-kpi-hint">من محادثات الشات</div>
+        </div>
+        <div class="ms-kpi-card {% if pinq_total > 0 %}ms-kpi-card--danger{% endif %}">
+            <div class="ms-kpi-icon {% if pinq_total > 0 %}ms-kpi-icon--danger{% endif %}">🔔</div>
+            <div class="ms-kpi-value" style="{% if pinq_total > 0 %}color:#dc2626{% endif %}">{{ pinq_total }}</div>
+            <div class="ms-kpi-label">استفسارات معلّقة</div>
+            <div class="ms-kpi-hint">من الفروع</div>
+        </div>
     </div>
+
     {% if acct_early %}
     {% set wa_in = acct_early.wa_messages_inbound | default(0) %}
     {% set wa_out = acct_early.wa_messages_outbound | default(0) %}
@@ -104,7 +114,6 @@
     </div>
     {% endif %}
 </section>
-
 <div class="row g-3 mb-4">
     <div class="col-12">
         <div class="fd-card fd-chart-card">
@@ -237,29 +246,42 @@
 </div>
 {% endif %}
 
-<div class="row g-3">
-    <div class="col-md-6">
-        <div class="fd-card h-100 fd-card--shortcuts">
-            <h2 class="fd-card-title">اختصارات</h2>
-            <div class="d-grid gap-2">
-                <a class="btn fd-btn fd-btn--wide" href="{{ url_for('founder_branches') }}">🏢 إدارة الفروع</a>
-                <a class="btn fd-btn fd-btn--outline" href="{{ url_for('founder_products') }}">📦 جميع المنتجات</a>
-                <a class="btn fd-btn fd-btn--outline" href="{{ url_for('founder_add_product') }}">➕ إضافة منتج لأي فرع</a>
-                <a class="btn fd-btn fd-btn--outline" href="{{ url_for('founder_accounts') }}">🔐 كلمات المرور</a>
-                <a class="btn fd-btn fd-btn--accent" href="{{ url_for('campaigns.founder_campaigns') }}">📢 الحملات الإعلانية</a>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6">
-        <div class="fd-card h-100 fd-card--shortcuts">
-            <h2 class="fd-card-title">إدارة عامة</h2>
-            <p class="text-muted small mb-3">المستخدمون والشكاوى متاحة من القائمة الجانبية.</p>
-            <div class="d-flex flex-wrap gap-2">
-                <a class="btn fd-btn fd-btn--outline btn-sm" href="{{ url_for('admin_users') }}">👤 مستخدمو الفروع</a>
-                <a class="btn fd-btn fd-btn--outline btn-sm" href="{{ url_for('admin_complaints') }}">📋 الشكاوى</a>
-                <a class="btn fd-btn fd-btn--accent btn-sm" href="{{ url_for('campaigns.founder_campaigns') }}">📢 حملات</a>
-            </div>
-        </div>
+<!-- Quick Actions — responsive grid للجوال والديسكتوب -->
+<div class="fd-card mb-4">
+    <h2 class="fd-card-title mb-3">⚡ اختصارات سريعة</h2>
+    <div class="ms-quick-grid">
+        <a class="ms-quick-action" href="{{ url_for('founder_branches') }}">
+            <span class="ms-quick-action__icon">🏢</span>
+            <span>الفروع</span>
+        </a>
+        <a class="ms-quick-action" href="{{ url_for('founder_products') }}">
+            <span class="ms-quick-action__icon">📦</span>
+            <span>المنتجات</span>
+        </a>
+        <a class="ms-quick-action" href="{{ url_for('founder_add_product') }}">
+            <span class="ms-quick-action__icon">➕</span>
+            <span>إضافة منتج</span>
+        </a>
+        <a class="ms-quick-action" href="{{ url_for('founder_accounts') }}">
+            <span class="ms-quick-action__icon">🔐</span>
+            <span>الحسابات</span>
+        </a>
+        <a class="ms-quick-action" href="{{ url_for('campaigns.founder_campaigns') }}">
+            <span class="ms-quick-action__icon">📢</span>
+            <span>الحملات</span>
+        </a>
+        <a class="ms-quick-action" href="{{ url_for('admin_users') }}">
+            <span class="ms-quick-action__icon">👤</span>
+            <span>المستخدمين</span>
+        </a>
+        <a class="ms-quick-action" href="{{ url_for('admin_complaints') }}">
+            <span class="ms-quick-action__icon">📋</span>
+            <span>الشكاوى</span>
+        </a>
+        <a class="ms-quick-action" href="{{ url_for('wa_inbox.admin_messages_page') }}">
+            <span class="ms-quick-action__icon">💬</span>
+            <span>واتساب</span>
+        </a>
     </div>
 </div>
 

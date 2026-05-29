@@ -98,7 +98,7 @@ html.dash-html {
   min-width: 0;
   flex: 1 1 auto;
   position: relative;
-  z-index: 1;
+  /* لا z-index هنا — يسمح لـ Bootstrap modals بالظهور فوق كل المحتوى */
   background-color: inherit;
 }
 
@@ -329,7 +329,7 @@ body.fd-dashboard .dash-menu-btn:focus-visible {
     z-index: auto;
     transform: none !important;
     visibility: visible !important;
-    isolation: isolate;
+    /* لا تستخدم isolation:isolate هنا — تمنع Bootstrap modals من الظهور فوق الـ sidebar */
     touch-action: manipulation;
     overflow-y: auto;
     overflow-x: hidden;
@@ -361,9 +361,8 @@ body.fd-dashboard .dash-menu-btn:focus-visible {
     flex: 1 1 100% !important;
     max-width: 100% !important;
     width: 100% !important;
-    z-index: 1;
+    /* لا z-index ولا isolation هنا — يتيح لـ Bootstrap modals الطفو فوق الجميع */
     position: relative;
-    isolation: isolate;
   }
 
   body.dash-body.dash-nav-open,
@@ -378,7 +377,7 @@ body.fd-dashboard .dash-menu-btn:focus-visible {
   .dash-main {
     padding-left: 0.85rem !important;
     padding-right: 0.85rem !important;
-    padding-top: 3.5rem !important;
+    /* padding-top handled by mobile-system.css (.ms-topbar is fixed 56px + 16px gap = 72px) */
   }
 
   .dash-menu-btn {

@@ -99,6 +99,16 @@ def _complaint_signals_negated(text: str) -> bool:
         .replace("ة", "ه")
         .replace("ى", "ي")
     )
+    
+    # ── شتائم وعبارات طرد لا يجب اعتبارها شكوى تجارية ──
+    rude_dismissals = (
+        "انقلع", "انقلعي", "انقلعوا", "سد حلقك", "انكتم", "اخرس", 
+        "كل زق", "كل تبن", "كل تراب", "غبي", "غبيه", "حمار", "حيوان", 
+        "كلب", "بايخ", "سخيف", "سامج", "انكتمي", "اسكت", "اسكتي"
+    )
+    if any(word in tn for word in rude_dismissals):
+        return True
+
     if "ما عندي مشكلة" in t or "ما عندك مشكلة" in t:
         return True
     if (

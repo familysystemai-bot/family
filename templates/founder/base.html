@@ -3,79 +3,279 @@
 <html lang="ar" dir="rtl" class="fd-dashboard dash-html">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     {% include "partials/pwa_head.html" %}
     <title>{% block title %}لوحة تحكم النظام{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/dashboard-layout.css') }}?v=2.0" rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/founder-dashboard.css') }}?v=2.0" rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/drawer-improvements.css') }}?v=1.0" rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/founder-finance-luxury.css') }}?v=1.0" rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/founder-unified-luxury.css') }}?v=1.0" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/dashboard-layout.css') }}?v=3.0" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/founder-dashboard.css') }}?v=3.0" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/drawer-improvements.css') }}?v=2.0" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/founder-finance-luxury.css') }}?v=2.0" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/founder-unified-luxury.css') }}?v=2.0" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/mobile-system.css') }}?v=1.0" rel="stylesheet">
     {% block extra_head %}{% endblock %}
+    <style>
+        /* Override: IBM Plex Arabic للمؤسس أيضاً */
+        html.fd-dashboard {
+            font-family: 'IBM Plex Sans Arabic', 'Tajawal', system-ui, sans-serif;
+        }
+
+        /* Topbar للمؤسس على الجوال */
+        .fd-mobile-topbar {
+            display: none;
+            /* fixed بدل sticky لتجنب تداخل المحتوى عند التمرير */
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            /* z-index أقل من Bootstrap modals (1055) */
+            z-index: 1030;
+            height: 56px;
+            background: linear-gradient(180deg, #0f5132 0%, #0a3d28 100%);
+            border-bottom: 1px solid rgba(201,162,39,0.3);
+            padding: 0 14px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .fd-mobile-topbar { display: flex; }
+            /* padding-top يتحكم فيه mobile-system.css (72px للجميع) */
+        }
+
+        .fd-mobile-topbar__btn {
+            width: 38px; height: 38px;
+            border-radius: 9px;
+            border: none;
+            background: rgba(255,255,255,0.12);
+            color: #fff;
+            font-size: 1.05rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .fd-mobile-topbar__title {
+            flex: 1;
+            color: #fff;
+            font-weight: 700;
+            font-size: 0.9rem;
+            text-align: center;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Bottom nav للمؤسس */
+        .fd-bottom-nav {
+            display: none;
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            height: calc(56px + env(safe-area-inset-bottom, 0px));
+            padding-bottom: env(safe-area-inset-bottom, 0px);
+            background: #064e3b;
+            border-top: 1px solid rgba(201,162,39,0.25);
+            box-shadow: 0 -4px 16px rgba(0,0,0,0.2);
+            z-index: 1050;
+        }
+
+        @media (max-width: 768px) {
+            .fd-bottom-nav { display: flex; }
+            .fd-main.dash-main {
+                padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px)) !important;
+            }
+        }
+
+        .fd-bottom-nav__list {
+            display: flex;
+            align-items: stretch;
+            justify-content: space-around;
+            width: 100%;
+            list-style: none;
+            margin: 0; padding: 0;
+        }
+
+        .fd-bottom-nav__link {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            width: 100%;
+            height: 56px;
+            color: rgba(255,255,255,0.55);
+            text-decoration: none;
+            font-size: 0.62rem;
+            font-weight: 600;
+            transition: color 0.15s;
+            padding: 6px 4px;
+        }
+
+        .fd-bottom-nav__link:hover,
+        .fd-bottom-nav__link.active {
+            color: #c9a227;
+        }
+
+        .fd-bottom-nav__icon { font-size: 1.25rem; line-height: 1; }
+
+        /* Sidebar nav: تحسين padding و min-height للجوال */
+        .fd-nav a, .fd-nav .nav-link {
+            min-height: 44px;
+            display: flex !important;
+            align-items: center;
+        }
+    </style>
 </head>
 <body class="fd-dashboard dash-body">
+
+<!-- ════ Mobile Topbar ════ -->
+<div class="fd-mobile-topbar" id="fd-mobile-topbar">
+    <button type="button" class="fd-mobile-topbar__btn"
+            aria-label="القائمة" id="fd-topbar-menu-btn">☰</button>
+    <span class="fd-mobile-topbar__title">{% block mobile_title %}لوحة النظام{% endblock %}</span>
+    <div style="width:38px;"></div><!-- spacer -->
+</div>
+
 <div class="container-fluid dash-layout">
-    <button type="button" class="dash-menu-btn" aria-label="فتح القائمة" aria-controls="fd-dash-sidebar" aria-expanded="false">☰</button>
+    <button type="button" class="dash-menu-btn" aria-label="فتح القائمة"
+            aria-controls="fd-dash-sidebar" aria-expanded="false"
+            style="display:none">☰</button>
     <div class="dash-backdrop sidebar-overlay" data-dash-close="true" aria-hidden="true"></div>
+
     <div class="row g-0 dash-row">
+        <!-- ════ Sidebar ════ -->
         <aside id="fd-dash-sidebar" class="col-md-2 fd-sidebar p-0 dash-sidebar-col">
             <div class="dash-sidebar-panel">
-            <div class="logo-box">
-                <div class="logo-container">
-                    {{ brand_logo_pair(founder_logo_url, 'logo-img', 'site-logo-k--sidebar-dash') }}
-                    <div class="logo-glow"></div>
+                <div class="logo-box fd-logo">
+                    <div class="logo-container">
+                        {{ brand_logo_pair(founder_logo_url, 'logo-img fd-logo-sidebar-img', 'site-logo-k--sidebar-dash') }}
+                        <div class="logo-glow"></div>
+                    </div>
+                    <h5 class="mt-2 fw-bold" style="color:#fff;font-size:0.88rem;">العائلة FAMILY</h5>
+                    <span class="fd-badge mt-1">
+                        {% if session.get('role') == 'admin' %}الإدارة{% else %}النظام{% endif %}
+                    </span>
                 </div>
-                <h5 class="mt-3 fw-bold logo-text">العائلة FAMILY</h5>
-                <span class="badge fd-badge mt-2">{% if session.get('role') == 'admin' %}الإدارة{% else %}النظام{% endif %}</span>
-            </div>
-            <nav class="fd-nav">
-                {% set ep = request.endpoint %}
-                <a class="nav-link {% if ep == 'founder_dashboard' %}active{% endif %}" href="{{ url_for('founder_dashboard') }}">🏠 الرئيسية</a>
-                <a class="nav-link {% if ep in ('founder_branches', 'founder_branch_edit', 'founder_branch_view') %}active{% endif %}" href="{{ url_for('founder_branches') }}">🏢 الفروع</a>
-                <a class="nav-link {% if ep in ('founder_products', 'founder_add_product') %}active{% endif %}" href="{{ url_for('founder_products') }}">📦 المنتجات</a>
-                <a class="nav-link {% if ep == 'founder_accounts' %}active{% endif %}" href="{{ url_for('founder_accounts') }}">🔐 الحسابات</a>
-                <a class="nav-link {% if ep == 'admin_settings' %}active{% endif %}" href="{{ url_for('admin_settings') }}">⚙️ إعدادات الدخول</a>
-                <a class="nav-link {% if ep and ep.startswith('integrations.') %}active{% endif %}" href="{{ url_for('integrations.integrations_dashboard') }}">🔌 التكاملات</a>
-                <a class="nav-link {% if ep == 'finance_reports_gate' or (ep and ep.startswith('almanakh_finance.')) %}active{% endif %}" href="{{ url_for('finance_reports_gate') }}">📈 التقارير المالية والتحليل</a>
-                <hr>
-                <a class="nav-link" href="{{ url_for('admin_users') }}">👤 مستخدمي الفروع</a>
-                <a class="nav-link" href="{{ url_for('admin_complaints') }}">📋 الشكاوى</a>
-                <a class="nav-link {% if ep == 'campaigns.founder_campaigns' %}active{% endif %}" href="{{ url_for('campaigns.founder_campaigns') }}">📢 الحملات</a>
-                <a class="nav-link {% if ep == 'wa_inbox.admin_messages_page' %}active{% endif %}" href="{{ url_for('wa_inbox.admin_messages_page') }}">💬 واتساب</a>
-                <hr>
-                <a class="nav-link text-danger" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
-            </nav>
-            {% block fd_sidebar_extra %}{% endblock %}
+
+                <nav class="fd-nav">
+                    {% set ep = request.endpoint %}
+                    <a class="nav-link {% if ep == 'founder_dashboard' %}active{% endif %}"
+                       href="{{ url_for('founder_dashboard') }}">🏠 الرئيسية</a>
+                    <a class="nav-link {% if ep in ('founder_branches','founder_branch_edit','founder_branch_view') %}active{% endif %}"
+                       href="{{ url_for('founder_branches') }}">🏢 الفروع</a>
+                    <a class="nav-link {% if ep in ('founder_products','founder_add_product') %}active{% endif %}"
+                       href="{{ url_for('founder_products') }}">📦 المنتجات</a>
+                    <a class="nav-link {% if ep == 'founder_accounts' %}active{% endif %}"
+                       href="{{ url_for('founder_accounts') }}">🔐 الحسابات</a>
+                    <a class="nav-link {% if ep == 'admin_settings' %}active{% endif %}"
+                       href="{{ url_for('admin_settings') }}">⚙️ إعدادات الدخول</a>
+                    <a class="nav-link {% if ep and ep.startswith('integrations.') %}active{% endif %}"
+                       href="{{ url_for('integrations.integrations_dashboard') }}">🔌 التكاملات</a>
+                    <a class="nav-link {% if ep == 'finance_reports_gate' or (ep and ep.startswith('almanakh_finance.')) %}active{% endif %}"
+                       href="{{ url_for('finance_reports_gate') }}">📈 التقارير المالية</a>
+                    <hr>
+                    <a class="nav-link {% if ep == 'admin_users' %}active{% endif %}"
+                       href="{{ url_for('admin_users') }}">👤 مستخدمي الفروع</a>
+                    <a class="nav-link {% if ep == 'admin_complaints' %}active{% endif %}"
+                       href="{{ url_for('admin_complaints') }}">📋 الشكاوى</a>
+                    <a class="nav-link {% if ep == 'campaigns.founder_campaigns' %}active{% endif %}"
+                       href="{{ url_for('campaigns.founder_campaigns') }}">📢 الحملات</a>
+                    <a class="nav-link {% if ep == 'wa_inbox.admin_messages_page' %}active{% endif %}"
+                       href="{{ url_for('wa_inbox.admin_messages_page') }}">💬 واتساب</a>
+                    <hr>
+                    <a class="nav-link text-danger" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+                </nav>
+
+                {% block fd_sidebar_extra %}{% endblock %}
             </div>
         </aside>
-        <div class="col-md-10 fd-main dash-main">
+
+        <!-- ════ Main ════ -->
+        <div class="col-md-10 fd-main dash-main" id="fd-main-content">
             {% block fd_top_header %}
             <header class="fd-main-header">
                 {{ brand_logo_pair(founder_logo_url, 'fd-header-logo', 'site-logo-k--header') }}
             </header>
             {% endblock %}
+
+            <!-- Flash Messages -->
             {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
             <div class="mb-3">
                 {% for category, message in messages %}
-                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show"
+                     role="alert" style="border-radius:12px;font-weight:600;">
                     {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="إغلاق"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
                 {% endfor %}
             </div>
             {% endif %}
             {% endwith %}
+
             {% block content %}{% endblock %}
         </div>
     </div>
 </div>
+
+<!-- Mobile Bottom Navigation للمؤسس -->
+<nav class="fd-bottom-nav" aria-label="التنقل">
+    <ul class="fd-bottom-nav__list">
+        <li><a href="{{ url_for('founder_dashboard') }}"
+               class="fd-bottom-nav__link {% if request.endpoint == 'founder_dashboard' %}active{% endif %}">
+            <span class="fd-bottom-nav__icon">🏠</span>
+            <span>الرئيسية</span>
+        </a></li>
+        <li><a href="{{ url_for('founder_branches') }}"
+               class="fd-bottom-nav__link {% if request.endpoint in ('founder_branches','founder_branch_edit','founder_branch_view') %}active{% endif %}">
+            <span class="fd-bottom-nav__icon">🏢</span>
+            <span>الفروع</span>
+        </a></li>
+        <li><a href="{{ url_for('founder_products') }}"
+               class="fd-bottom-nav__link {% if request.endpoint in ('founder_products','founder_add_product') %}active{% endif %}">
+            <span class="fd-bottom-nav__icon">📦</span>
+            <span>المنتجات</span>
+        </a></li>
+        <li><a href="{{ url_for('admin_complaints') }}"
+               class="fd-bottom-nav__link {% if request.endpoint == 'admin_complaints' %}active{% endif %}">
+            <span class="fd-bottom-nav__icon">📋</span>
+            <span>الشكاوى</span>
+        </a></li>
+        <li><a href="{{ url_for('wa_inbox.admin_messages_page') }}"
+               class="fd-bottom-nav__link {% if request.endpoint == 'wa_inbox.admin_messages_page' %}active{% endif %}">
+            <span class="fd-bottom-nav__icon">💬</span>
+            <span>واتساب</span>
+        </a></li>
+    </ul>
+</nav>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="{{ url_for('static', filename='js/dashboard-layout.js') }}" defer></script>
+<script>
+// ربط زر الـ topbar بنظام الـ sidebar
+(function(){
+    const topBtn = document.getElementById('fd-topbar-menu-btn');
+    if (!topBtn) return;
+    const origBtn = document.querySelector('.dash-menu-btn');
+    topBtn.addEventListener('click', function() {
+        if (origBtn) { origBtn.click(); return; }
+        const sidebar = document.getElementById('fd-dash-sidebar');
+        const layout  = document.querySelector('.dash-layout');
+        const overlay = document.querySelector('.dash-backdrop.sidebar-overlay');
+        if (sidebar)  sidebar.classList.toggle('open');
+        if (layout)   layout.classList.toggle('dash-nav-open');
+        if (overlay) {
+            overlay.style.display = overlay.classList.contains('active') ? 'none' : 'block';
+            overlay.classList.toggle('active');
+        }
+    });
+})();
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -18,29 +18,25 @@
   --luxury-shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
-/* ── إصلاح Z-index والطبقات ── */
-.fd-company-identity-modal {
-  z-index: 9999 !important;
-  position: fixed !important;
-}
+/* ── إصلاح Z-index والطبقات — يتبع نظام Bootstrap الصحيح ── */
+/*
+ * ترتيب Bootstrap الصحيح:
+ * sidebar-overlay (backdrop): 1040
+ * sidebar: 1050
+ * modal-backdrop: 1040 (Bootstrap افتراضي — يبقى)
+ * modal: 1055 (Bootstrap افتراضي — يبقى)
+ * لا نتجاوز 1055 إلا لعناصر تحتاج أن تكون فوق الـ modal
+ */
 
-.modal-backdrop {
-  z-index: 9998 !important;
-}
+/* نافذة الهوية تتبع Bootstrap تلقائياً — لا نعيد تعريف z-index لها */
+/* .modal و .modal-backdrop يأخذان قيمهما من Bootstrap مباشرة */
 
-.modal-dialog {
-  z-index: 9999 !important;
-}
-
-.modal-content {
-  z-index: 9999 !important;
-}
-
-/* إزالة أي backdrop شفاف قد يحجب التحكم */
+/* نتأكد فقط أن الـ backdrop/overlay للشريط الجانبي أقل من modal */
 .sidebar-overlay,
 .dash-backdrop {
-  z-index: 1000 !important;
+  z-index: 1040 !important; /* نفس قيمة Bootstrap modal-backdrop ليتداخلا بشكل صحيح */
 }
+
 
 /* ── الخطوط الموحدة ── */
 html, body, * {
