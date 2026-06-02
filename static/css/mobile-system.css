@@ -93,7 +93,8 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  overscroll-behavior-y: none;
+  /* لا نستخدم overscroll-behavior-y: none لأنه يمنع التمرير على بعض المتصفحات */
+  overscroll-behavior-y: contain;
 }
 
 /* منع التكبير التلقائي على iOS */
@@ -510,6 +511,7 @@ input, select, textarea {
   .ms-bottom-nav { display: flex; }
 
   /* إضافة padding للـ main content ليظهر فوق الـ Bottom Nav */
+  body.has-bottom-nav .dash-main,
   .dash-main.has-bottom-nav {
     padding-bottom: calc(72px + var(--ms-safe-bottom)) !important;
   }
@@ -612,6 +614,9 @@ input, select, textarea {
   .dash-main,
   .fd-main.dash-main {
     padding-top: 72px !important;
+    /* ضمان التمرير العمودي على الجوال */
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
   }
 }
 
@@ -951,7 +956,8 @@ input, select, textarea {
   }
 
   /* منع محتوى main من الاختباء خلف الـ Bottom Nav */
-  body.has-bottom-nav .dash-main {
+  body.has-bottom-nav .dash-main,
+  .dash-main.has-bottom-nav {
     padding-bottom: calc(68px + var(--ms-safe-bottom)) !important;
   }
 

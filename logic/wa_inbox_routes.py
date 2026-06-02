@@ -118,6 +118,8 @@ def create_wa_inbox_blueprint(db) -> Blueprint:
             api_threads=url_for("wa_inbox.api_threads_admin"),
             api_messages=url_for("wa_inbox.api_messages_admin"),
             api_send=url_for("wa_inbox.api_send_admin"),
+            api_contact_status=url_for("wa_inbox.api_contact_status_admin"),
+            api_contact_control=url_for("wa_inbox.api_contact_control_admin"),
             home_url=url_for("admin_dashboard"),
         )
 
@@ -141,6 +143,8 @@ def create_wa_inbox_blueprint(db) -> Blueprint:
             api_threads=url_for("wa_inbox.api_threads_branch"),
             api_messages=url_for("wa_inbox.api_messages_branch"),
             api_send=url_for("wa_inbox.api_send_branch"),
+            api_contact_status=url_for("wa_inbox.api_contact_status_branch"),
+            api_contact_control=url_for("wa_inbox.api_contact_control_branch"),
             home_url=url_for("dashboard"),
         )
 

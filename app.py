@@ -3100,11 +3100,38 @@ def process_message(data) -> None:
         if _controls.get("banned"):
             _ban_body = wa_text or f"[واتساب:{msg_type}]"
             _wa_inbox_store_inbound(db, value=value_full, wa_from=wa_from, message_body=_ban_body)
-            _wa_send_message(
-                send_phone_id,
-                wa_from,
-                WA_BLOCKED_AI_AUTOREPLY_AR,
-            )
+            # أرسل رد الحظر الآلي مرة واحدة فقط (عند أول رسالة بعد الحظر)
+            # تحقق: هل آخر رسالة صادرة لهذا الرقم هي رسالة الحظر؟
+            _already_sent_ban_reply = False
+            try:
+                _recent = db.wa_inbox_list_messages(wa_from, branch_id=None)
+                # ابحث عن آخر رسالة صادرة
+                for _rmsg in reversed(_recent or []):
+                    if _rmsg.get("direction") == "outbound":
+                        if WA_BLOCKED_AI_AUTOREPLY_AR in str(_rmsg.get("message_body") or ""):
+                            _already_sent_ban_reply = True
+                        break
+            except Exception:
+                pass
+            if not _already_sent_ban_reply:
+                _wa_send_message(
+                    send_phone_id,
+                    wa_from,
+                    WA_BLOCKED_AI_AUTOREPLY_AR,
+                )
+                # حفظ رد الحظر في الصندوق
+                try:
+                    _ban_bid = _wa_inbox_branch_for_contact(db, wa_from)
+                    db.wa_inbox_save_message(
+                        contact_number=wa_from,
+                        whatsapp_name="النظام",
+                        message_body=WA_BLOCKED_AI_AUTOREPLY_AR,
+                        direction="outbound",
+                        branch_id=_ban_bid,
+                        sender_type="system",
+                    )
+                except Exception:
+                    logger.debug("[WA] حفظ رد الحظر (غير حرج)", exc_info=True)
             return
 
         if _controls.get("ai_stopped"):

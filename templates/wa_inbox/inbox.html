@@ -315,10 +315,9 @@
     const API_THREADS = {{ api_threads | tojson }};
     const API_MESSAGES = {{ api_messages | tojson }};
     const API_SEND = {{ api_send | tojson }};
-    // TASK 2: اشتقاق روابط تحكم العميل من رابط threads
-    const _base = API_THREADS.replace('/api/threads', '');
-    const API_CONTACT_STATUS = _base + '/api/contact-status';
-    const API_CONTACT_CONTROL = _base + '/api/contact-control';
+    // TASK 2: روابط تحكم العميل من الخادم مباشرة
+    const API_CONTACT_STATUS = {{ api_contact_status | tojson }};
+    const API_CONTACT_CONTROL = {{ api_contact_control | tojson }};
 
     const threadList = document.getElementById('threadList');
     const waChatModalEl = document.getElementById('waChatModal');
@@ -449,8 +448,12 @@
                 updateCtrlButtons(data);
                 // تحديث البادج البصري في قائمة المحادثات
                 updateThreadBadge(contact, data);
+            } else {
+                console.error('[WA] loadContactStatus failed:', data.error || res.status);
             }
-        } catch (e) {}
+        } catch (e) {
+            console.error('[WA] loadContactStatus error:', e);
+        }
     }
 
     function updateThreadBadge(contact, status) {
@@ -487,10 +490,18 @@
                 contactStatusCache[contact] = data;
                 updateCtrlButtons(data);
                 updateThreadBadge(contact, data);
+                // إظهار تأكيد مرئي
+                const msg = field === 'banned'
+                    ? (value ? 'تم حظر الرقم بنجاح' : 'تم إلغاء الحظر')
+                    : (value ? 'تم إيقاف الذكاء الاصطناعي' : 'تم استئناف الذكاء الاصطناعي');
+                if (sendAlert) sendAlert.innerHTML = '<span class="text-success fw-bold">' + esc(msg) + ' ✅</span>';
             } else {
-                alert(data.error || 'فشل العملية');
+                const errMsg = data.error || 'فشل العملية';
+                console.error('[WA] setContactControl failed:', errMsg);
+                alert(errMsg);
             }
         } catch (e) {
+            console.error('[WA] setContactControl error:', e);
             alert('خطأ في الاتصال');
         }
     }

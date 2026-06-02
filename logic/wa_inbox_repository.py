@@ -247,7 +247,7 @@ class WaInboxRepositoryMixin:
                 cur = conn.execute(
                     """
                     SELECT id, contact_number, whatsapp_name, message_body, direction,
-                           msg_timestamp AS timestamp, branch_id
+                           msg_timestamp AS timestamp, branch_id, sender_type
                     FROM messages
                     WHERE contact_number = %s
                     ORDER BY id ASC
@@ -259,7 +259,7 @@ class WaInboxRepositoryMixin:
                 cur = conn.execute(
                     """
                     SELECT id, contact_number, whatsapp_name, message_body, direction,
-                           msg_timestamp AS timestamp, branch_id
+                           msg_timestamp AS timestamp, branch_id, sender_type
                     FROM messages
                     WHERE contact_number = %s
                       AND (branch_id = %s OR branch_id IS NULL)
