@@ -1,49 +1,64 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ar" dir="rtl" class="dash-html">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="KognitixAI - منصة ذكية لإدارة المبيعات والتحليلات المالية والتواصل الاجتماعي">
-    <meta name="keywords" content="KognitixAI, تحليلات مالية, إدارة مبيعات, وكيل ذكي, SaaS">
-    <title>KognitixAI - منصة الذكاء الاصطناعي للمبيعات والتحليلات</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="description" content="منصة KognitixAI الذكية - لوحة تحكم متكاملة لإدارة مبيعات مجمع العائلة، التحليلات المالية المتقدمة، وصندوق وارد واتساب الموحد المدعوم بالذكاء الاصطناعي.">
+    <meta name="keywords" content="KognitixAI, مجمع العائلة, تحليلات مالية, واتساب ذكاء اصطناعي, لوحة تحكم الإدارة, نظام المبيعات">
+    <title>KognitixAI - المنصة الذكية لإدارة المبيعات والتحليلات المالية</title>
+    
+    {% include "partials/pwa_head.html" %}
+    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+    
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        :root {
+            --primary-dark: #062a1c;
+            --primary-mid: #0f5132;
+            --primary-light: #157a52;
+            --accent-gold: #c9a227;
+            --accent-gold-hover: #b8860b;
+            --bg-dark: #0a0e0c;
+            --card-dark: #121815;
+            --text-light: #f3f4f6;
+            --text-gray: #9ca3af;
+            --border-glow: rgba(201, 162, 39, 0.25);
+            --transition-smooth: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
-        html {
-            scroll-behavior: smooth;
+        * {
+            margin: 0; padding: 0; box-sizing: border-box;
         }
 
         body {
-            font-family: 'IBM Plex Sans Arabic', sans-serif;
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            color: #333;
+            font-family: 'Cairo', 'Tajawal', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-light);
             line-height: 1.6;
-            min-height: 100vh;
+            overflow-x: hidden;
         }
 
         /* ═══════════════════════════════════════════════════
-           Navigation Bar
+           Navigation (Glassmorphism)
            ═══════════════════════════════════════════════════ */
         nav {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
+            background: rgba(6, 42, 28, 0.75);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             padding: 1rem 2rem;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            position: sticky;
-            top: 0;
+            position: fixed;
+            top: 0; left: 0; right: 0;
             z-index: 1000;
+            border-bottom: 1px solid rgba(201, 162, 39, 0.15);
+            transition: var(--transition-smooth);
         }
 
         .nav-container {
-            max-width: 1200px;
+            max-width: 1300px;
             margin: 0 auto;
             display: flex;
             justify-content: space-between;
@@ -53,243 +68,462 @@
         .logo-nav {
             display: flex;
             align-items: center;
-            gap: 10px;
-            font-weight: 700;
-            font-size: 1.3rem;
-            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            gap: 12px;
+            text-decoration: none;
+            color: #fff !important;
+            font-weight: 800;
+            font-size: 1.4rem;
         }
 
         .logo-nav img {
-            height: 40px;
+            height: 42px;
             width: auto;
+            border-radius: 50%;
+            border: 2px solid var(--accent-gold);
+            box-shadow: 0 0 12px rgba(201, 162, 39, 0.3);
+        }
+
+        .logo-text-glow {
+            background: linear-gradient(135deg, #fff 40%, var(--accent-gold) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
 
         .nav-links {
             display: flex;
-            gap: 2rem;
+            gap: 2.2rem;
             list-style: none;
+            align-items: center;
+            margin-bottom: 0;
         }
 
         .nav-links a {
             text-decoration: none;
-            color: #333;
+            color: var(--text-gray);
             font-weight: 600;
-            transition: color 0.3s;
+            font-size: 0.95rem;
+            transition: var(--transition-smooth);
         }
 
         .nav-links a:hover {
-            color: #3b82f6;
+            color: var(--accent-gold);
+            text-shadow: 0 0 8px rgba(201, 162, 39, 0.4);
+        }
+
+        .btn-nav-action {
+            background: linear-gradient(135deg, var(--accent-gold) 0%, var(--accent-gold-hover) 100%);
+            color: #1a1508 !important;
+            padding: 8px 20px;
+            border-radius: 99px;
+            font-weight: 700;
+            box-shadow: 0 4px 14px rgba(201, 162, 39, 0.25);
+        }
+
+        .btn-nav-action:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(201, 162, 39, 0.4);
         }
 
         @media (max-width: 768px) {
-            .nav-links {
-                display: none;
-            }
+            .nav-links { display: none; }
         }
 
         /* ═══════════════════════════════════════════════════
            Hero Section
            ═══════════════════════════════════════════════════ */
         .hero {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 4rem 2rem;
+            padding: 9rem 2rem 4rem;
             text-align: center;
+            position: relative;
+            background: radial-gradient(circle at 50% 20%, rgba(15, 81, 50, 0.3) 0%, transparent 60%);
         }
 
-        .hero-content {
-            background: white;
-            border-radius: 20px;
-            padding: 3rem 2rem;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-            margin-bottom: 2rem;
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-image: radial-gradient(ellipse 100% 60% at 50% 0%, rgba(201, 162, 39, 0.05) 0%, transparent 55%);
+            pointer-events: none;
         }
 
-        .hero-logo {
-            margin-bottom: 2rem;
+        .hero-badge {
+            background: rgba(201, 162, 39, 0.1);
+            border: 1px solid var(--accent-gold);
+            color: var(--accent-gold);
+            padding: 6px 16px;
+            border-radius: 99px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            display: inline-block;
+            margin-bottom: 1.5rem;
+            animation: pulse-gold 3s infinite;
         }
 
-        .hero-logo img {
-            height: 120px;
-            width: auto;
-            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
+        @keyframes pulse-gold {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(201, 162, 39, 0.2); }
+            50% { box-shadow: 0 0 12px 4px rgba(201, 162, 39, 0.35); }
         }
 
         .hero h1 {
-            font-size: clamp(2rem, 5vw, 3.5rem);
-            margin-bottom: 1rem;
-            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            font-size: clamp(2.2rem, 5vw, 3.8rem);
+            font-weight: 900;
+            color: #fff;
+            line-height: 1.25;
+            margin-bottom: 1.5rem;
+            letter-spacing: -0.02em;
+        }
+
+        .hero h1 span {
+            background: linear-gradient(135deg, #fff 30%, var(--accent-gold) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            background-clip: text;
-            font-weight: 800;
         }
 
         .hero p {
-            font-size: 1.1rem;
-            color: #666;
-            margin-bottom: 2rem;
-            line-height: 1.8;
+            max-width: 800px;
+            margin: 0 auto 2.5rem;
+            font-size: clamp(1rem, 2.5vw, 1.25rem);
+            color: var(--text-gray);
+            font-weight: 500;
         }
 
-        .cta-buttons {
+        .hero-ctas {
             display: flex;
-            gap: 1rem;
+            gap: 1.2rem;
             justify-content: center;
+            margin-bottom: 4rem;
             flex-wrap: wrap;
         }
 
-        .btn {
-            padding: 12px 30px;
-            border-radius: 10px;
-            font-weight: 700;
+        .btn-gold-lg {
+            background: linear-gradient(135deg, var(--accent-gold) 0%, var(--accent-gold-hover) 100%);
+            color: #1a1508;
+            padding: 15px 35px;
+            border-radius: 12px;
+            font-weight: 800;
+            font-size: 1.05rem;
             text-decoration: none;
-            cursor: pointer;
-            border: none;
-            transition: all 0.3s;
-            font-size: 1rem;
+            box-shadow: 0 10px 24px rgba(201, 162, 39, 0.25);
+            transition: var(--transition-smooth);
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
         }
 
-        .btn-primary {
-            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-            color: white;
-            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+        .btn-gold-lg:hover {
+            color: #1a1508;
+            transform: translateY(-3px);
+            box-shadow: 0 12px 30px rgba(201, 162, 39, 0.45);
         }
 
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6);
+        .btn-outline-lg {
+            background: rgba(255, 255, 255, 0.03);
+            color: #fff;
+            border: 2px solid rgba(255, 255, 255, 0.15);
+            padding: 15px 35px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 1.05rem;
+            text-decoration: none;
+            transition: var(--transition-smooth);
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
         }
 
-        .btn-secondary {
-            background: white;
-            color: #3b82f6;
-            border: 2px solid #3b82f6;
+        .btn-outline-lg:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--accent-gold);
+            transform: translateY(-3px);
         }
 
-        .btn-secondary:hover {
-            background: #f0f4ff;
+        /* Showcase Preview Frame */
+        .showcase-wrapper {
+            max-width: 1100px;
+            margin: 0 auto;
+            position: relative;
+            border-radius: 20px;
+            padding: 8px;
+            background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(201,162,39,0.2) 100%);
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
+        }
+
+        .showcase-frame {
+            border-radius: 14px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: var(--bg-dark);
+        }
+
+        .showcase-frame img {
+            width: 100%;
+            height: auto;
+            display: block;
+            transition: var(--transition-smooth);
         }
 
         /* ═══════════════════════════════════════════════════
-           Features Section
+           Stats Bar
            ═══════════════════════════════════════════════════ */
-        .features {
+        .stats-bar {
+            padding: 4rem 2rem;
+            background: rgba(6, 42, 28, 0.25);
+            border-top: 1px solid rgba(201, 162, 39, 0.1);
+            border-bottom: 1px solid rgba(201, 162, 39, 0.1);
+        }
+
+        .stats-grid {
             max-width: 1200px;
-            margin: 3rem auto;
-            padding: 0 2rem;
-        }
-
-        .features-title {
-            text-align: center;
-            font-size: 2.5rem;
-            margin-bottom: 3rem;
-            color: #333;
-        }
-
-        .features-grid {
+            margin: 0 auto;
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
             gap: 2rem;
+            text-align: center;
+        }
+
+        .stat-item h3 {
+            font-size: clamp(2rem, 4vw, 3rem);
+            font-weight: 800;
+            color: var(--accent-gold);
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-item p {
+            color: var(--text-gray);
+            font-weight: 600;
+        }
+
+        /* ═══════════════════════════════════════════════════
+           Features Grid Section
+           ═══════════════════════════════════════════════════ */
+        .features-section {
+            padding: 6rem 2rem;
+            max-width: 1300px;
+            margin: 0 auto;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 4.5rem;
+        }
+
+        .section-header h2 {
+            font-size: clamp(1.8rem, 3.5vw, 2.5rem);
+            font-weight: 800;
+            color: #fff;
+            margin-bottom: 1rem;
+        }
+
+        .section-header h2 span {
+            color: var(--accent-gold);
+        }
+
+        .section-header p {
+            color: var(--text-gray);
+            max-width: 600px;
+            margin: 0 auto;
+            font-weight: 500;
         }
 
         .feature-card {
-            background: white;
-            padding: 2rem;
-            border-radius: 15px;
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
-            transition: transform 0.3s, box-shadow 0.3s;
-            text-align: center;
+            background-color: var(--card-dark);
+            border: 1px solid rgba(201, 162, 39, 0.12);
+            border-radius: 20px;
+            padding: 2.5rem 2rem;
+            transition: var(--transition-smooth);
+            height: 100%;
         }
 
         .feature-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            transform: translateY(-8px);
+            border-color: var(--accent-gold);
+            box-shadow: 0 12px 30px rgba(201, 162, 39, 0.15);
         }
 
-        .feature-icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
+        .feature-icon-wrap {
+            width: 60px;
+            height: 60px;
+            border-radius: 14px;
+            background: rgba(201, 162, 39, 0.1);
+            color: var(--accent-gold);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid rgba(201, 162, 39, 0.2);
         }
 
         .feature-card h3 {
             font-size: 1.3rem;
-            margin-bottom: 0.5rem;
-            color: #333;
-        }
-
-        .feature-card p {
-            color: #666;
-            font-size: 0.95rem;
-        }
-
-        /* ═══════════════════════════════════════════════════
-           Contact Section
-           ═══════════════════════════════════════════════════ */
-        .contact-section {
-            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-            color: white;
-            padding: 3rem 2rem;
-            margin: 3rem 0 0 0;
-        }
-
-        .contact-container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        .contact-title {
-            text-align: center;
-            font-size: 2rem;
-            margin-bottom: 2rem;
-        }
-
-        .contact-content {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 2rem;
-            margin-bottom: 2rem;
-        }
-
-        .contact-item {
-            text-align: center;
-        }
-
-        .contact-item h3 {
-            font-size: 1.2rem;
+            font-weight: 700;
+            color: #fff;
             margin-bottom: 1rem;
         }
 
-        .phone-link {
-            display: inline-block;
-            background: rgba(255, 255, 255, 0.2);
-            padding: 10px 20px;
-            border-radius: 8px;
-            color: white;
-            text-decoration: none;
-            transition: all 0.3s;
-            margin: 0.5rem;
-            font-weight: 600;
-        }
-
-        .phone-link:hover {
-            background: rgba(255, 255, 255, 0.3);
-            transform: scale(1.05);
+        .feature-card p {
+            color: var(--text-gray);
+            font-size: 0.95rem;
+            margin-bottom: 0;
         }
 
         /* ═══════════════════════════════════════════════════
-           Social Media Icons
+           How It Works Section
            ═══════════════════════════════════════════════════ */
-        .social-section {
+        .how-section {
+            padding: 6rem 2rem;
+            background: linear-gradient(180deg, transparent 0%, rgba(6, 42, 28, 0.2) 50%, transparent 100%);
+        }
+
+        .how-grid {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2.5rem;
+        }
+
+        .how-step {
+            position: relative;
             text-align: center;
             padding: 2rem;
         }
 
+        .step-number {
+            font-size: 4rem;
+            font-weight: 900;
+            color: rgba(201, 162, 39, 0.08);
+            position: absolute;
+            top: 0; left: 50%;
+            transform: translateX(-50%);
+            line-height: 1;
+            z-index: 1;
+        }
+
+        .step-content {
+            position: relative;
+            z-index: 2;
+        }
+
+        .step-icon {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary-mid) 0%, var(--primary-dark) 100%);
+            border: 2px solid var(--accent-gold);
+            color: var(--accent-gold);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            margin: 0 auto 1.5rem;
+            box-shadow: 0 0 16px rgba(201, 162, 39, 0.25);
+        }
+
+        .step-content h3 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 0.75rem;
+        }
+
+        .step-content p {
+            color: var(--text-gray);
+            font-size: 0.92rem;
+        }
+
+        /* ═══════════════════════════════════════════════════
+           WhatsApp Showcase Section
+           ═══════════════════════════════════════════════════ */
+        .wa-showcase-section {
+            padding: 6rem 2rem;
+            max-width: 1300px;
+            margin: 0 auto;
+        }
+
+        .wa-showcase-box {
+            background-color: var(--card-dark);
+            border: 1px solid rgba(201, 162, 39, 0.15);
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+        }
+
+        .wa-content-pad {
+            padding: 4rem 3rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .wa-content-pad h2 {
+            font-size: clamp(1.8rem, 4vw, 2.6rem);
+            font-weight: 800;
+            color: #fff;
+            margin-bottom: 1.5rem;
+        }
+
+        .wa-content-pad h2 span {
+            color: var(--accent-gold);
+        }
+
+        .wa-content-pad p {
+            color: var(--text-gray);
+            font-size: 1.05rem;
+            margin-bottom: 2rem;
+        }
+
+        .wa-feature-bullets {
+            list-style: none;
+            padding: 0;
+            margin-bottom: 2.5rem;
+        }
+
+        .wa-feature-bullets li {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 1rem;
+            font-weight: 600;
+            font-size: 0.98rem;
+        }
+
+        .wa-feature-bullets i {
+            color: var(--accent-gold);
+            font-size: 1.1rem;
+        }
+
+        .wa-img-wrap {
+            padding: 2rem;
+            background: linear-gradient(135deg, rgba(15, 81, 50, 0.2) 0%, transparent 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .wa-img-wrap img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+        }
+
+        /* ═══════════════════════════════════════════════════
+           Contact & Social Media
+           ═══════════════════════════════════════════════════ */
+        .contact-section {
+            padding: 5rem 2rem;
+            background: rgba(6, 42, 28, 0.15);
+            border-top: 1px solid rgba(201, 162, 39, 0.1);
+            text-align: center;
+        }
+
         .social-title {
-            font-size: 1.3rem;
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #fff;
             margin-bottom: 1.5rem;
         }
 
@@ -297,203 +531,281 @@
             display: flex;
             justify-content: center;
             gap: 1.5rem;
-            flex-wrap: wrap;
+            margin-bottom: 2.5rem;
         }
 
         .social-icon {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
             width: 50px;
             height: 50px;
-            background: rgba(255, 255, 255, 0.2);
             border-radius: 50%;
-            color: white;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1.5px solid rgba(201, 162, 39, 0.2);
+            color: var(--accent-gold);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            transition: var(--transition-smooth);
             text-decoration: none;
-            font-size: 1.5rem;
-            transition: all 0.3s;
         }
 
         .social-icon:hover {
-            background: rgba(255, 255, 255, 0.4);
-            transform: translateY(-3px);
+            background: var(--accent-gold);
+            color: #1a1508;
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(201, 162, 39, 0.35);
+        }
+
+        .phone-link {
+            color: #fff;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 1.25rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            transition: var(--transition-smooth);
+            padding: 8px 24px;
+            border-radius: 99px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px dashed rgba(201, 162, 39, 0.3);
+        }
+
+        .phone-link:hover {
+            color: var(--accent-gold);
+            background: rgba(201, 162, 39, 0.08);
+            border-style: solid;
         }
 
         /* ═══════════════════════════════════════════════════
            Footer
            ═══════════════════════════════════════════════════ */
         footer {
-            background: #1a1a1a;
-            color: #999;
+            padding: 3rem 2rem;
+            background-color: #04120d;
+            border-top: 1px solid rgba(255,255,255,0.05);
             text-align: center;
-            padding: 2rem;
-            font-size: 0.9rem;
         }
 
         footer p {
-            margin: 0.5rem 0;
-        }
-
-        /* ═══════════════════════════════════════════════════
-           Responsive Design
-           ═══════════════════════════════════════════════════ */
-        @media (max-width: 768px) {
-            .hero-content {
-                padding: 2rem 1rem;
-            }
-
-            .hero h1 {
-                font-size: 2rem;
-            }
-
-            .hero p {
-                font-size: 1rem;
-            }
-
-            .cta-buttons {
-                flex-direction: column;
-            }
-
-            .btn {
-                width: 100%;
-            }
-
-            .features-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .contact-content {
-                grid-template-columns: 1fr;
-            }
-
-            .social-icons {
-                gap: 1rem;
-            }
-
-            .social-icon {
-                width: 45px;
-                height: 45px;
-                font-size: 1.2rem;
-            }
+            color: var(--text-gray);
+            font-size: 0.92rem;
+            margin-bottom: 0.5rem;
         }
     </style>
 </head>
 <body>
+
     <!-- Navigation -->
     <nav>
         <div class="nav-container">
-            <div class="logo-nav">
-                <img src="{{ url_for('static', filename='uploads/kognitix-logo.jpg') }}" alt="KognitixAI Logo">
-                <span>KognitixAI</span>
-            </div>
+            <a href="#" class="logo-nav">
+                {% if logo_url %}
+                <img src="{{ logo_url }}" alt="KognitixAI Logo">
+                {% else %}
+                <img src="{{ url_for('static', filename='uploads/kognitix-logo.jpg') }}" alt="KognitixAI Logo" onerror="this.style.display='none';">
+                {% endif %}
+                <span class="logo-text-glow">KognitixAI</span>
+            </a>
             <ul class="nav-links">
                 <li><a href="#features">المميزات</a></li>
-                <li><a href="#contact">التواصل</a></li>
-                <li><a href="{{ url_for('chat_index') }}" class="btn btn-primary" style="margin: 0; padding: 8px 20px; font-size: 0.9rem;">ابدأ الآن</a></li>
+                <li><a href="#how">كيف يعمل؟</a></li>
+                <li><a href="#whatsapp">تكامل واتساب</a></li>
+                <li><a href="#contact">تواصل معنا</a></li>
+                <li><a href="{{ url_for('chat') }}" class="btn-nav-action">ابدأ الشات</a></li>
             </ul>
         </div>
     </nav>
 
     <!-- Hero Section -->
     <section class="hero">
-        <div class="hero-content">
-            <div class="hero-logo">
-                <img src="{{ url_for('static', filename='uploads/kognitix-logo.jpg') }}" alt="KognitixAI">
+        <span class="hero-badge">✨ نظام مجمع العائلة المتكامل</span>
+        <h1>مبيعات أذكى وتحليلات أعمق<br>مع منصة <span>KognitixAI</span> الذكية</h1>
+        <p>
+            لوحة تحكم موحدة لإدارة الفروع، تحليل الأداء المالي، تتبع الشكاوى، وإدارة المحادثات الذكية عبر واتساب.
+            ادمج بياناتك المحاسبية مع محرك ذكاء اصطناعي مخصص لتحسين خدمة عملائك ومبيعاتك.
+        </p>
+        <div class="hero-ctas">
+            <a href="{{ url_for('login') }}" class="btn-gold-lg"><i class="fas fa-lock"></i> دخول لوحة التحكم</a>
+            <a href="{{ url_for('chat') }}" class="btn-outline-lg"><i class="fas fa-comments"></i> تجربة مساعد الشات الذكي</a>
+        </div>
+
+        <!-- Dashboard Live Mockup -->
+        <div class="showcase-wrapper">
+            <div class="showcase-frame">
+                <img src="{{ url_for('static', filename='uploads/dashboard_showcase.png') }}" alt="KognitixAI Dashboard Analytics Mockup">
             </div>
-            <h1>🚀 منصة KognitixAI الذكية</h1>
-            <p>
-                منصة متكاملة لإدارة مبيعاتك وتحليل أدائك المالي بذكاء اصطناعي متقدم.
-                <br>
-                تحكم في كل جوانب عملك من مكان واحد مع وكيل ذكي يختار بنفسه مزود الذكاء الاصطناعي المناسب لك.
-            </p>
-            <div class="cta-buttons">
-                <a href="{{ url_for('chat_index') }}" class="btn btn-primary">🎯 ادخل لوحة التحكم</a>
-                <a href="#features" class="btn btn-secondary">📚 تعرف على المميزات</a>
+        </div>
+    </section>
+
+    <!-- Stats Bar -->
+    <section class="stats-bar">
+        <div class="stats-grid">
+            <div class="stat-item">
+                <h3>+99%</h3>
+                <p>دقة معالجة الاستفسارات بالذكاء الاصطناعي</p>
+            </div>
+            <div class="stat-item">
+                <h3>100%</h3>
+                <p>تزامن فوري للمنتجات والأسعار عبر الفروع</p>
+            </div>
+            <div class="stat-item">
+                <h3>24/7</h3>
+                <p>مساعد واتساب ذكي يعمل على مدار الساعة</p>
+            </div>
+            <div class="stat-item">
+                <h3>&lt; 2 ثانية</h3>
+                <p>سرعة الاستجابة لطلبات العملاء المحاسبية</p>
             </div>
         </div>
     </section>
 
     <!-- Features Section -->
-    <section class="features" id="features">
-        <h2 class="features-title">✨ مميزات منصة KognitixAI</h2>
-        <div class="features-grid">
-            <div class="feature-card">
-                <div class="feature-icon">📊</div>
-                <h3>تحليلات مالية متقدمة</h3>
-                <p>تحليل شامل للمبيعات والمرتجعات مع رؤى ذكية تساعدك على اتخاذ قرارات أفضل.</p>
+    <section class="features-section" id="features">
+        <div class="section-header">
+            <h2>لوحة تحكم غنية <span>بالميزات الفاخرة</span></h2>
+            <p>تم تصميم منصة KognitixAI خصيصاً لتلبية احتياجات الإدارة ومراقبة حركة الفروع والعملاء بدقة متناهية.</p>
+        </div>
+        <div class="row g-4">
+            <div class="col-lg-4 col-md-6">
+                <div class="feature-card">
+                    <div class="feature-icon-wrap"><i class="fas fa-chart-line"></i></div>
+                    <h3>تحليلات مالية فاخرة</h3>
+                    <p>رسوم بيانية تفاعلية لحركة المبيعات اليومية، إحصائيات استهلاك الـ LLM وتتبع حركة تفاعلات الشات الذكي عبر الفروع المختلفة.</p>
+                </div>
             </div>
-            <div class="feature-card">
-                <div class="feature-icon">🔗</div>
-                <h3>ربط الأنظمة المحاسبية</h3>
-                <p>تكامل سلس مع يمن سوفت، مايكروسوفت، وجميع أنظمة الكاشير المعروفة.</p>
+            <div class="col-lg-4 col-md-6">
+                <div class="feature-card">
+                    <div class="feature-icon-wrap"><i class="fab fa-whatsapp"></i></div>
+                    <h3>صندوق وارد واتساب ذكي</h3>
+                    <p>لوحة محادثات موحدة تمكن المشرفين من مراقبة إجابات الذكاء الاصطناعي، والتدخل يدوياً، وإيقاف أو تفعيل الـ AI بضغطة زر لكل رقم.</p>
+                </div>
             </div>
-            <div class="feature-card">
-                <div class="feature-icon">📱</div>
-                <h3>تكاملات التواصل الاجتماعي</h3>
-                <p>إدارة واتساب، فيسبوك، انستغرام وغيرها من منصة واحدة مع رد آلي ذكي.</p>
+            <div class="col-lg-4 col-md-6">
+                <div class="feature-card">
+                    <div class="feature-icon-wrap"><i class="fas fa-store"></i></div>
+                    <h3>إدارة مركزية للفروع</h3>
+                    <p>ربط فروع مجمع العائلة بالكامل، إسناد صلاحيات محددة لمدراء الفروع، وربط وتحديث بيانات المنتجات والأسعار بشكل فوري.</p>
+                </div>
             </div>
-            <div class="feature-card">
-                <div class="feature-icon">🤖</div>
-                <h3>وكيل ذكي متطور</h3>
-                <p>اختر مزود الذكاء الاصطناعي الذي يناسبك: OpenAI، Google Gemini، أو غيرهم.</p>
+            <div class="col-lg-4 col-md-6">
+                <div class="feature-card">
+                    <div class="feature-icon-wrap"><i class="fas fa-bullhorn"></i></div>
+                    <h3>حملات واتساب التسويقية</h3>
+                    <p>إنشاء وإدارة الحملات الإعلانية المباشرة، إرسال رسائل جماعية للعملاء المهتمين، وتتبع نسب التسليم والقراءة بدقة.</p>
+                </div>
             </div>
-            <div class="feature-card">
-                <div class="feature-icon">📢</div>
-                <h3>حملات إعلانية موحدة</h3>
-                <p>أطلق حملات متزامنة على جميع قنوات التواصل من لوحة تحكم واحدة.</p>
+            <div class="col-lg-4 col-md-6">
+                <div class="feature-card">
+                    <div class="feature-icon-wrap"><i class="fas fa-exclamation-triangle"></i></div>
+                    <h3>إدارة شكاوى متقدمة</h3>
+                    <p>نظام تذاكر شكاوى متكامل للعملاء، يصدر أكواد استعلام ويسمح للإدارة بحلها وإرسال الردود وتوثيق ملاحظات الحل للعميل.</p>
+                </div>
             </div>
-            <div class="feature-card">
-                <div class="feature-icon">⚙️</div>
-                <h3>سهولة الاستخدام</h3>
-                <p>واجهة بديهية وسهلة الاستخدام حتى للمبتدئين، مع دعم فني متواصل.</p>
+            <div class="col-lg-4 col-md-6">
+                <div class="feature-card">
+                    <div class="feature-icon-wrap"><i class="fas fa-shield-alt"></i></div>
+                    <h3>أمان وموثوقية الهوية</h3>
+                    <p>تحقق صارم للوصول (مدراء، فروع، مؤسس)، وإمكانية تعديل الشعار وهوية الشات البصرية العامة والخاصة باللوحة لتعكس الهوية التجارية.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section class="how-section" id="how">
+        <div class="section-header">
+            <h2>كيف يعمل <span>النظام؟</span></h2>
+            <p>ثلاث خطوات بسيطة لنقل مجمعك التجاري إلى عالم الأتمتة الكاملة والذكاء الاصطناعي.</p>
+        </div>
+        <div class="how-grid">
+            <div class="how-step">
+                <span class="step-number">01</span>
+                <div class="step-content">
+                    <div class="step-icon"><i class="fas fa-key"></i></div>
+                    <h3>ربط الإعدادات والتكاملات</h3>
+                    <p>يتم ضبط مفاتيح جوجل (خرائط وتحليلات Search Console) وربط حساب Meta Cloud API الخاص بالواتساب في لوحة التحكم بأمان.</p>
+                </div>
+            </div>
+            <div class="how-step">
+                <span class="step-number">02</span>
+                <div class="step-content">
+                    <div class="step-icon"><i class="fas fa-database"></i></div>
+                    <h3>تغذية السجلات والمنتجات</h3>
+                    <p>إدخال الفروع وإعداد حساباتها الرسمية وتغذية سجل المنتجات والأسعار وتحديث الهوية البصرية المناسبة للنشاط التجاري.</p>
+                </div>
+            </div>
+            <div class="how-step">
+                <span class="step-number">03</span>
+                <div class="step-content">
+                    <div class="step-icon"><i class="fas fa-magic"></i></div>
+                    <h3>الأتمتة ومراقبة الأداء</h3>
+                    <p>يبدأ وكيل الذكاء الاصطناعي بالرد فوراً، بينما تقوم الإدارة بمراقبة التقارير المالية وحركة الشكاوى وصندوق الوارد وتدخل المشرفين.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- WhatsApp In-Depth Showcase -->
+    <section class="wa-showcase-section" id="whatsapp">
+        <div class="wa-showcase-box">
+            <div class="row g-0">
+                <div class="col-lg-6">
+                    <div class="wa-content-pad">
+                        <h2>تكامل واتساب <span>ثنائي القناة</span> مع الإشراف المباشر</h2>
+                        <p>
+                            الجمع الفريد بين ردود الذكاء الاصطناعي الفورية وإمكانية التدخل البشري. لا تفقد عميلاً أبداً بسبب إجابة معلقة.
+                        </p>
+                        <ul class="wa-feature-bullets">
+                            <li><i class="fas fa-check-circle"></i> مساعد ذكي يجيب فوراً بالأسعار ومواقع الفروع.</li>
+                            <li><i class="fas fa-check-circle"></i> إمكانية إيقاف الذكاء الاصطناعي (AI Block) لرقم محدد ومتابعة المحادثة يدوياً.</li>
+                            <li><i class="fas fa-check-circle"></i> صندوق وارد موحد يعرض كود الفرع واسم العميل وتفاصيل المحادثة كاملة.</li>
+                            <li><i class="fas fa-check-circle"></i> دعم كامل لاستقبال وإرسال الصور والمستندات والوسائط والموقع الجغرافي.</li>
+                        </ul>
+                        <div>
+                            <a href="{{ url_for('chat') }}" class="btn-gold-lg"><i class="fab fa-whatsapp"></i> تجربة المحاكاة المحادثاتية</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="wa-img-wrap">
+                        <img src="{{ url_for('static', filename='uploads/whatsapp_showcase.png') }}" alt="WhatsApp AI Inbox Platform Mockup">
+                    </div>
+                </div>
             </div>
         </div>
     </section>
 
     <!-- Contact Section -->
     <section class="contact-section" id="contact">
-        <div class="contact-container">
-            <h2 class="contact-title">📞 تواصل معنا</h2>
-            
-            <div class="contact-content">
-                <div class="contact-item">
-                    <h3>🇾🇪 اليمن</h3>
-                    <a href="tel:+967773216649" class="phone-link">
-                        <i class="fas fa-phone"></i> +967 773 216 649
-                    </a>
-                </div>
-                <div class="contact-item">
-                    <h3>🇸🇦 السعودية</h3>
-                    <a href="tel:+966538344673" class="phone-link">
-                        <i class="fas fa-phone"></i> +966 53 834 4673
-                    </a>
-                </div>
-            </div>
-
-            <div class="social-section">
-                <h3 class="social-title">تابعنا على وسائل التواصل</h3>
-                <div class="social-icons">
-                    <a href="https://www.facebook.com/share/18bkXVKW4V/" target="_blank" rel="noopener noreferrer" class="social-icon" title="فيسبوك">
-                        <i class="fab fa-facebook-f"></i>
-                    </a>
-                    <a href="https://www.instagram.com/kazm_almthoni?igsh=MWx3dm1uenF1emI2Zw==" target="_blank" rel="noopener noreferrer" class="social-icon" title="انستغرام">
-                        <i class="fab fa-instagram"></i>
-                    </a>
-                    <a href="https://www.snapchat.com/add/kazm1111111111?share_id=yb3d4nf7wyg&locale=ar-SA" target="_blank" rel="noopener noreferrer" class="social-icon" title="سناب شات">
-                        <i class="fab fa-snapchat"></i>
-                    </a>
-                    <a href="https://www.tiktok.com/@the.king1111111111?_r=1&_t=ZS-973MXjkbRLw" target="_blank" rel="noopener noreferrer" class="social-icon" title="تيك توك">
-                        <i class="fab fa-tiktok"></i>
-                    </a>
-                </div>
-            </div>
+        <h2 class="social-title">تواصل مع المؤسس لمزيد من الاستفسارات</h2>
+        <div class="social-icons">
+            <a href="https://www.facebook.com/share/18bkXVKW4V/" target="_blank" rel="noopener noreferrer" class="social-icon" title="فيسبوك">
+                <i class="fab fa-facebook-f"></i>
+            </a>
+            <a href="https://www.instagram.com/kazm_almthoni?igsh=MWx3dm1uenF1emI2Zw==" target="_blank" rel="noopener noreferrer" class="social-icon" title="انستغرام">
+                <i class="fab fa-instagram"></i>
+            </a>
+            <a href="https://www.snapchat.com/add/kazm1111111111?share_id=yb3d4nf7wyg&locale=ar-SA" target="_blank" rel="noopener noreferrer" class="social-icon" title="سناب شات">
+                <i class="fab fa-snapchat"></i>
+            </a>
+            <a href="https://www.tiktok.com/@the.king1111111111?_r=1&_t=ZS-973MXjkbRLw" target="_blank" rel="noopener noreferrer" class="social-icon" title="تيك توك">
+                <i class="fab fa-tiktok"></i>
+            </a>
+        </div>
+        <div class="mb-4">
+            <a href="tel:+966538344673" class="phone-link">
+                <i class="fas fa-phone-alt"></i> +966 53 834 4673
+            </a>
         </div>
     </section>
 
     <!-- Footer -->
     <footer>
-        <p>&copy; 2026 KognitixAI. جميع الحقوق محفوظة.</p>
-        <p>منصة ذكية لإدارة المبيعات والتحليلات المالية</p>
+        <p>&copy; 2026 KognitixAI. جميع الحقوق محفوظة لمجمع العائلة.</p>
+        <p style="font-size:0.8rem; opacity:0.6;">تصميم ذكي فاخر لإدارة مبيعات التجزئة وأتمتة خدمة العملاء</p>
     </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

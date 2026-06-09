@@ -2,6 +2,12 @@
 {% from "macros/site_logo.html" import brand_logo_pair %}
 <html lang="ar" dir="rtl" class="dash-html mm-fin-root">
 <head>
+    <script>
+        (function() {
+            const theme = localStorage.getItem('founder-theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     {% include "partials/pwa_head.html" %}
@@ -13,6 +19,7 @@
     <link href="{{ url_for('static', filename='css/dashboard-layout.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/almanakh-finance.css') }}?v=2.0" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/finance-luxury-override.css') }}?v=1.0" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/founder-unified-luxury.css') }}?v=3.0" rel="stylesheet">
     {% block mm_extra_head %}{% endblock %}
 </head>
 <body class="mm-fin dash-body {% block mm_body_class %}{% endblock %}">

@@ -2,6 +2,12 @@
 {% from "macros/site_logo.html" import brand_logo_pair, site_logo_pair %}
 <html lang="ar" dir="rtl" class="fd-dashboard dash-html">
 <head>
+    <script>
+        (function() {
+            const theme = localStorage.getItem('founder-theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     {% include "partials/pwa_head.html" %}
@@ -131,14 +137,17 @@
         }
     </style>
 </head>
-<body class="fd-dashboard dash-body">
+<body class="fd-dashboard dash-body has-bottom-nav">
 
 <!-- ════ Mobile Topbar ════ -->
 <div class="fd-mobile-topbar" id="fd-mobile-topbar">
     <button type="button" class="fd-mobile-topbar__btn"
             aria-label="القائمة" id="fd-topbar-menu-btn">☰</button>
     <span class="fd-mobile-topbar__title">{% block mobile_title %}لوحة النظام{% endblock %}</span>
-    <div style="width:38px;"></div><!-- spacer -->
+    <button type="button" class="fd-mobile-topbar__btn fd-theme-toggle-btn" id="fd-theme-toggle-mobile" aria-label="تبديل الوضع">
+        <span class="theme-icon-sun">☀️</span>
+        <span class="theme-icon-moon">🌙</span>
+    </button>
 </div>
 
 <div class="container-fluid dash-layout">
@@ -185,8 +194,6 @@
                        href="{{ url_for('admin_complaints') }}">📋 الشكاوى</a>
                     <a class="nav-link {% if ep == 'campaigns.founder_campaigns' %}active{% endif %}"
                        href="{{ url_for('campaigns.founder_campaigns') }}">📢 الحملات</a>
-                    <a class="nav-link {% if ep == 'wa_inbox.admin_messages_page' %}active{% endif %}"
-                       href="{{ url_for('wa_inbox.admin_messages_page') }}">💬 واتساب</a>
                     <a class="nav-link {% if ep and ep.startswith('social_dashboard.') %}active{% endif %}"
                        href="{{ url_for('social_dashboard.dashboard') }}">🚀 التواصل الاجتماعي</a>
                     <a class="nav-link {% if ep == 'admin_system_guide' %}active{% endif %}"
@@ -202,8 +209,13 @@
         <!-- ════ Main ════ -->
         <div class="col-md-10 fd-main dash-main" id="fd-main-content">
             {% block fd_top_header %}
-            <header class="fd-main-header">
+            <header class="fd-main-header d-flex align-items-center justify-content-between">
                 {{ brand_logo_pair(founder_logo_url, 'fd-header-logo', 'site-logo-k--header') }}
+                
+                <button type="button" class="btn fd-theme-toggle-btn" id="fd-theme-toggle-desktop" aria-label="تبديل الوضع الداكن/الفاتح">
+                    <span class="theme-icon-sun">☀️</span>
+                    <span class="theme-icon-moon">🌙</span>
+                </button>
             </header>
             {% endblock %}
 
@@ -250,10 +262,10 @@
             <span class="fd-bottom-nav__icon">📋</span>
             <span>الشكاوى</span>
         </a></li>
-        <li><a href="{{ url_for('wa_inbox.admin_messages_page') }}"
-               class="fd-bottom-nav__link {% if request.endpoint == 'wa_inbox.admin_messages_page' %}active{% endif %}">
-            <span class="fd-bottom-nav__icon">💬</span>
-            <span>واتساب</span>
+        <li><a href="{{ url_for('social_dashboard.dashboard') }}"
+               class="fd-bottom-nav__link {% if request.endpoint and request.endpoint.startswith('social_dashboard.') %}active{% endif %}">
+            <span class="fd-bottom-nav__icon">🚀</span>
+            <span>التواصل</span>
         </a></li>
     </ul>
 </nav>
@@ -279,6 +291,28 @@
             overlay.style.display = isActive ? 'block' : 'none';
         }
     });
+})();
+
+// نظام تبديل السمات (داكن / فاتح) للمؤسس
+(function(){
+    function setTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('founder-theme', theme);
+        // إرسال إيفينت لتعديل الرسوم البيانية
+        window.dispatchEvent(new CustomEvent('founder-theme-changed', { detail: { theme: theme } }));
+    }
+    
+    const toggleDesktop = document.getElementById('fd-theme-toggle-desktop');
+    const toggleMobile = document.getElementById('fd-theme-toggle-mobile');
+    
+    function handleToggle() {
+        const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+        const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        setTheme(nextTheme);
+    }
+    
+    if (toggleDesktop) toggleDesktop.addEventListener('click', handleToggle);
+    if (toggleMobile) toggleMobile.addEventListener('click', handleToggle);
 })();
 </script>
 {% block scripts %}{% endblock %}

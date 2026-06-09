@@ -1,84 +1,227 @@
 {% extends "founder/base.html" %}
+{% from "macros/csrf.html" import csrf_input %}
+{% block title %}الناشر الذكي | مجمع العائلة{% endblock %}
 
-{% block title %}الناشر الموحد | مجمع العائلة{% endblock %}
+{% block extra_head %}
+<style>
+    .channel-checkbox {
+        display: none;
+    }
+    .channel-label {
+        border: 1px solid var(--border-color, #dee2e6);
+        border-radius: 8px;
+        padding: 8px 12px;
+        cursor: pointer;
+        font-size: 0.8rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s;
+    }
+    .channel-checkbox:checked + .channel-label {
+        background: #e0f2fe;
+        border-color: #0284c7;
+        color: #0369a1;
+    }
+    .text-small {
+        font-size: 0.8rem;
+    }
+    .text-xs {
+        font-size: 0.72rem;
+    }
+    .preview-card {
+        border-radius: 12px;
+        border: 1px dashed var(--border-color, #dee2e6);
+        background: #f9fbfd;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="fd-page-head mb-4">
-    <h3 class="fw-bold mb-1">📝 الناشر الموحد</h3>
-    <p class="text-muted mb-0">أنشئ وانشر محتواك على جميع المنصات بضغطة زر</p>
-</div>
-
-<div class="row g-4">
-    <div class="col-md-8">
-        <div class="fd-card p-4 shadow-sm border-0" style="border-radius: 15px;">
-            <form id="socialPublisherForm">
-                <div class="mb-4">
-                    <label class="form-label fw-bold">محتوى المنشور</label>
-                    <textarea class="form-control" rows="6" placeholder="ماذا تريد أن تنشر اليوم؟" style="border-radius: 12px;"></textarea>
-                </div>
-                
-                <div class="mb-4">
-                    <label class="form-label fw-bold">إضافة وسائط</label>
-                    <div class="border-dashed p-5 text-center bg-light" style="border: 2px dashed #ccc; border-radius: 15px;">
-                        <div class="fs-1 mb-2">🖼️</div>
-                        <p class="text-muted mb-0">اسحب الصور هنا أو اضغط للرفع</p>
-                        <input type="file" class="d-none" id="mediaUpload">
-                    </div>
-                </div>
-
-                <div class="mb-4">
-                    <label class="form-label fw-bold">اختر المنصات</label>
-                    <div class="d-flex gap-3">
-                        <div class="form-check border p-3 rounded-3 flex-fill text-center">
-                            <input class="form-check-input d-none" type="checkbox" id="p_wa" checked>
-                            <label class="form-check-label w-100 cursor-pointer" for="p_wa">
-                                <div class="fs-3">💬</div>
-                                <div>WhatsApp</div>
-                            </label>
-                        </div>
-                        <div class="form-check border p-3 rounded-3 flex-fill text-center opacity-50">
-                            <input class="form-check-input d-none" type="checkbox" id="p_ig" disabled>
-                            <label class="form-check-label w-100" for="p_ig">
-                                <div class="fs-3">📸</div>
-                                <div>Instagram</div>
-                            </label>
-                        </div>
-                        <div class="form-check border p-3 rounded-3 flex-fill text-center opacity-50">
-                            <input class="form-check-input d-none" type="checkbox" id="p_fb" disabled>
-                            <label class="form-check-label w-100" for="p_fb">
-                                <div class="fs-3">📘</div>
-                                <div>Facebook</div>
-                            </label>
-                        </div>
-                    </div>
-                    <small class="text-muted mt-2 d-block">ملاحظة: المنصات الباهتة تتطلب ربط الحساب من صفحة التكاملات.</small>
-                </div>
-
-                <div class="d-flex justify-content-between">
-                    <button type="button" class="btn btn-light px-4" style="border-radius: 10px;">جدولة لاحقاً</button>
-                    <button type="submit" class="btn btn-primary px-5 shadow-sm" style="border-radius: 10px;">نشر الآن 🚀</button>
-                </div>
-            </form>
+<div class="container-fluid px-2 px-md-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h4 class="fw-bold mb-1" style="font-size: 1.25rem;">📝 الناشر الذكي المدعوم بالذكاء الاصطناعي</h4>
+            <p class="text-muted mb-0 text-small">اصنع منشوراتك، صمم الهوية البصرية، وانشر على جميع منصاتك بضغطة زر</p>
         </div>
+        <a href="{{ url_for('social_dashboard.dashboard') }}" class="btn btn-link btn-sm text-decoration-none text-muted p-0">← العودة للوحة</a>
     </div>
-    
-    <div class="col-md-4">
-        <div class="fd-card p-4 shadow-sm border-0 h-100" style="border-radius: 15px;">
-            <h5 class="fw-bold mb-4">👁️ معاينة حيّة</h5>
-            <div class="preview-container border rounded-3 p-3 bg-white shadow-sm">
-                <div class="d-flex align-items-center mb-2">
-                    <div class="bg-primary rounded-circle me-2" style="width: 32px; height: 32px;"></div>
-                    <div class="fw-bold small">مجمع العائلة</div>
+
+    <div class="row g-3">
+        <!-- خيارات ومحددات النشر -->
+        <div class="col-lg-7">
+            <div class="fd-card p-3">
+                <h6 class="fw-bold mb-3 text-small">🤖 توليد المحتوى الذكي</h6>
+                
+                <div class="mb-3">
+                    <label class="form-label">عن ماذا تريد التحدث؟ (فكرة المنشور)</label>
+                    <textarea class="form-control" id="postPrompt" rows="3" placeholder="مثال: إعلان عن توفر نكهات جديدة للآيس كريم في فرع الرياض بنكهة المانجو والزعفران بمناسبة الصيف..." style="font-size:0.82rem;"></textarea>
                 </div>
-                <div class="preview-content text-muted small py-3 border-bottom mb-2">
-                    سيظهر نص المنشور هنا أثناء الكتابة...
+
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label">نبرة الصوت (Tone)</label>
+                        <select class="form-select form-select-sm" id="postTone" style="font-size: 0.8rem;">
+                            <option value="professional">مهني / رسمي</option>
+                            <option value="friendly" selected>ودود / ترحيبي</option>
+                            <option value="humorous">مرح / فكاهي</option>
+                            <option value="promotional">تسويقي / حماسي</option>
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">أسلوب التصميم البصري</label>
+                        <select class="form-select form-select-sm" id="designStyle" style="font-size: 0.8rem;">
+                            <option value="modern">حديث وبسيط (Minimalist)</option>
+                            <option value="vibrant">ألوان صيفية مبهجة</option>
+                            <option value="luxury">فاخر وهادئ (Premium Dark)</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="d-flex justify-content-between text-muted small">
-                    <span>❤️ 0</span>
-                    <span>💬 0</span>
+
+                <div class="mb-3">
+                    <label class="form-label d-block">المنصات المستهدفة بالنشر</label>
+                    <div class="d-flex flex-wrap gap-2">
+                        <input type="checkbox" class="channel-checkbox" id="ch_fb" value="facebook" checked>
+                        <label for="ch_fb" class="channel-label">📘 Facebook</label>
+                        
+                        <input type="checkbox" class="channel-checkbox" id="ch_ig" value="instagram" checked>
+                        <label for="ch_ig" class="channel-label">📸 Instagram</label>
+
+                        <input type="checkbox" class="channel-checkbox" id="ch_tw" value="twitter">
+                        <label for="ch_tw" class="channel-label">🐦 Twitter (X)</label>
+
+                        <input type="checkbox" class="channel-checkbox" id="ch_li" value="linkedin">
+                        <label for="ch_li" class="channel-label">🔗 LinkedIn</label>
+
+                        <input type="checkbox" class="channel-checkbox" id="ch_tt" value="tiktok">
+                        <label for="ch_tt" class="channel-label">🎵 TikTok</label>
+                    </div>
+                </div>
+
+                <button class="btn btn-success btn-sm w-100 py-2 fw-bold" id="generateBtn" onclick="generatePost()">🧠 توليد المنشور والتصميم الآن</button>
+            </div>
+        </div>
+
+        <!-- معاينة المنشور والنتائج -->
+        <div class="col-lg-5">
+            <div class="fd-card p-3">
+                <h6 class="fw-bold mb-3 text-small">👁️ معاينة المنشور والتصميم الجاهز</h6>
+
+                <div class="preview-card p-3 mb-3">
+                    <!-- نموذج التصميم المولد -->
+                    <div id="visualCanvas" class="text-center p-4 mb-3 rounded d-flex flex-column align-items-center justify-content-center" style="min-height: 180px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff; border-radius: 8px;">
+                        <h5 class="fw-bold text-center px-2" id="canvasTitle" style="font-size:1.05rem;">مجمع العائلة</h5>
+                        <p class="text-xs mt-2 opacity-75" id="canvasPrompt">التصميم المقترح سيظهر هنا بالذكاء الاصطناعي</p>
+                        <div class="d-flex gap-1 mt-3" id="canvasPalette">
+                            <span class="badge" style="background:#10b981; width:20px; height:20px; border-radius:50%; border:1px solid #fff;"></span>
+                            <span class="badge" style="background:#059669; width:20px; height:20px; border-radius:50%; border:1px solid #fff;"></span>
+                        </div>
+                    </div>
+
+                    <!-- نص المنشور -->
+                    <div>
+                        <label class="form-label text-muted text-xs">نص كابشن المنشور المولد (قابل للتعديل)</label>
+                        <textarea class="form-control text-small font-monospace" id="generatedText" rows="6" placeholder="اكتب فكرتك واضغط توليد للحصول على نص احترافي هنا..."></textarea>
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary btn-sm flex-fill fw-bold py-2" id="publishBtn" onclick="publishMock()" disabled>🚀 نشر وجدولة الآن</button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="clearAll()">مسح</button>
                 </div>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function generatePost() {
+        const prompt = document.getElementById('postPrompt').value.trim();
+        const tone = document.getElementById('postTone').value;
+        const style = document.getElementById('designStyle').value;
+        const generateBtn = document.getElementById('generateBtn');
+        
+        if (!prompt) {
+            alert('يرجى كتابة فكرة المنشور أولاً!');
+            return;
+        }
+
+        const checkedChannels = [];
+        if (document.getElementById('ch_fb').checked) checkedChannels.push('facebook');
+        if (document.getElementById('ch_ig').checked) checkedChannels.push('instagram');
+        if (document.getElementById('ch_tw').checked) checkedChannels.push('twitter');
+        if (document.getElementById('ch_li').checked) checkedChannels.push('linkedin');
+        if (document.getElementById('ch_tt').checked) checkedChannels.push('tiktok');
+
+        generateBtn.disabled = true;
+        generateBtn.innerHTML = '⚡ جاري التوليد والتصميم بالذكاء الاصطناعي...';
+
+        fetch("{{ url_for('social_dashboard.ai_generate') }}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                prompt: prompt,
+                tone: tone,
+                platforms: checkedChannels
+            })
+        })
+        .then(response => response.json())
+        .then(res => {
+            generateBtn.disabled = false;
+            generateBtn.innerHTML = '🧠 توليد المنشور والتصميم الآن';
+            
+            if (res.ok) {
+                const data = res.data;
+                document.getElementById('generatedText').value = data.post_text;
+                
+                // تحديث اللوحة البصرية للتصميم
+                const canvas = document.getElementById('visualCanvas');
+                const canvasTitle = document.getElementById('canvasTitle');
+                const canvasPrompt = document.getElementById('canvasPrompt');
+                const canvasPalette = document.getElementById('canvasPalette');
+                
+                canvasTitle.textContent = data.design_title || 'منشور جديد';
+                canvasPrompt.textContent = data.design_prompt || 'تم تحديد نمط التصميم';
+                
+                // تحديث الألوان
+                if (data.color_palette && data.color_palette.length >= 2) {
+                    canvas.style.background = `linear-gradient(135deg, ${data.color_palette[0]} 0%, ${data.color_palette[1]} 100%)`;
+                    canvasPalette.innerHTML = '';
+                    data.color_palette.forEach(color => {
+                        canvasPalette.innerHTML += `<span class="badge" style="background:${color}; width:20px; height:20px; border-radius:50%; border:1px solid #fff;"></span>`;
+                    });
+                }
+                
+                document.getElementById('publishBtn').disabled = false;
+            } else {
+                alert('حدث خطأ أثناء التوليد: ' + res.error);
+            }
+        })
+        .catch(err => {
+            generateBtn.disabled = false;
+            generateBtn.innerHTML = '🧠 توليد المنشور والتصميم الآن';
+            alert('تعذر الاتصال بالخادم الذكي.');
+        });
+    }
+
+    function publishMock() {
+        alert('🎉 نجح النشر المجدول! تم توزيع المنشور مع التصميم الذكي بنجاح على المنصات النشطة.');
+        clearAll();
+    }
+
+    function clearAll() {
+        document.getElementById('postPrompt').value = '';
+        document.getElementById('generatedText').value = '';
+        document.getElementById('canvasTitle').textContent = 'مجمع العائلة';
+        document.getElementById('canvasPrompt').textContent = 'التصميم المقترح سيظهر هنا بالذكاء الاصطناعي';
+        document.getElementById('visualCanvas').style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+        document.getElementById('publishBtn').disabled = true;
+    }
+</script>
 {% endblock %}

@@ -355,8 +355,7 @@ body.fd-dashboard .dash-menu-btn:focus-visible {
   }
 
   .dash-layout.dash-nav-open .dash-main {
-    pointer-events: none;
-    user-select: none;
+    /* تم إلغاء pointer-events: none لمنع تجمد الشاشة على الجوال */
   }
 
   .dash-main {

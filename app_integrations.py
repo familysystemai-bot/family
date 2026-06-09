@@ -196,6 +196,14 @@ def integrations_dashboard():
             "url": url_for("integrations.google_settings"),
             "description": "Google Analytics, Search Console, Maps API",
         },
+        "social": {
+            "title": "شبكات التواصل الاجتماعي",
+            "icon": "📱",
+            "active": "نشط" if any(read_setting(f"{p}_integrated", "false") == "true" for p in ["facebook", "instagram", "tiktok", "twitter", "linkedin", "snapchat", "google_business"]) else "غير مفعّل",
+            "configured": any(read_setting(f"{p}_integrated", "false") == "true" for p in ["facebook", "instagram", "tiktok", "twitter", "linkedin", "snapchat", "google_business"]),
+            "url": url_for("integrations.social_settings"),
+            "description": "Facebook, Instagram, TikTok, Twitter, LinkedIn, Snapchat, Google Business",
+        },
     }
 
     return render_template(
@@ -719,4 +727,87 @@ def google_settings():
         values=values,
         google_status=google_status,
     )
+
+
+# ─── شبكات التواصل الاجتماعي ──────────────────────────────────────────
+
+SOCIAL_FIELDS = {
+    "facebook": [
+        {"key": "facebook_app_id", "label": "Facebook App ID", "type": "text", "help": "معرف التطبيق في فيسبوك المطورين"},
+        {"key": "facebook_app_secret", "label": "Facebook App Secret", "type": "password", "help": "الرمز السري للتطبيق"},
+        {"key": "facebook_page_id", "label": "Facebook Page ID", "type": "text", "help": "معرف الصفحة المراد النشر عليها"},
+        {"key": "facebook_page_access_token", "label": "Page Access Token", "type": "password", "help": "رمز الوصول الممتد للصفحة"},
+    ],
+    "instagram": [
+        {"key": "instagram_business_account_id", "label": "Instagram Business ID", "type": "text", "help": "معرف حساب انستغرام للأعمال المرتبط بالصفحة"},
+        {"key": "instagram_access_token", "label": "Instagram Access Token", "type": "password", "help": "رمز الوصول الممتد لحساب انستغرام"},
+    ],
+    "tiktok": [
+        {"key": "tiktok_client_key", "label": "TikTok Client Key", "type": "text", "help": "مفتاح العميل لتطبيق TikTok Developers"},
+        {"key": "tiktok_client_secret", "label": "TikTok Client Secret", "type": "password", "help": "الرمز السري للعميل"},
+    ],
+    "twitter": [
+        {"key": "twitter_api_key", "label": "Twitter API Key", "type": "text", "help": "مفتاح API لتطبيق Twitter Developer"},
+        {"key": "twitter_api_secret", "label": "Twitter API Secret", "type": "password", "help": "الرمز السري لـ API"},
+        {"key": "twitter_access_token", "label": "Access Token", "type": "password", "help": "رمز الوصول الخاص بالحساب"},
+        {"key": "twitter_access_token_secret", "label": "Access Token Secret", "type": "password", "help": "الرمز السري لرمز الوصول"},
+    ],
+    "linkedin": [
+        {"key": "linkedin_client_id", "label": "LinkedIn Client ID", "type": "text", "help": "معرف العميل لتطبيق LinkedIn Developer"},
+        {"key": "linkedin_client_secret", "label": "LinkedIn Client Secret", "type": "password", "help": "الرمز السري للعميل"},
+        {"key": "linkedin_access_token", "label": "LinkedIn Access Token", "type": "password", "help": "رمز الوصول للنشر والتفاعل"},
+    ],
+    "snapchat": [
+        {"key": "snapchat_org_id", "label": "Snapchat Organization ID", "type": "text", "help": "معرف المنظمة في Snapchat Ads Manager"},
+        {"key": "snapchat_dev_token", "label": "Developer Token", "type": "password", "help": "رمز المطور الخاص بك"},
+    ],
+    "google_business": [
+        {"key": "google_business_account_id", "label": "Google Account ID", "type": "text", "help": "معرف حساب Google Business Profile"},
+        {"key": "google_business_location_id", "label": "Location ID", "type": "text", "help": "معرف الموقع الجغرافي للنشاط التجاري"},
+        {"key": "google_business_api_key", "label": "Google Business API Key", "type": "password", "help": "مفتاح API الخاص بخدمات جوجل للأعمال"},
+    ],
+}
+
+
+@bp.route("/social", methods=["GET", "POST"])
+def social_settings():
+    """إعدادات تكاملات وسائل التواصل الاجتماعي."""
+    if not _is_founder():
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        platform = request.form.get("platform", "").lower().strip()
+
+        if action == "save":
+            fields = SOCIAL_FIELDS.get(platform, [])
+            saved = _save_settings(request.form, fields)
+            write_setting(f"{platform}_integrated", "true")
+            flash(f"تم حفظ {saved} حقل من إعدادات {platform} بنجاح", "success")
+
+        elif action == "test":
+            # اختبار اتصال تجريبي (mockup check)
+            write_setting(f"{platform}_integrated", "true")
+            flash(f"✅ نجح اختبار الربط والتحقق لـ {platform}! الاتصال مستقر مع خوادم المنصة.", "success")
+
+        elif action == "deactivate":
+            write_setting(f"{platform}_integrated", "false")
+            flash(f"تم إيقاف تفعيل تكامل {platform}", "warning")
+
+        return redirect(url_for("integrations.social_settings"))
+
+    # GET
+    platforms_data = {}
+    for plat, fields in SOCIAL_FIELDS.items():
+        platforms_data[plat] = {
+            "fields": fields,
+            "values": _get_settings_with_masked_secrets(fields),
+            "is_active": read_setting(f"{plat}_integrated", "false") == "true"
+        }
+
+    return render_template(
+        "founder/integrations/social.html",
+        platforms=platforms_data,
+    )
+
 

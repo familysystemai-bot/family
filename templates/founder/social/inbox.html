@@ -1,68 +1,238 @@
 {% extends "founder/base.html" %}
-
+{% from "macros/csrf.html" import csrf_input %}
 {% block title %}صندوق الرسائل الموحد | مجمع العائلة{% endblock %}
 
-{% block content %}
-<div class="fd-page-head mb-4">
-    <h3 class="fw-bold mb-1">📬 صندوق الرسائل الموحد</h3>
-    <p class="text-muted mb-0">رد على جميع عملائك في واتساب، إنستقرام، وفيسبوك من نافذة واحدة</p>
-</div>
+{% block extra_head %}
+<style>
+    .inbox-container {
+        height: calc(100vh - 180px);
+        min-height: 400px;
+        background: var(--card-bg, #ffffff);
+        border: 1px solid var(--border-color, #dee2e6);
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    .inbox-list {
+        border-left: 1px solid var(--border-color, #dee2e6);
+        overflow-y: auto;
+    }
+    .inbox-item {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border-color, #eff2f5);
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+    .inbox-item:hover, .inbox-item.active {
+        background: #f1f5f9;
+    }
+    .chat-view {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        background: #fafaf9;
+    }
+    .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px;
+    }
+    .chat-bubble {
+        max-width: 75%;
+        padding: 10px 14px;
+        border-radius: 12px;
+        margin-bottom: 10px;
+        font-size: 0.82rem;
+    }
+    .chat-bubble.inbound {
+        background: #e2e8f0;
+        align-self: flex-start;
+    }
+    .chat-bubble.outbound {
+        background: #dcfce7;
+        color: #14532d;
+        align-self: flex-end;
+        margin-right: auto;
+    }
+    .text-small {
+        font-size: 0.8rem;
+    }
+    .text-xs {
+        font-size: 0.72rem;
+    }
+    .badge-platform {
+        font-size: 0.65rem;
+        padding: 3px 6px;
+        border-radius: 4px;
+    }
+</style>
+{% endblock %}
 
-<div class="fd-card shadow-sm border-0 overflow-hidden" style="border-radius: 15px; height: 70vh;">
-    <div class="row g-0 h-100">
-        <!-- قائمة المحادثات -->
-        <div class="col-md-4 border-end h-100 bg-light">
-            <div class="p-3 border-bottom bg-white">
-                <input type="text" class="form-control form-control-sm" placeholder="بحث عن محادثة..." style="border-radius: 8px;">
-            </div>
-            <div class="overflow-auto" style="height: calc(100% - 60px);">
-                <div class="list-group list-group-flush">
-                    <div class="list-group-item list-group-item-action active p-3 border-0">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h6 class="mb-1 fw-bold">عميل تجريبي (واتساب)</h6>
-                            <small>10:30 ص</small>
-                        </div>
-                        <p class="mb-0 small text-truncate">أهلاً، متى تفتحون فرع الرياض؟</p>
-                    </div>
-                    <!-- المزيد من المحادثات تظهر هنا -->
-                    <div class="p-5 text-center text-muted">
-                        <small>لا توجد محادثات أخرى حالياً</small>
-                    </div>
+{% block content %}
+<div class="container-fluid px-1 px-md-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h4 class="fw-bold mb-1" style="font-size: 1.25rem;">📥 صندوق الرسائل والتقييمات الموحد</h4>
+            <p class="text-muted mb-0 text-small">تواصل مع عملائك عبر واتساب، فيسبوك، انستغرام، وجوجل من لوحة واحدة</p>
+        </div>
+        <a href="{{ url_for('social_dashboard.dashboard') }}" class="btn btn-link btn-sm text-decoration-none text-muted p-0">← لوحة القيادة</a>
+    </div>
+
+    <div class="row g-0 inbox-container">
+        <!-- القائمة الجانبية للمحادثات -->
+        <div class="col-md-5 col-12 inbox-list h-100">
+            {% for m in messages %}
+            <div class="inbox-item {% if loop.first %}active{% endif %}" id="item_{{ m.id }}" onclick="selectConversation({{ m|tojson }})">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="fw-bold text-small">{{ m.sender }}</span>
+                    <span class="text-muted text-xs">{{ m.time }}</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center">
+                    <p class="text-muted text-xs mb-0 text-truncate" style="max-width: 80%;">{{ m.body }}</p>
+                    
+                    {% if m.platform == 'whatsapp' %}
+                    <span class="badge bg-success badge-platform">WhatsApp</span>
+                    {% elif m.platform == 'instagram' %}
+                    <span class="badge bg-danger badge-platform">Instagram</span>
+                    {% elif m.platform == 'facebook' %}
+                    <span class="badge bg-primary badge-platform">Facebook</span>
+                    {% elif m.platform == 'google' %}
+                    <span class="badge bg-warning text-dark badge-platform">Google Review</span>
+                    {% endif %}
                 </div>
             </div>
+            {% endfor %}
         </div>
 
-        <!-- منطقة الدردشة -->
-        <div class="col-md-8 h-100 d-flex flex-column bg-white">
-            <div class="p-3 border-bottom d-flex align-items-center justify-content-between">
-                <div class="d-flex align-items-center">
-                    <div class="bg-success rounded-circle me-2" style="width: 10px; height: 10px;"></div>
-                    <h6 class="mb-0 fw-bold">عميل تجريبي</h6>
-                </div>
-                <div class="badge bg-light text-dark border">WhatsApp</div>
-            </div>
-            
-            <div class="flex-grow-1 p-4 overflow-auto bg-light" style="background-image: url('https://www.transparenttextures.com/patterns/cubes.png');">
-                <div class="d-flex flex-column gap-3">
-                    <div class="align-self-start bg-white p-3 rounded-3 shadow-sm" style="max-width: 70%; border-bottom-left-radius: 0 !important;">
-                        أهلاً، متى تفتحون فرع الرياض؟
-                        <div class="text-end mt-1"><small class="text-muted" style="font-size: 0.65rem;">10:30 ص</small></div>
-                    </div>
-                    <div class="align-self-end bg-primary text-white p-3 rounded-3 shadow-sm" style="max-width: 70%; border-bottom-right-radius: 0 !important;">
-                        أهلاً بك عميلنا العزيز، فرع الرياض يفتح من الساعة 9 صباحاً.
-                        <div class="text-end mt-1"><small class="text-white-50" style="font-size: 0.65rem;">10:32 ص</small></div>
-                    </div>
+        <!-- محتوى المحادثة المحدد -->
+        <div class="col-md-7 col-12 chat-view h-100">
+            <div class="p-3 border-bottom bg-white d-flex justify-content-between align-items-center">
+                <div>
+                    <h6 class="fw-bold mb-0 text-small" id="chatSenderName">أبو فهد</h6>
+                    <span id="chatSenderPlatform" class="badge bg-success badge-platform">WhatsApp</span>
                 </div>
             </div>
 
+            <!-- الرسائل -->
+            <div class="chat-messages d-flex flex-column" id="chatContainer">
+                <div class="chat-bubble inbound" id="inboundBubble">السلام عليكم، هل المنتج متوفر في فرع الرياض؟</div>
+                <!-- الردود تضاف هنا -->
+            </div>
+
+            <!-- نموذج الكتابة والإرسال -->
             <div class="p-3 border-top bg-white">
-                <div class="input-group">
-                    <button class="btn btn-outline-light border text-muted" type="button">📎</button>
-                    <input type="text" class="form-control" placeholder="اكتب ردك هنا..." style="border-radius: 0;">
-                    <button class="btn btn-primary px-4" type="button">إرسال</button>
+                <div class="d-flex gap-2">
+                    <input type="text" class="form-control text-small" id="replyText" placeholder="اكتب ردك هنا...">
+                    <button class="btn btn-primary btn-sm px-3 fw-bold" onclick="sendReply()">إرسال 🚀</button>
+                </div>
+                <div class="mt-2 text-end">
+                    <button class="btn btn-link btn-xs text-xs text-muted p-0" onclick="suggestAIReply()">🪄 اقتراح رد ذكي</button>
                 </div>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let activeConv = {{ messages[0]|tojson if messages else 'null' }};
+
+    function selectConversation(conv) {
+        activeConv = conv;
+        
+        // إزالة الكلاس النشط من الجميع وإضافته للمحدد
+        document.querySelectorAll('.inbox-item').forEach(el => el.classList.remove('active'));
+        document.getElementById('item_' + conv.id).classList.add('active');
+
+        // تحديث معلومات المرسل
+        document.getElementById('chatSenderName').textContent = conv.sender;
+        const platformBadge = document.getElementById('chatSenderPlatform');
+        platformBadge.textContent = conv.platform.toUpperCase();
+        
+        // إعادة تهيئة المحادثة
+        const container = document.getElementById('chatContainer');
+        container.innerHTML = `<div class="chat-bubble inbound">${conv.body}</div>`;
+
+        if (conv.platform === 'whatsapp') {
+            platformBadge.className = 'badge bg-success badge-platform';
+        } else if (conv.platform === 'instagram') {
+            platformBadge.className = 'badge bg-danger badge-platform';
+        } else if (conv.platform === 'facebook') {
+            platformBadge.className = 'badge bg-primary badge-platform';
+        } else if (conv.platform === 'google') {
+            platformBadge.className = 'badge bg-warning text-dark badge-platform';
+            container.innerHTML += `<div class="text-xs text-muted text-center my-2">تنبيه: هذا تقييم للنشاط التجاري بنجمة ⭐ ${conv.stars || 5} نجوم</div>`;
+        }
+    }
+
+    function sendReply() {
+        const replyInput = document.getElementById('replyText');
+        const replyVal = replyInput.value.trim();
+        if (!replyVal) return;
+
+        const container = document.getElementById('chatContainer');
+        
+        if (activeConv && activeConv.platform === 'google') {
+            // إرسال الرد لجوجل للأنشطة التجارية
+            fetch("{{ url_for('social_dashboard.google_reply') }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({
+                    review_id: activeConv.id,
+                    reply: replyVal
+                })
+            })
+            .then(res => res.json())
+            .then(res => {
+                if (res.ok) {
+                    container.innerHTML += `<div class="chat-bubble outbound">${replyVal} <small class="d-block text-xs text-muted">تم الرد على تقييم جوجل</small></div>`;
+                    replyInput.value = '';
+                } else {
+                    alert('خطأ في إرسال الرد: ' + res.error);
+                }
+            });
+        } else {
+            // محاكاة إرسال الرسائل للقنوات الأخرى
+            container.innerHTML += `<div class="chat-bubble outbound">${replyVal}</div>`;
+            replyInput.value = '';
+            
+            // سكرول لأسفل
+            container.scrollTop = container.scrollHeight;
+        }
+    }
+
+    function suggestAIReply() {
+        if (!activeConv) return;
+        const input = document.getElementById('replyText');
+        input.value = 'جاري التفكير في رد مناسب...';
+        
+        // جلب رد مقترح بالذكاء الاصطناعي
+        fetch("{{ url_for('social_dashboard.ai_generate') }}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                prompt: 'اقترح ردًا مهذبًا ووديًا ومناسبًا للرسالة التالية من العميل: ' + activeConv.body,
+                tone: 'friendly',
+                platforms: [activeConv.platform]
+            })
+        })
+        .then(res => res.json())
+        .then(res => {
+            if (res.ok) {
+                input.value = res.data.post_text;
+            } else {
+                input.value = 'أهلاً بك وسهلاً! يسعدنا تواصلك وسنقوم بالتحقق لك فوراً.';
+            }
+        })
+        .catch(() => {
+            input.value = 'أهلاً بك وسهلاً! يسعدنا تواصلك وسنقوم بالتحقق لك فوراً.';
+        });
+    }
+</script>
 {% endblock %}

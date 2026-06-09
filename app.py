@@ -1103,6 +1103,8 @@ def founder_dashboard():
     founder_product_request_total = db.count_product_requests()
     ci_rows = db.get_all_company_info_rows()
     founder_accounting = get_founder_accounting(days=30)
+    social_ai_provider = db.get_system_setting("social_ai_provider") or "openai"
+    social_ai_model = db.get_system_setting("social_ai_model") or "gpt-4o"
     return render_template(
         "founder/dashboard.html",
         n_branches=n_branches,
@@ -1114,11 +1116,25 @@ def founder_dashboard():
         founder_product_request_total=founder_product_request_total,
         company_info_rows=ci_rows,
         founder_accounting=founder_accounting,
+        social_ai_provider=social_ai_provider,
+        social_ai_model=social_ai_model,
         delivery_images_json_text=json.dumps(
             parse_delivery_image_urls(ci_rows.get("delivery_images")),
             ensure_ascii=False,
         ),
     )
+
+
+@app.route("/founder/social-ai-settings", methods=["POST"])
+def founder_social_ai_settings():
+    if not _session_founder_only():
+        return redirect(url_for("login"))
+    provider = (request.form.get("social_ai_provider") or "openai").strip().lower()
+    model = (request.form.get("social_ai_model") or "").strip()
+    db.set_system_setting("social_ai_provider", provider)
+    db.set_system_setting("social_ai_model", model)
+    flash("تم تحديث نموذج ذكاء التواصل الاجتماعي بنجاح.", "success")
+    return redirect(url_for("founder_dashboard"))
 
 
 @app.route("/founder/complaints/<int:complaint_id>/resolve", methods=["POST"])

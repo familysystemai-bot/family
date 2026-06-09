@@ -1,448 +1,441 @@
 /* ═══════════════════════════════════════════════════════════════════
-   تصميم موحد فاخر لجميع لوحات المؤسس
-   يصلح جميع المشاكل: Z-index، الألوان، الخطوط، الجوال
+   تصميم لوحة المؤسس الفاخر الموحد (Obsidian / Light Theme)
+   خالي من التشتت البصري - تطابق بصري كامل مع الصورة
    ═══════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* الألوان الفاخرة الموحدة */
-  --luxury-primary: #0a3020;
-  --luxury-primary-light: #0f5132;
-  --luxury-accent: #d4af37;
+  /* الوضع الداكن الفاخر والمسطح (default) */
+  --luxury-bg: #0b0e14;
+  --luxury-white: #11151d;
+  --luxury-primary: #f8fafc;
+  --luxury-text: #e2e8f0;
+  --luxury-text-soft: #94a3b8;
+  --luxury-border: rgba(255, 255, 255, 0.06);
+  --luxury-accent: #e2b73c; /* ذهبي */
   --luxury-accent-dark: #b8860b;
-  --luxury-white: #ffffff;
+  --luxury-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+  --luxury-shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.25);
+
+  /* أوفررايد لجميع متغيرات لوحة التحكم لمنع التشتت */
+  --fd-beige: #0b0e14;
+  --fd-beige-soft: #0e121a;
+  --fd-white-card: #11151d;
+  --fd-sidebar-luxury: #0b0e14;
+  --fd-sidebar-luxury-deep: #07090d;
+  --fd-sidebar-hover: rgba(255, 255, 255, 0.03);
+  --fd-sidebar-active: rgba(226, 183, 60, 0.12);
+  --fd-green-dark: #10b981;
+  --fd-green-mid: #059669;
+  --fd-green-btn: #10b981;
+  --fd-green-btn-hover: #059669;
+  --fd-gold: #e2b73c;
+  --fd-gold-dim: #c9a227;
+  --fd-text: #e2e8f0;
+  --fd-text-body: #cbd5e1;
+  --fd-text-soft: #94a3b8;
+  --fd-title-accent: #f8fafc;
+  --fd-border: rgba(255, 255, 255, 0.06);
+  --fd-border-gold: rgba(226, 183, 60, 0.12);
+  --fd-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+  --fd-shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.25);
+  --fd-green-glow: rgba(16, 185, 129, 0.12);
+
+  /* متغيرات الجوال */
+  --ms-bg: #0b0e14;
+  --ms-surface: #11151d;
+  --ms-surface-soft: #0e121a;
+  --ms-surface-2: #181d26;
+  --ms-text: #e2e8f0;
+  --ms-text-soft: #cbd5e1;
+  --ms-text-muted: #94a3b8;
+  --ms-border: rgba(255, 255, 255, 0.06);
+  --ms-border-soft: rgba(255, 255, 255, 0.03);
+  --ms-green-dark: #10b981;
+  --ms-gold: #e2b73c;
+  --ms-gold-soft: rgba(226, 183, 60, 0.08);
+
+  /* وهج الكروت الخفيف للمؤشرات */
+  --card-glow-gold: 0 4px 20px rgba(226, 183, 60, 0.08), inset 0 0 0 1px rgba(226, 183, 60, 0.15);
+  --card-glow-green: 0 4px 20px rgba(16, 185, 129, 0.08), inset 0 0 0 1px rgba(16, 185, 129, 0.15);
+  --card-glow-blue: 0 4px 20px rgba(59, 130, 246, 0.08), inset 0 0 0 1px rgba(59, 130, 246, 0.15);
+
+  --chart-grid-color: rgba(255, 255, 255, 0.04);
+  --chart-text-color: #94a3b8;
+}
+
+html[data-theme="dark"] {
+  --luxury-bg: #0b0e14;
+  --luxury-white: #11151d;
+  --luxury-primary: #f8fafc;
+  --luxury-text: #e2e8f0;
+  --luxury-text-soft: #94a3b8;
+  --luxury-border: rgba(255, 255, 255, 0.06);
+  --luxury-accent: #e2b73c;
+  --luxury-accent-dark: #b8860b;
+  --luxury-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+  --luxury-shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.25);
+
+  --fd-beige: #0b0e14;
+  --fd-beige-soft: #0e121a;
+  --fd-white-card: #11151d;
+  --fd-sidebar-luxury: #0b0e14;
+  --fd-sidebar-luxury-deep: #07090d;
+  --fd-sidebar-hover: rgba(255, 255, 255, 0.03);
+  --fd-sidebar-active: rgba(226, 183, 60, 0.12);
+  --fd-green-dark: #10b981;
+  --fd-green-mid: #059669;
+  --fd-green-btn: #10b981;
+  --fd-green-btn-hover: #059669;
+  --fd-gold: #e2b73c;
+  --fd-gold-dim: #c9a227;
+  --fd-text: #e2e8f0;
+  --fd-text-body: #cbd5e1;
+  --fd-text-soft: #94a3b8;
+  --fd-title-accent: #f8fafc;
+  --fd-border: rgba(255, 255, 255, 0.06);
+  --fd-border-gold: rgba(226, 183, 60, 0.12);
+  --fd-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+  --fd-shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.25);
+  --fd-green-glow: rgba(16, 185, 129, 0.12);
+
+  --ms-bg: #0b0e14;
+  --ms-surface: #11151d;
+  --ms-surface-soft: #0e121a;
+  --ms-surface-2: #181d26;
+  --ms-text: #e2e8f0;
+  --ms-text-soft: #cbd5e1;
+  --ms-text-muted: #94a3b8;
+  --ms-border: rgba(255, 255, 255, 0.06);
+  --ms-border-soft: rgba(255, 255, 255, 0.03);
+  --ms-green-dark: #10b981;
+  --ms-gold: #e2b73c;
+  --ms-gold-soft: rgba(226, 183, 60, 0.08);
+
+  --card-glow-gold: 0 4px 20px rgba(226, 183, 60, 0.08), inset 0 0 0 1px rgba(226, 183, 60, 0.15);
+  --card-glow-green: 0 4px 20px rgba(16, 185, 129, 0.08), inset 0 0 0 1px rgba(16, 185, 129, 0.15);
+  --card-glow-blue: 0 4px 20px rgba(59, 130, 246, 0.08), inset 0 0 0 1px rgba(59, 130, 246, 0.15);
+  
+  --chart-grid-color: rgba(255, 255, 255, 0.04);
+  --chart-text-color: #94a3b8;
+}
+
+/* الوضع الفاتح الفخم المتناسق */
+html[data-theme="light"] {
   --luxury-bg: #f8f9fa;
+  --luxury-white: #ffffff;
+  --luxury-primary: #0a3020;
   --luxury-text: #1a1a1a;
-  --luxury-text-soft: #666666;
-  --luxury-border: rgba(212, 175, 55, 0.15);
-  --luxury-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
-  --luxury-shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.05);
+  --luxury-text-soft: #556655;
+  --luxury-border: rgba(10, 48, 32, 0.08);
+  --luxury-accent: #c9a227;
+  --luxury-accent-dark: #a88620;
+  --luxury-shadow: 0 8px 20px rgba(0, 0, 0, 0.05);
+  --luxury-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+
+  --fd-beige: #f8f9fa;
+  --fd-beige-soft: #fafaf0;
+  --fd-white-card: #ffffff;
+  --fd-sidebar-luxury: #064e3b;
+  --fd-sidebar-luxury-deep: #022c22;
+  --fd-sidebar-hover: rgba(52, 211, 153, 0.15);
+  --fd-sidebar-active: rgba(16, 185, 129, 0.25);
+  --fd-green-dark: #0f5132;
+  --fd-green-mid: #157a52;
+  --fd-green-btn: #1a6b4a;
+  --fd-green-btn-hover: #0d4028;
+  --fd-gold: #c9a227;
+  --fd-gold-dim: #a88620;
+  --fd-text: #141414;
+  --fd-text-body: #2a2a2a;
+  --fd-text-soft: #3a3a3a;
+  --fd-title-accent: #6b5420;
+  --fd-border: rgba(15, 81, 50, 0.12);
+  --fd-border-gold: rgba(201, 162, 39, 0.2);
+  --fd-shadow: 0 8px 20px rgba(0, 0, 0, 0.05);
+  --fd-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --fd-green-glow: rgba(26, 107, 74, 0.08);
+
+  --ms-bg: #f8f9fa;
+  --ms-surface: #ffffff;
+  --ms-surface-soft: #f4f6f8;
+  --ms-surface-2: #edf0f2;
+  --ms-text: #1a1a1a;
+  --ms-text-soft: #4b5563;
+  --ms-text-muted: #6b7280;
+  --ms-border: rgba(0, 0, 0, 0.06);
+  --ms-border-soft: rgba(0, 0, 0, 0.03);
+  --ms-green-dark: #0f5132;
+  --ms-gold: #c9a227;
+  --ms-gold-soft: #fdf3d7;
+
+  --card-glow-gold: none;
+  --card-glow-green: none;
+  --card-glow-blue: none;
+  
+  --chart-grid-color: rgba(0, 0, 0, 0.05);
+  --chart-text-color: #666666;
 }
 
-/* ── إصلاح Z-index والطبقات — يتبع نظام Bootstrap الصحيح ── */
-/*
- * ترتيب Bootstrap الصحيح:
- * sidebar-overlay (backdrop): 1040
- * sidebar: 1050
- * modal-backdrop: 1040 (Bootstrap افتراضي — يبقى)
- * modal: 1055 (Bootstrap افتراضي — يبقى)
- * لا نتجاوز 1055 إلا لعناصر تحتاج أن تكون فوق الـ modal
- */
-
-/* نافذة الهوية تتبع Bootstrap تلقائياً — لا نعيد تعريف z-index لها */
-/* .modal و .modal-backdrop يأخذان قيمهما من Bootstrap مباشرة */
-
-/* نتأكد فقط أن الـ backdrop/overlay للشريط الجانبي أقل من modal */
-.sidebar-overlay,
-.dash-backdrop {
-  z-index: 1040 !important; /* نفس قيمة Bootstrap modal-backdrop ليتداخلا بشكل صحيح */
-}
-
-
-/* ── الخطوط الموحدة ── */
-html, body, * {
-  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
-}
-
-html.fd-dashboard,
-html.dash-html {
-  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
-  font-size: 1rem;
-  line-height: 1.6;
-  letter-spacing: 0.01em;
-  -webkit-font-smoothing: antialiased;
-}
-
+/* ── 2. تحسينات عامة للصفحة والخطوط ── */
 body.fd-dashboard,
 body.dash-body {
   background: var(--luxury-bg) !important;
+  background-image: none !important; /* إلغاء التدرجات الخلفية لعدم التشتت */
   color: var(--luxury-text) !important;
-  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
 }
 
-/* ── الهيدرات والعناوين ── */
-h1, h2, h3, h4, h5, h6 {
-  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
-  font-weight: 700 !important;
-  color: var(--luxury-primary) !important;
-}
-
-/* ── بطاقات التحليلات المالية ── */
-.mm-fin-dash-analytics__kpi {
+/* ── 3. كروت الـ KPI المحدثة مع الـ Sparklines ── */
+.ms-kpi-card {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 15px !important;
   background: var(--luxury-white) !important;
-  border-radius: 20px !important;
-  padding: 25px !important;
-  box-shadow: var(--luxury-shadow) !important;
   border: 1px solid var(--luxury-border) !important;
-  position: relative;
-  overflow: hidden;
+  border-radius: 16px !important;
+  padding: 16px 20px !important;
+  box-shadow: var(--luxury-shadow-sm) !important;
+  transition: all 0.25s ease !important;
 }
 
-.mm-fin-dash-analytics__kpi::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 5px;
-  height: 100%;
-  background: var(--luxury-accent);
+.ms-kpi-card:hover {
+  transform: translateY(-3px) !important;
+  box-shadow: var(--luxury-shadow) !important;
 }
 
-.mm-fin-dash-analytics__kpi-lbl {
-  display: block;
-  font-size: 0.9rem !important;
-  font-weight: 700 !important;
-  color: var(--luxury-text-soft) !important;
-  margin-bottom: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+.ms-kpi-card::before {
+  display: none !important; /* إلغاء شريط مؤشر البوتوم القديم */
 }
 
-.mm-fin-dash-analytics__kpi-val {
-  display: block;
-  font-size: 2.2rem !important;
-  font-weight: 800 !important;
-  color: var(--luxury-primary) !important;
-  margin-bottom: 5px;
-  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+/* تطبيق تأثير الوهج الحصري كالصورة */
+.ms-kpi-card.glow-gold { box-shadow: var(--card-glow-gold) !important; }
+.ms-kpi-card.glow-green { box-shadow: var(--card-glow-green) !important; }
+.ms-kpi-card.glow-blue { box-shadow: var(--card-glow-blue) !important; }
+
+.ms-kpi-content {
+  flex: 1;
 }
 
-.mm-fin-dash-analytics__kpi-val--gold {
-  color: var(--luxury-accent-dark) !important;
-}
-
-.mm-fin-dash-analytics__kpi-val--green {
-  color: #15803d !important;
-}
-
-.mm-fin-dash-analytics__kpi-val--blue {
-  color: #1d4ed8 !important;
-}
-
-.mm-fin-dash-analytics__kpi-hint {
-  font-size: 0.85rem !important;
-  font-weight: 600 !important;
+.ms-kpi-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
-  gap: 5px;
+  justify-content: center;
+  font-size: 1.15rem;
+  background: rgba(255, 255, 255, 0.04) !important;
+  margin-bottom: 8px !important;
 }
 
-.mm-fin-dash-analytics__trend-up {
-  color: #16a34a !important;
+html[data-theme="light"] .ms-kpi-icon {
+  background: var(--ms-surface-2) !important;
 }
 
-.mm-fin-dash-analytics__trend-down {
-  color: #dc2626 !important;
-}
-
-/* ── بطاقات الرسوم البيانية ── */
-.mm-fin-dash-analytics__card {
-  background: var(--luxury-white) !important;
-  border-radius: 20px !important;
-  padding: 30px !important;
-  box-shadow: var(--luxury-shadow) !important;
-  margin-bottom: 30px !important;
-  border: 1px solid rgba(0, 0, 0, 0.03) !important;
-}
-
-.mm-fin-dash-analytics__card-title {
-  font-size: 1.25rem !important;
+.ms-kpi-value {
+  font-size: 1.85rem !important;
   font-weight: 700 !important;
   color: var(--luxury-primary) !important;
-  margin: 0 !important;
-  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+  margin: 0 0 2px 0 !important;
+  line-height: 1.2 !important;
+  letter-spacing: -0.01em !important;
 }
 
-/* ── الهيدر الرئيسي ── */
-.mm-fin-dash-analytics__title {
-  font-size: 1.8rem !important;
-  font-weight: 800 !important;
-  color: var(--luxury-primary) !important;
-  position: relative;
-  padding-bottom: 10px;
-  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+.ms-kpi-label {
+  font-size: 0.82rem !important;
+  font-weight: 600 !important;
+  color: var(--luxury-text-soft) !important;
 }
 
-.mm-fin-dash-analytics__title::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 60px;
-  height: 4px;
-  background: var(--luxury-accent);
-  border-radius: 2px;
+.ms-kpi-sparkline {
+  width: 90px;
+  height: 40px;
+  flex-shrink: 0;
 }
 
-/* ── أداء الفروع ── */
-.mm-fin-dash-analytics__br-row {
+/* ── 4. تخطيط الرسوم وكروت العرض ── */
+.fd-card {
   background: var(--luxury-white) !important;
-  border-radius: 15px !important;
-  padding: 15px !important;
-  margin-bottom: 12px !important;
   border: 1px solid var(--luxury-border) !important;
   box-shadow: var(--luxury-shadow-sm) !important;
-}
-
-.mm-fin-dash-analytics__br-name {
-  font-weight: 700 !important;
-  color: var(--luxury-primary) !important;
-  font-size: 1rem !important;
-  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
-}
-
-.mm-fin-dash-analytics__br-sales {
-  font-weight: 800 !important;
-  color: var(--luxury-accent-dark) !important;
-  font-size: 1.1rem !important;
-  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
-}
-
-.mm-fin-dash-analytics__br-fill {
-  background: linear-gradient(90deg, var(--luxury-primary), var(--luxury-accent)) !important;
-  height: 8px !important;
-  border-radius: 4px !important;
-}
-
-/* ── مانوس الذكي ── */
-.mm-fin-dash-analytics__manus-strip {
-  background: linear-gradient(90deg, var(--luxury-primary), var(--luxury-primary-light)) !important;
-  color: white !important;
-  padding: 15px 20px !important;
-  border-radius: 15px !important;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.mm-fin-dash-analytics__manus-badge {
-  background: var(--luxury-accent) !important;
-  color: var(--luxury-primary) !important;
-  padding: 4px 12px !important;
-  border-radius: 20px !important;
-  font-weight: 800 !important;
-  font-size: 0.75rem !important;
-}
-
-.mm-fin-dash-analytics__manus-body {
-  padding: 15px !important;
-  background: rgba(212, 175, 55, 0.05) !important;
-  border-radius: 10px !important;
-  margin: 15px 0 !important;
-  color: var(--luxury-text) !important;
-  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
-}
-
-/* ── البنرات ── */
-.mm-fin-dash-analytics__banner {
-  padding: 15px 20px !important;
-  border-radius: 12px !important;
-  margin-bottom: 20px !important;
-  font-weight: 600 !important;
-  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
-}
-
-.mm-fin-dash-analytics__banner--ok {
-  background: #d1fae5 !important;
-  color: #065f46 !important;
-  border: 1px solid #a7f3d0 !important;
-}
-
-.mm-fin-dash-analytics__banner--warn {
-  background: #fef3c7 !important;
-  color: #92400e !important;
-  border: 1px solid #fde68a !important;
-}
-
-.mm-fin-dash-analytics__banner--muted {
-  background: #f3f4f6 !important;
-  color: #374151 !important;
-  border: 1px solid #e5e7eb !important;
-}
-
-/* ── تحسينات الجوال (Mobile-First) ── */
-@media (max-width: 768px) {
-  .mm-fin-dash-analytics {
-    padding: 15px !important;
-  }
-  
-  .mm-fin-dash-analytics__title {
-    font-size: 1.5rem !important;
-  }
-  
-  .mm-fin-dash-analytics__kpis {
-    grid-template-columns: 1fr !important;
-    gap: 15px !important;
-  }
-  
-  .mm-fin-dash-analytics__kpi {
-    padding: 18px !important;
-  }
-  
-  .mm-fin-dash-analytics__kpi-val {
-    font-size: 1.8rem !important;
-  }
-  
-  .mm-fin-dash-analytics__card {
-    padding: 18px !important;
-    margin-bottom: 20px !important;
-  }
-  
-  .mm-fin-dash-analytics__card-head {
-    flex-direction: column !important;
-    align-items: flex-start !important;
-    gap: 10px !important;
-  }
-  
-  .mm-fin-dash-analytics__br-row {
-    padding: 12px !important;
-  }
-  
-  .mm-fin-dash-analytics__br-name {
-    font-size: 0.95rem !important;
-  }
-  
-  .mm-fin-dash-analytics__br-sales {
-    font-size: 1rem !important;
-  }
-}
-
-/* ── إصلاح الاختيارات والأزرار ── */
-.form-select,
-.form-control {
-  border: 1px solid var(--luxury-border) !important;
-  border-radius: 10px !important;
-  padding: 10px 12px !important;
-  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
-  color: var(--luxury-text) !important;
-}
-
-.form-select:focus,
-.form-control:focus {
-  border-color: var(--luxury-accent) !important;
-  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.1) !important;
-}
-
-.btn {
-  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
-  font-weight: 700 !important;
-}
-
-.mm-fin-dash-analytics__btn-send,
-.mm-fin-dash-analytics__btn-ghost {
-  background: var(--luxury-accent) !important;
-  color: var(--luxury-primary) !important;
-  border: none !important;
-  font-weight: 700 !important;
-  border-radius: 10px !important;
-}
-
-.mm-fin-dash-analytics__btn-send:hover,
-.mm-fin-dash-analytics__btn-ghost:hover {
-  background: var(--luxury-accent-dark) !important;
-  color: white !important;
-}
-
-/* ── الشريط الجانبي المحسّن ── */
-.fd-sidebar,
-.sidebar {
-  background: linear-gradient(180deg, var(--luxury-primary) 0%, #062a1c 100%) !important;
-  color: rgba(255, 255, 255, 0.94) !important;
-}
-
-.nav-link {
-  color: rgba(255, 255, 255, 0.7) !important;
-  font-weight: 600 !important;
-  border-radius: 10px !important;
-  padding: 12px 15px !important;
-  transition: all 0.3s ease !important;
-  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
-}
-
-.nav-link:hover,
-.nav-link.active {
-  background: rgba(212, 175, 55, 0.2) !important;
-  color: var(--luxury-accent) !important;
-  border-left: 3px solid var(--luxury-accent) !important;
-}
-
-/* ── تفاصيل إضافية ── */
-.mm-fin-dash-analytics__details {
-  background: var(--luxury-white) !important;
-  border-radius: 15px !important;
+  border-radius: 16px !important;
   padding: 20px !important;
-  border: 1px solid var(--luxury-border) !important;
-  margin-top: 20px !important;
 }
 
-.mm-fin-dash-analytics__details summary {
+.fd-card-title {
+  font-size: 1.1rem !important;
   font-weight: 700 !important;
   color: var(--luxury-primary) !important;
-  cursor: pointer;
-  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+  margin-bottom: 15px !important;
 }
 
-.mm-fin-dash-analytics__subhead {
-  font-weight: 700 !important;
-  color: var(--luxury-primary) !important;
-  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+.fd-chart-wrap {
+  height: 280px !important;
+  position: relative;
 }
 
-/* ── شريط التنقل السريع ── */
-.mm-fin-dash-analytics__nav {
-  display: flex;
-  gap: 10px;
-  margin-top: 20px;
-  flex-wrap: wrap;
+.fd-donut-wrap {
+  height: 200px !important;
+  position: relative;
+  margin: 15px 0;
 }
 
-.mm-fin-dash-analytics__nav a {
-  padding: 10px 15px !important;
-  background: var(--luxury-white) !important;
+.fd-bar-wrap {
+  height: 240px !important;
+  position: relative;
+}
+
+/* ── 5. مصفوفة الاختصارات السريعة (تنسيق أنيق غير مشتت) ── */
+.ms-quick-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)) !important;
+  gap: 10px !important;
+}
+
+.ms-quick-action {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 12px 8px !important;
+  background: rgba(255, 255, 255, 0.02) !important;
   border: 1px solid var(--luxury-border) !important;
-  border-radius: 10px !important;
+  border-radius: 12px !important;
+  text-decoration: none !important;
+  color: var(--luxury-text) !important;
+  transition: all 0.2s ease !important;
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+}
+
+html[data-theme="light"] .ms-quick-action {
+  background: #ffffff !important;
+}
+
+.ms-quick-action:hover {
+  background: rgba(226, 183, 60, 0.08) !important;
+  border-color: var(--luxury-accent) !important;
+  transform: translateY(-2px) !important;
+  color: var(--luxury-accent) !important;
+}
+
+.ms-quick-action__icon {
+  font-size: 1.35rem !important;
+  margin-bottom: 6px !important;
+}
+
+/* ── 6. تنسيق الجداول والكبسولات ── */
+.table-responsive {
+  border: 1px solid var(--luxury-border) !important;
+  border-radius: 12px !important;
+  background: transparent !important;
+}
+
+.table {
+  background: transparent !important;
+  margin-bottom: 0 !important;
+}
+
+.table thead th {
+  background: rgba(255, 255, 255, 0.02) !important;
   color: var(--luxury-primary) !important;
   font-weight: 600 !important;
-  text-decoration: none !important;
-  transition: all 0.3s ease !important;
-  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+  font-size: 0.8rem !important;
+  border-bottom: 1px solid var(--luxury-border) !important;
+  padding: 12px 14px !important;
 }
 
-.mm-fin-dash-analytics__nav a:hover,
-.mm-fin-dash-analytics__nav a.active {
-  background: var(--luxury-accent) !important;
+html[data-theme="light"] .table thead th {
+  background: var(--ms-surface-2) !important;
+}
+
+.table tbody td {
+  background: transparent !important;
+  color: var(--luxury-text) !important;
+  border-bottom: 1px solid var(--luxury-border) !important;
+  padding: 11px 14px !important;
+  font-size: 0.85rem !important;
+}
+
+.table-hover tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.015) !important;
+}
+
+html[data-theme="light"] .table-hover tbody tr:hover td {
+  background: rgba(0, 0, 0, 0.015) !important;
+}
+
+/* كبسولات الحالات كالصورة */
+.badge.text-bg-success {
+  background-color: rgba(16, 185, 129, 0.12) !important;
+  color: #34d399 !important;
+  border: 1px solid rgba(16, 185, 129, 0.25) !important;
+  font-size: 0.75rem !important;
+  border-radius: 6px !important;
+}
+
+.badge.text-bg-warning {
+  background-color: rgba(245, 158, 11, 0.12) !important;
+  color: #fbbf24 !important;
+  border: 1px solid rgba(245, 158, 11, 0.25) !important;
+  font-size: 0.75rem !important;
+  border-radius: 6px !important;
+}
+
+/* ── 7. شريط هيدر الديسكتوب واللوغو ── */
+.fd-main-header {
+  border-bottom: 1px solid var(--luxury-border) !important;
+  background: transparent !important;
+  padding: 1rem 0 !important;
+  margin-bottom: 1.5rem !important;
+  border-radius: 0 !important;
+}
+
+/* ── 8. الشريط الجانبي الفاخر ── */
+.fd-sidebar, .dash-sidebar-col {
+  background: var(--luxury-bg) !important;
+  border-left: 1px solid var(--luxury-border) !important;
+  box-shadow: none !important; /* إلغاء الظل الثقيل لمنع التشتت */
+}
+
+.fd-sidebar .dash-sidebar-panel {
+  background: var(--luxury-bg) !important;
+}
+
+.fd-nav a, .fd-nav .nav-link {
+  color: var(--luxury-text-soft) !important;
+}
+
+.fd-nav a:hover, .fd-nav .nav-link:hover {
+  background: rgba(255, 255, 255, 0.02) !important;
   color: var(--luxury-primary) !important;
-  border-color: var(--luxury-accent) !important;
 }
 
-/* ── إصلاح الـ Chat Panel ── */
-.mm-fin-chat-panel {
-  z-index: 10000 !important;
+.fd-nav a.active, .fd-nav .nav-link.active {
+  background: rgba(226, 183, 60, 0.08) !important;
+  color: var(--luxury-accent) !important;
+  border-right: 3px solid var(--luxury-accent) !important;
+  border-left: none !important;
+}
+
+/* ── 9. التوافق المالي (الخزنة) ── */
+.mm-fin-dash-analytics__kpis {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+  gap: 15px !important;
+}
+.mm-fin-dash-analytics__kpi {
   background: var(--luxury-white) !important;
-  border-radius: 15px !important;
-  box-shadow: var(--luxury-shadow) !important;
+  border: 1px solid var(--luxury-border) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--luxury-shadow-sm) !important;
 }
-
-.mm-fin-chat-panel__hdr {
-  background: var(--luxury-primary) !important;
-  color: white !important;
-  padding: 15px !important;
-  border-radius: 15px 15px 0 0 !important;
-  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
+.mm-fin-dash-analytics__card {
+  background: var(--luxury-white) !important;
+  border: 1px solid var(--luxury-border) !important;
+  border-radius: 16px !important;
 }
-
-.mm-fin-chat-panel__msgs {
-  background: rgba(212, 175, 55, 0.03) !important;
-  font-family: 'Tajawal', 'Cairo', 'Segoe UI', sans-serif !important;
-}
-
-/* ── زر FAB (Floating Action Button) ── */
-.mm-fin-dash-analytics__fab {
-  z-index: 5000 !important;
-  background: var(--luxury-accent) !important;
-  color: var(--luxury-primary) !important;
-  box-shadow: var(--luxury-shadow) !important;
-}
-
-.mm-fin-dash-analytics__fab:hover {
-  background: var(--luxury-accent-dark) !important;
+.mm-fin-dash-analytics__br-row {
+  border: 1px solid var(--luxury-border) !important;
+  background: rgba(255, 255, 255, 0.01) !important;
 }
