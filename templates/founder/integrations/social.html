@@ -110,10 +110,10 @@
                             <label class="form-label">{{ f.label }}</label>
                             {% if f.type == 'password' %}
                             <input type="password" class="form-control" name="{{ f.key }}"
-                                   placeholder="{% if platforms.facebook.values.get(f.key + '_has_value') %}{{ platforms.facebook.values.get(f.key) }}{% else %}أدخل القيمة{% endif %}">
+                                   placeholder="{% if platforms.facebook['values'].get(f.key + '_has_value') %}{{ platforms.facebook['values'].get(f.key) }}{% else %}أدخل القيمة{% endif %}">
                             {% else %}
                             <input type="text" class="form-control" name="{{ f.key }}"
-                                   value="{{ platforms.facebook.values.get(f.key, '') }}">
+                                   value="{{ platforms.facebook['values'].get(f.key, '') }}">
                             {% endif %}
                             <div class="form-text">{{ f.help }}</div>
                         </div>
@@ -158,10 +158,10 @@
                             <label class="form-label">{{ f.label }}</label>
                             {% if f.type == 'password' %}
                             <input type="password" class="form-control" name="{{ f.key }}"
-                                   placeholder="{% if platforms.instagram.values.get(f.key + '_has_value') %}{{ platforms.instagram.values.get(f.key) }}{% else %}أدخل القيمة{% endif %}">
+                                   placeholder="{% if platforms.instagram['values'].get(f.key + '_has_value') %}{{ platforms.instagram['values'].get(f.key) }}{% else %}أدخل القيمة{% endif %}">
                             {% else %}
                             <input type="text" class="form-control" name="{{ f.key }}"
-                                   value="{{ platforms.instagram.values.get(f.key, '') }}">
+                                   value="{{ platforms.instagram['values'].get(f.key, '') }}">
                             {% endif %}
                             <div class="form-text">{{ f.help }}</div>
                         </div>
@@ -206,10 +206,10 @@
                             <label class="form-label">{{ f.label }}</label>
                             {% if f.type == 'password' %}
                             <input type="password" class="form-control" name="{{ f.key }}"
-                                   placeholder="{% if platforms.google_business.values.get(f.key + '_has_value') %}{{ platforms.google_business.values.get(f.key) }}{% else %}أدخل القيمة{% endif %}">
+                                   placeholder="{% if platforms.google_business['values'].get(f.key + '_has_value') %}{{ platforms.google_business['values'].get(f.key) }}{% else %}أدخل القيمة{% endif %}">
                             {% else %}
                             <input type="text" class="form-control" name="{{ f.key }}"
-                                   value="{{ platforms.google_business.values.get(f.key, '') }}">
+                                   value="{{ platforms.google_business['values'].get(f.key, '') }}">
                             {% endif %}
                             <div class="form-text">{{ f.help }}</div>
                         </div>
@@ -254,10 +254,10 @@
                             <label class="form-label">{{ f.label }}</label>
                             {% if f.type == 'password' %}
                             <input type="password" class="form-control" name="{{ f.key }}"
-                                   placeholder="{% if platforms.tiktok.values.get(f.key + '_has_value') %}{{ platforms.tiktok.values.get(f.key) }}{% else %}أدخل القيمة{% endif %}">
+                                   placeholder="{% if platforms.tiktok['values'].get(f.key + '_has_value') %}{{ platforms.tiktok['values'].get(f.key) }}{% else %}أدخل القيمة{% endif %}">
                             {% else %}
                             <input type="text" class="form-control" name="{{ f.key }}"
-                                   value="{{ platforms.tiktok.values.get(f.key, '') }}">
+                                   value="{{ platforms.tiktok['values'].get(f.key, '') }}">
                             {% endif %}
                             <div class="form-text">{{ f.help }}</div>
                         </div>
@@ -302,10 +302,10 @@
                             <label class="form-label">{{ f.label }}</label>
                             {% if f.type == 'password' %}
                             <input type="password" class="form-control" name="{{ f.key }}"
-                                   placeholder="{% if platforms.twitter.values.get(f.key + '_has_value') %}{{ platforms.twitter.values.get(f.key) }}{% else %}أدخل القيمة{% endif %}">
+                                   placeholder="{% if platforms.twitter['values'].get(f.key + '_has_value') %}{{ platforms.twitter['values'].get(f.key) }}{% else %}أدخل القيمة{% endif %}">
                             {% else %}
                             <input type="text" class="form-control" name="{{ f.key }}"
-                                   value="{{ platforms.twitter.values.get(f.key, '') }}">
+                                   value="{{ platforms.twitter['values'].get(f.key, '') }}">
                             {% endif %}
                             <div class="form-text">{{ f.help }}</div>
                         </div>
@@ -350,10 +350,10 @@
                             <label class="form-label">{{ f.label }}</label>
                             {% if f.type == 'password' %}
                             <input type="password" class="form-control" name="{{ f.key }}"
-                                   placeholder="{% if platforms.linkedin.values.get(f.key + '_has_value') %}{{ platforms.linkedin.values.get(f.key) }}{% else %}أدخل القيمة{% endif %}">
+                                   placeholder="{% if platforms.linkedin['values'].get(f.key + '_has_value') %}{{ platforms.linkedin['values'].get(f.key) }}{% else %}أدخل القيمة{% endif %}">
                             {% else %}
                             <input type="text" class="form-control" name="{{ f.key }}"
-                                   value="{{ platforms.linkedin.values.get(f.key, '') }}">
+                                   value="{{ platforms.linkedin['values'].get(f.key, '') }}">
                             {% endif %}
                             <div class="form-text">{{ f.help }}</div>
                         </div>
@@ -398,10 +398,10 @@
                             <label class="form-label">{{ f.label }}</label>
                             {% if f.type == 'password' %}
                             <input type="password" class="form-control" name="{{ f.key }}"
-                                   placeholder="{% if platforms.snapchat.values.get(f.key + '_has_value') %}{{ platforms.snapchat.values.get(f.key) }}{% else %}أدخل القيمة{% endif %}">
+                                   placeholder="{% if platforms.snapchat['values'].get(f.key + '_has_value') %}{{ platforms.snapchat['values'].get(f.key) }}{% else %}أدخل القيمة{% endif %}">
                             {% else %}
                             <input type="text" class="form-control" name="{{ f.key }}"
-                                   value="{{ platforms.snapchat.values.get(f.key, '') }}">
+                                   value="{{ platforms.snapchat['values'].get(f.key, '') }}">
                             {% endif %}
                             <div class="form-text">{{ f.help }}</div>
                         </div>

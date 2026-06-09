@@ -284,7 +284,10 @@ def inject_site_logo():
     site_logo_resolved = get_public_logo_url(app, db)
     
     # جلب إعدادات خدمات جوجل
-    google_site_verification = db.get_system_setting("GOOGLE_SITE_VERIFICATION", "") or ""
+    google_site_verification_raw = db.get_system_setting("GOOGLE_SITE_VERIFICATION", "") or ""
+    import re
+    m = re.search(r'content\s*=\s*["\']([^"\']+)["\']', google_site_verification_raw, re.IGNORECASE)
+    google_site_verification = m.group(1) if m else google_site_verification_raw.strip()
     google_analytics_id = db.get_system_setting("GOOGLE_ANALYTICS_ID", "") or ""
     google_maps_api_key = db.get_system_setting("GOOGLE_MAPS_API_KEY", "") or ""
     
@@ -2231,7 +2234,10 @@ def index():
             og_image = u.split("?")[0]
         elif base and u.startswith("/"):
             og_image = urljoin(base + "/", u.lstrip("/")).split("?")[0]
-    google_site_verification = db.get_system_setting("GOOGLE_SITE_VERIFICATION")
+    google_site_verification_raw = db.get_system_setting("GOOGLE_SITE_VERIFICATION") or ""
+    import re
+    m = re.search(r'content\s*=\s*["\']([^"\']+)["\']', google_site_verification_raw, re.IGNORECASE)
+    google_site_verification = m.group(1) if m else google_site_verification_raw.strip()
     return render_template(
         'landing_page.html',
         seo_title=seo_title,
@@ -2259,7 +2265,10 @@ def chat():
             og_image = u.split("?")[0]
         elif base and u.startswith("/"):
             og_image = urljoin(base + "/", u.lstrip("/")).split("?")[0]
-    google_site_verification = db.get_system_setting("GOOGLE_SITE_VERIFICATION")
+    google_site_verification_raw = db.get_system_setting("GOOGLE_SITE_VERIFICATION") or ""
+    import re
+    m = re.search(r'content\s*=\s*["\']([^"\']+)["\']', google_site_verification_raw, re.IGNORECASE)
+    google_site_verification = m.group(1) if m else google_site_verification_raw.strip()
     return render_template(
         'index.html',
         chat_logged_in=chat_ok,
