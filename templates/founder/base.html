@@ -266,16 +266,17 @@
     const topBtn = document.getElementById('fd-topbar-menu-btn');
     if (!topBtn) return;
     const origBtn = document.querySelector('.dash-menu-btn');
-    topBtn.addEventListener('click', function() {
-        if (origBtn) { origBtn.click(); return; }
+    topBtn.addEventListener('click', function(e) {
+        e.preventDefault();
         const sidebar = document.getElementById('fd-dash-sidebar');
         const layout  = document.querySelector('.dash-layout');
         const overlay = document.querySelector('.dash-backdrop.sidebar-overlay');
-        if (sidebar)  sidebar.classList.toggle('open');
-        if (layout)   layout.classList.toggle('dash-nav-open');
+        
+        if (sidebar) sidebar.classList.toggle('open');
+        if (layout) layout.classList.toggle('dash-nav-open');
         if (overlay) {
-            overlay.style.display = overlay.classList.contains('active') ? 'none' : 'block';
-            overlay.classList.toggle('active');
+            const isActive = overlay.classList.toggle('active');
+            overlay.style.display = isActive ? 'block' : 'none';
         }
     });
 })();

@@ -86,9 +86,10 @@
 /* منع أي تمرير أفقي على مستوى الصفحة */
 body.dash-body,
 html.dash-html {
-  overflow-x: hidden;
-  overflow-y: auto;
-  max-width: 100vw;
+  overflow-x: clip;
+  overflow-y: visible !important;
+  height: auto !important;
+  min-height: 100%;
 }
 
 .dash-row {
@@ -368,12 +369,13 @@ body.fd-dashboard .dash-menu-btn:focus-visible {
 
   body.dash-body.dash-nav-open,
   html.dash-html.dash-nav-open {
-    overflow: hidden;
+    /* تم السماح بالتمرير حتى عند فتح القائمة لضمان عدم تجميد الصفحة */
+    overflow-y: visible !important;
   }
 
   body.dash-body {
     font-size: 1.05rem;
-    overflow-y: auto;
+    overflow-y: visible !important;
   }
 
   .dash-main {

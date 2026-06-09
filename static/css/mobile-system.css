@@ -94,7 +94,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   /* لا نستخدم overscroll-behavior-y: none لأنه يمنع التمرير على بعض المتصفحات */
-  overscroll-behavior-y: contain;
+  overscroll-behavior-y: auto;
 }
 
 /* منع التكبير التلقائي على iOS */
@@ -105,6 +105,20 @@ input, select, textarea {
 @media (max-width: 768px) {
   html { scroll-behavior: smooth; }
   body { font-size: 15px; }
+  
+  /* تحسينات التصفح على الجوال */
+  .container-fluid { padding-left: 10px; padding-right: 10px; }
+  .row { margin-left: -5px; margin-right: -5px; }
+  .col-12, .col-md-10, .col-md-2 { padding-left: 5px; padding-right: 5px; }
+  
+  /* إخفاء العناصر غير الضرورية على الجوال لتوفير مساحة */
+  .hide-on-mobile { display: none !important; }
+  
+  /* جعل الرسوم البيانية تأخذ العرض الكامل */
+  canvas { width: 100% !important; height: auto !important; min-height: 250px; }
+  
+  /* تحسين القوائم المنسدلة */
+  select.form-select { padding: 12px; font-size: 16px; }
 }
 
 /* ═══════════════════════════════════════════════════
@@ -122,8 +136,12 @@ input, select, textarea {
    ═══════════════════════════════════════════════════ */
 .ms-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(1, 1fr); /* عمود واحد على الجوال الصغير جداً */
   gap: 10px;
+}
+
+@media (min-width: 380px) {
+  .ms-kpi-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (min-width: 576px) {
