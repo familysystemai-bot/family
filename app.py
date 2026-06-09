@@ -2231,6 +2231,7 @@ def index():
             og_image = u.split("?")[0]
         elif base and u.startswith("/"):
             og_image = urljoin(base + "/", u.lstrip("/")).split("?")[0]
+    google_site_verification = db.get_system_setting("GOOGLE_SITE_VERIFICATION")
     return render_template(
         'landing_page.html',
         seo_title=seo_title,
@@ -2238,6 +2239,7 @@ def index():
         seo_canonical_url=canon,
         seo_og_image=og_image or None,
         logo_url=lu,
+        google_site_verification=google_site_verification,
     )
 
 
@@ -2257,6 +2259,7 @@ def chat():
             og_image = u.split("?")[0]
         elif base and u.startswith("/"):
             og_image = urljoin(base + "/", u.lstrip("/")).split("?")[0]
+    google_site_verification = db.get_system_setting("GOOGLE_SITE_VERIFICATION")
     return render_template(
         'index.html',
         chat_logged_in=chat_ok,
@@ -2267,6 +2270,7 @@ def chat():
         seo_description=SEO_META_DESCRIPTION,
         seo_canonical_url=canon,
         seo_og_image=og_image or None,
+        google_site_verification=google_site_verification,
     )
 
 
