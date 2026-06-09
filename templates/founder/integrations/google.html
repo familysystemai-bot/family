@@ -1,0 +1,154 @@
+{% extends "founder/base.html" %}
+{% from "macros/csrf.html" import csrf_input %}
+{% block title %}ربط خدمات جوجل والتحقق{% endblock %}
+
+{% block extra_head %}
+<style>
+    .google-card {
+        background: #ffffff;
+        border: 1px solid #e4e0d6;
+        border-radius: 16px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+        margin-bottom: 24px;
+        overflow: hidden;
+    }
+    .google-card-header {
+        background: linear-gradient(135deg, #fdfbf7 0%, #f5f4ef 100%);
+        border-bottom: 1px solid #e4e0d6;
+        padding: 20px 24px;
+    }
+    .guide-step {
+        background: #faf9f6;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-bottom: 10px;
+        font-size: 0.88rem;
+        border-right: 3px solid #c9a227;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <a href="{{ url_for('integrations.integrations_dashboard') }}" class="btn btn-link mb-3 text-success fw-bold">← رجوع للتكاملات</a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>🌐 ربط خدمات جوجل والتحقق (Google Services)</h2>
+        <span class="badge bg-success py-2 px-3" style="font-size:0.9rem;">بوابة الإعدادات</span>
+    </div>
+
+    <!-- بطاقة حالة التكامل -->
+    <div class="alert alert-light border d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
+        <div>
+            <strong>الحالة العامة للتكامل:</strong> 
+            {% if google_status.GOOGLE_SITE_VERIFICATION or google_status.GOOGLE_ANALYTICS_ID or google_status.GOOGLE_MAPS_API_KEY %}
+                <span class="text-success fw-bold">✓ متصل جزئياً/كلياً</span>
+            {% else %}
+                <span class="text-warning fw-bold">⚠️ غير مفعّل</span>
+            {% endif %}
+        </div>
+        <form method="post" class="d-inline">
+            {{ csrf_input() }}
+            <button type="submit" name="action" value="test" class="btn btn-sm btn-outline-success px-3">🔬 اختبار وتدقيق التكامل</button>
+        </form>
+    </div>
+
+    <div class="row">
+        <!-- نموذج التعديل والإدخال -->
+        <div class="col-lg-7">
+            <div class="google-card">
+                <div class="google-card-header">
+                    <h5 class="mb-0 text-success fw-bold">⚙️ لوحة الإعدادات والمفاتيح</h5>
+                    <small class="text-muted">المفاتيح تحفظ بأمان تام في قاعدة بيانات النظام.</small>
+                </div>
+                <div class="card-body p-4">
+                    <form method="post" action="{{ url_for('integrations.google_settings') }}">
+                        {{ csrf_input() }}
+                        <input type="hidden" name="provider" value="google">
+                        
+                        {% for f in fields %}
+                        <div class="mb-4">
+                            <label class="form-label fw-bold text-dark">{{ f.label }}</label>
+                            
+                            {% if f.type == 'password' %}
+                            <input type="password" class="form-control font-monospace" name="{{ f.key }}"
+                                   placeholder="{% if values.get(f.key + '_has_value') %}{{ values.get(f.key) }}{% else %}أدخل القيمة{% endif %}">
+                            {% if values.get(f.key + '_has_value') %}
+                            <small class="text-success d-block mt-1">✓ محفوظ حالياً في النظام — اترك الحقل فارغاً للإبقاء عليه.</small>
+                            {% endif %}
+                            {% else %}
+                            <input type="text" class="form-control" name="{{ f.key }}"
+                                   value="{{ values.get(f.key, '') }}" placeholder="مثال: G-XXXXXX">
+                            {% endif %}
+                            
+                            {% if f.help %}
+                            <div class="form-text mt-1 text-muted"><i class="fa-solid fa-circle-info me-1"></i>{{ f.help }}</div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        
+                        <div class="mt-4 border-top pt-3">
+                            <button type="submit" name="action" value="save" class="btn btn-success px-4 py-2 fw-bold">💾 حفظ مفاتيح جوجل</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- دليل الشرح الإرشادي -->
+        <div class="col-lg-5">
+            <div class="google-card">
+                <div class="google-card-header">
+                    <h5 class="mb-0 text-success fw-bold">📖 دليل الربط واختبار التكامل</h5>
+                    <small class="text-muted">خطوات بسيطة للحصول على الأكواد وربطها:</small>
+                </div>
+                <div class="card-body p-4">
+                    
+                    <!-- 1. Google Site Verification -->
+                    <div class="mb-4">
+                        <h6 class="fw-bold text-success border-bottom pb-2">1. التحقق من ملكية الموقع (Search Console)</h6>
+                        <div class="guide-step">
+                            <strong>الخطوة 1:</strong> ادخل على <a href="https://search.google.com/search-console" target="_blank" rel="noopener">Google Search Console</a> وأضف رابط موقعك.
+                        </div>
+                        <div class="guide-step">
+                            <strong>الخطوة 2:</strong> اختر طريقة التحقق عبر <strong>وسم HTML (HTML Tag)</strong>.
+                        </div>
+                        <div class="guide-step">
+                            <strong>الخطوة 3:</strong> انسخ فقط القيمة المكتوبة داخل الـ <code>content</code> (مثال: <code>abcdefg12345...</code>) وضعها في الحقل المقابل هنا.
+                        </div>
+                    </div>
+
+                    <!-- 2. Google Analytics -->
+                    <div class="mb-4">
+                        <h6 class="fw-bold text-success border-bottom pb-2">2. تحليلات جوجل (Google Analytics)</h6>
+                        <div class="guide-step">
+                            <strong>الخطوة 1:</strong> افتح <a href="https://analytics.google.com" target="_blank" rel="noopener">Google Analytics</a> وأنشئ حساباً / عقاراً جديداً للموقع.
+                        </div>
+                        <div class="guide-step">
+                            <strong>الخطوة 2:</strong> اذهب إلى إعدادات تدفق البيانات (Data Streams) وانسخ <strong>معرّف القياس (Measurement ID)</strong> الذي يبدأ بـ <code>G-</code>.
+                        </div>
+                        <div class="guide-step">
+                            <strong>الخطوة 3:</strong> الصقه في الحقل المخصص هنا. سيقوم النظام تلقائياً بتفعيل كود التتبع في الصفحة العامة للعملاء.
+                        </div>
+                    </div>
+
+                    <!-- 3. Google Maps API -->
+                    <div class="mb-4">
+                        <h6 class="fw-bold text-success border-bottom pb-2">3. خرائط جوجل (Google Maps)</h6>
+                        <div class="guide-step">
+                            <strong>الخطوة 1:</strong> ادخل على <a href="https://console.cloud.google.com" target="_blank" rel="noopener">Google Cloud Console</a>.
+                        </div>
+                        <div class="guide-step">
+                            <strong>الخطوة 2:</strong> فعّل مكتبة Maps JavaScript API، ثم أنشئ مفتاح API جديد.
+                        </div>
+                        <div class="guide-step">
+                            <strong>الخطوة 3:</strong> ضع قيود الاستخدام على المفتاح (لـ HTTP referrers لموقعك فقط) ثم احفظه وضعه هنا.
+                        </div>
+                    </div>
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

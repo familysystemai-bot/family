@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+{% from "macros/site_logo.html" import brand_logo_pair, site_logo_pair %}
+<html lang="ar" dir="rtl" class="dash-html {% if session.get('role') == 'founder' %}fd-dashboard{% endif %}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    {% include "partials/pwa_head.html" %}
+    <title>دليل النظام والتعليمات — العائلة FAMILY</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/dashboard-layout.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/drawer-improvements.css') }}" rel="stylesheet">
+    {% if session.get('role') == 'founder' %}
+    <link href="{{ url_for('static', filename='css/founder-dashboard.css') }}?v=3.0" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/founder-unified-luxury.css') }}?v=2.0" rel="stylesheet">
+    {% endif %}
+    <link href="{{ url_for('static', filename='css/mobile-system.css') }}" rel="stylesheet">
+    <style>
+        body, html { font-family: 'IBM Plex Sans Arabic', 'Segoe UI', system-ui, sans-serif; }
+        body { background-color: #f5f4ef; color: #1a1a1a; }
+        .sidebar { background: transparent; border-left: none; }
+        .logo-box { text-align: center; padding: 20px 10px 16px; }
+        .logo-img  { width: 48px; height: 48px; object-fit: contain; }
+
+        /* Nav styles */
+        .nav-link {
+            color: rgba(255,255,255,0.9) !important;
+            font-weight: 600;
+            margin: 2px 8px;
+            border-radius: 10px;
+            padding: 11px 14px;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.92rem;
+            min-height: 44px;
+        }
+        .nav-link:hover  { background: rgba(255,255,255,0.12) !important; }
+        .nav-link.active { background: rgba(201,162,39,0.3) !important; border: 1px solid rgba(255,255,255,0.15); }
+        .nav-link.text-danger { color: #ffb4b4 !important; }
+        .nav-link.text-danger:hover { background: rgba(220,53,69,0.2) !important; color: #fff !important; }
+
+        /* Founder styles override */
+        {% if session.get('role') == 'founder' %}
+        .fd-nav a, .fd-nav .nav-link {
+            min-height: 44px;
+            display: flex !important;
+            align-items: center;
+            color: rgba(255,255,255,0.8) !important;
+        }
+        .fd-nav a:hover, .fd-nav .nav-link:hover {
+            color: #fff !important;
+            background: rgba(255,255,255,0.1) !important;
+        }
+        .fd-nav a.active, .fd-nav .nav-link.active {
+            color: #c9a227 !important;
+            background: rgba(201,162,39,0.15) !important;
+        }
+        {% endif %}
+
+        .role-badge {
+            background: linear-gradient(135deg, #c9a227 0%, #a88620 100%);
+            color: #1a1508;
+            font-size: 0.68rem;
+            font-weight: 800;
+            padding: 3px 10px;
+            border-radius: 99px;
+            margin-top: 6px;
+            display: inline-block;
+        }
+
+        /* Documentation Container */
+        .doc-container {
+            background: #ffffff;
+            border: 1px solid #e4e0d6;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+            margin-bottom: 30px;
+        }
+        
+        /* Markdown rendering styles (Premium and Clean) */
+        .markdown-body {
+            font-size: 1rem;
+            line-height: 1.7;
+            color: #2c3e50;
+        }
+        .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
+            color: #0c4229;
+            font-weight: 700;
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+            padding-bottom: 0.2em;
+        }
+        .markdown-body h1 {
+            font-size: 1.75rem;
+            border-bottom: 2px solid #0f5132;
+            padding-bottom: 10px;
+            margin-top: 0.5em;
+        }
+        .markdown-body h2 {
+            font-size: 1.45rem;
+            border-bottom: 1px solid #e4e0d6;
+            padding-bottom: 8px;
+        }
+        .markdown-body h3 {
+            font-size: 1.25rem;
+        }
+        .markdown-body p, .markdown-body ul, .markdown-body ol {
+            margin-bottom: 1.2em;
+        }
+        .markdown-body code {
+            font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+            background-color: rgba(201, 162, 39, 0.1);
+            color: #b8860b;
+            padding: 0.2em 0.4em;
+            border-radius: 6px;
+            font-size: 85%;
+        }
+        .markdown-body pre {
+            background-color: #1a1e21;
+            color: #f8f9fa;
+            padding: 16px;
+            border-radius: 12px;
+            overflow-x: auto;
+            direction: ltr;
+            text-align: left;
+            margin-bottom: 1.5em;
+            border: 1px solid #2d3238;
+        }
+        .markdown-body pre code {
+            background-color: transparent;
+            color: inherit;
+            padding: 0;
+            font-size: 90%;
+        }
+        .markdown-body table {
+            width: 100%;
+            margin-bottom: 1.5em;
+            border-collapse: collapse;
+        }
+        .markdown-body table th, .markdown-body table td {
+            border: 1px solid #e4e0d6;
+            padding: 10px 12px;
+            text-align: right;
+        }
+        .markdown-body table th {
+            background-color: #0f5132;
+            color: #ffffff;
+            font-weight: 600;
+        }
+        .markdown-body table tr:nth-child(even) {
+            background-color: #fcfbf9;
+        }
+        .markdown-body hr {
+            height: 1px;
+            background-color: #e4e0d6;
+            border: none;
+            margin: 2em 0;
+        }
+        .markdown-body ul {
+            padding-right: 20px;
+            list-style-type: square;
+        }
+        .markdown-body blockquote {
+            border-right: 4px solid #c9a227;
+            padding: 8px 16px;
+            background: #fdfaf2;
+            margin: 1.5em 0;
+            color: #555;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="dash-body {% if session.get('role') == 'founder' %}fd-dashboard{% endif %} has-bottom-nav">
+
+<!-- ════════ Mobile Topbar ════════ -->
+{% if session.get('role') == 'founder' %}
+<div class="fd-mobile-topbar" id="fd-mobile-topbar">
+    <button type="button" class="fd-mobile-topbar__btn" aria-label="القائمة" id="fd-topbar-menu-btn">☰</button>
+    <span class="fd-mobile-topbar__title">دليل النظام — العائلة</span>
+    <div style="width:38px;"></div>
+</div>
+{% else %}
+<div class="ms-topbar" id="admin-ms-topbar">
+    <button type="button" class="ms-topbar__menu-btn" aria-label="فتح القائمة" aria-controls="admin-dash-sidebar" aria-expanded="false" id="admin-topbar-menu-btn">☰</button>
+    <span class="ms-topbar__title">دليل النظام — العائلة</span>
+    <div style="width:38px;"></div>
+</div>
+{% endif %}
+
+<div class="container-fluid dash-layout">
+    <!-- backdrop -->
+    <div class="dash-backdrop sidebar-overlay" data-dash-close="true" aria-hidden="true"></div>
+    <button type="button" class="dash-menu-btn" aria-label="فتح القائمة" aria-expanded="false" style="display:none">☰</button>
+
+    <div class="row g-0 flex-nowrap dash-row">
+        <!-- ════ Sidebar ════ -->
+        {% if session.get('role') == 'founder' %}
+        <aside id="fd-dash-sidebar" class="col-md-2 fd-sidebar p-0 dash-sidebar-col">
+            <div class="dash-sidebar-panel">
+                <div class="logo-box fd-logo">
+                    <div class="logo-container">
+                        {{ brand_logo_pair(founder_logo_url, 'logo-img fd-logo-sidebar-img', 'site-logo-k--sidebar-dash') }}
+                        <div class="logo-glow"></div>
+                    </div>
+                    <h5 class="mt-2 fw-bold" style="color:#fff;font-size:0.88rem;">العائلة FAMILY</h5>
+                    <span class="fd-badge mt-1">النظام</span>
+                </div>
+                <nav class="fd-nav">
+                    {% set ep = request.endpoint %}
+                    <a class="nav-link" href="{{ url_for('founder_dashboard') }}">🏠 الرئيسية</a>
+                    <a class="nav-link" href="{{ url_for('founder_branches') }}">🏢 الفروع</a>
+                    <a class="nav-link" href="{{ url_for('founder_products') }}">📦 المنتجات</a>
+                    <a class="nav-link" href="{{ url_for('founder_accounts') }}">🔐 الحسابات</a>
+                    <a class="nav-link" href="{{ url_for('admin_settings') }}">⚙️ إعدادات الدخول</a>
+                    <a class="nav-link" href="{{ url_for('integrations.integrations_dashboard') }}">🔌 التكاملات</a>
+                    <a class="nav-link" href="{{ url_for('finance_reports_gate') }}">📈 التقارير المالية</a>
+                    <hr>
+                    <a class="nav-link" href="{{ url_for('admin_users') }}">👤 مستخدمي الفروع</a>
+                    <a class="nav-link" href="{{ url_for('admin_complaints') }}">📋 الشكاوى</a>
+                    <a class="nav-link" href="{{ url_for('campaigns.founder_campaigns') }}">📢 الحملات</a>
+                    <a class="nav-link" href="{{ url_for('wa_inbox.admin_messages_page') }}">💬 واتساب</a>
+                    <a class="nav-link" href="{{ url_for('social_dashboard.dashboard') }}">🚀 التواصل الاجتماعي</a>
+                    <a class="nav-link active" href="{{ url_for('admin_system_guide') }}">📖 دليل النظام</a>
+                    <hr>
+                    <a class="nav-link text-danger" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+                </nav>
+            </div>
+        </aside>
+        {% else %}
+        <aside id="admin-dash-sidebar" class="col-md-2 sidebar p-0 dash-sidebar-col">
+            <div class="dash-sidebar-panel">
+                <div class="logo-box">
+                    {{ site_logo_pair('logo-img', 'site-logo-k--sidebar-dash') }}
+                    <div class="mt-2 fw-bold" style="color:#fff;font-size:0.95rem;">العائلة FAMILY</div>
+                    <span class="role-badge">الإدارة</span>
+                </div>
+                <nav class="nav flex-column mt-2 pb-3">
+                    <a class="nav-link" href="{{ url_for('admin_dashboard') }}">🏠 الرئيسية</a>
+                    <a class="nav-link" href="{{ url_for('admin_users') }}">👤 المستخدمين</a>
+                    <a class="nav-link" href="{{ url_for('admin_complaints') }}">📋 الشكاوى</a>
+                    <a class="nav-link" href="{{ url_for('campaigns.admin_campaigns') }}">📢 الحملات</a>
+                    <a class="nav-link" href="{{ url_for('wa_inbox.admin_messages_page') }}">💬 واتساب</a>
+                    <a class="nav-link" href="{{ url_for('integrations.integrations_dashboard') }}">🔌 التكاملات</a>
+                    <a class="nav-link active" href="{{ url_for('admin_system_guide') }}">📖 دليل النظام</a>
+                    <hr class="mx-2 my-2">
+                    <a class="nav-link text-danger" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+                </nav>
+            </div>
+        </aside>
+        {% endif %}
+
+        <!-- ════ Main ════ -->
+        <div class="col-md-10 p-3 p-md-4 dash-main {% if session.get('role') == 'founder' %}fd-main{% endif %}" id="main-content">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h3 fw-bold m-0 text-success">📖 دليل استخدام وتشغيل النظام</h1>
+            </div>
+
+            <div class="doc-container">
+                <div class="markdown-body" id="readme-rendered">
+                    جاري تحميل دليل النظام...
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Mobile Bottom Navigation -->
+{% if session.get('role') == 'founder' %}
+<nav class="fd-bottom-nav" aria-label="التنقل">
+    <ul class="fd-bottom-nav__list">
+        <li><a href="{{ url_for('founder_dashboard') }}" class="fd-bottom-nav__link">
+            <span class="fd-bottom-nav__icon">🏠</span><span>الرئيسية</span>
+        </a></li>
+        <li><a href="{{ url_for('founder_branches') }}" class="fd-bottom-nav__link">
+            <span class="fd-bottom-nav__icon">🏢</span><span>الفروع</span>
+        </a></li>
+        <li><a href="{{ url_for('founder_products') }}" class="fd-bottom-nav__link">
+            <span class="fd-bottom-nav__icon">📦</span><span>المنتجات</span>
+        </a></li>
+        <li><a href="{{ url_for('admin_complaints') }}" class="fd-bottom-nav__link">
+            <span class="fd-bottom-nav__icon">📋</span><span>الشكاوى</span>
+        </a></li>
+        <li><a href="{{ url_for('admin_system_guide') }}" class="fd-bottom-nav__link active">
+            <span class="fd-bottom-nav__icon">📖</span><span>الدليل</span>
+        </a></li>
+    </ul>
+</nav>
+{% else %}
+<nav class="ms-bottom-nav" aria-label="التنقل السريع">
+    <ul class="ms-bottom-nav__list">
+        <li class="ms-bottom-nav__item">
+            <a href="{{ url_for('admin_dashboard') }}" class="ms-bottom-nav__link">
+                <span class="ms-bottom-nav__icon">🏠</span><span>الرئيسية</span>
+            </a>
+        </li>
+        <li class="ms-bottom-nav__item">
+            <a href="{{ url_for('admin_users') }}" class="ms-bottom-nav__link">
+                <span class="ms-bottom-nav__icon">👤</span><span>المستخدمين</span>
+            </a>
+        </li>
+        <li class="ms-bottom-nav__item">
+            <a href="{{ url_for('admin_complaints') }}" class="ms-bottom-nav__link">
+                <span class="ms-bottom-nav__icon">📋</span><span>الشكاوى</span>
+            </a>
+        </li>
+        <li class="ms-bottom-nav__item">
+            <a href="{{ url_for('admin_system_guide') }}" class="ms-bottom-nav__link active">
+                <span class="ms-bottom-nav__icon">📖</span><span>الدليل</span>
+            </a>
+        </li>
+    </ul>
+</nav>
+{% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="{{ url_for('static', filename='js/dashboard-layout.js') }}" defer></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const rawMarkdown = {{ readme_content|tojson }};
+        const renderedHtml = marked.parse(rawMarkdown);
+        document.getElementById('readme-rendered').innerHTML = renderedHtml;
+
+        // Mobile sidebar logic
+        const topBtn = document.getElementById('fd-topbar-menu-btn') || document.getElementById('admin-topbar-menu-btn');
+        if (topBtn) {
+            const origBtn = document.querySelector('.dash-menu-btn');
+            topBtn.addEventListener('click', function() {
+                if (origBtn) { origBtn.click(); return; }
+                const sidebar = document.getElementById('fd-dash-sidebar') || document.getElementById('admin-dash-sidebar');
+                const layout  = document.querySelector('.dash-layout');
+                const overlay = document.querySelector('.dash-backdrop.sidebar-overlay');
+                if (sidebar)  sidebar.classList.toggle('open');
+                if (layout)   layout.classList.toggle('dash-nav-open');
+                if (overlay) {
+                    overlay.style.display = overlay.classList.contains('active') ? 'none' : 'block';
+                    overlay.classList.toggle('active');
+                }
+            });
+        }
+    });
+</script>
+</body>
+</html>

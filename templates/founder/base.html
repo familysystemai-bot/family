@@ -187,6 +187,10 @@
                        href="{{ url_for('campaigns.founder_campaigns') }}">📢 الحملات</a>
                     <a class="nav-link {% if ep == 'wa_inbox.admin_messages_page' %}active{% endif %}"
                        href="{{ url_for('wa_inbox.admin_messages_page') }}">💬 واتساب</a>
+                    <a class="nav-link {% if ep and ep.startswith('social_dashboard.') %}active{% endif %}"
+                       href="{{ url_for('social_dashboard.dashboard') }}">🚀 التواصل الاجتماعي</a>
+                    <a class="nav-link {% if ep == 'admin_system_guide' %}active{% endif %}"
+                       href="{{ url_for('admin_system_guide') }}">📖 دليل النظام</a>
                     <hr>
                     <a class="nav-link text-danger" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
                 </nav>

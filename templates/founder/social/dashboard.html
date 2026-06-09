@@ -1,0 +1,105 @@
+{% extends "founder/base.html" %}
+
+{% block title %}لوحة التحكم الموحدة | مجمع العائلة{% endblock %}
+
+{% block content %}
+<div class="fd-page-head d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="fw-bold mb-1">🚀 لوحة التحكم الموحدة</h3>
+        <p class="text-muted mb-0">إدارة جميع منصات التواصل الاجتماعي في مكان واحد</p>
+    </div>
+    <div class="fd-head-actions">
+        <a href="{{ url_for('social_dashboard.publisher') }}" class="btn btn-primary shadow-sm" style="border-radius: 10px;">
+            <i class="fas fa-plus me-1"></i> منشور جديد
+        </a>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <!-- إحصائيات سريعة -->
+    <div class="col-md-3">
+        <div class="fd-card p-4 text-center h-100 shadow-sm border-0" style="border-radius: 15px;">
+            <div class="fs-1 mb-2">👥</div>
+            <h5 class="text-muted small mb-1">إجمالي المتابعين</h5>
+            <h3 class="fw-bold mb-0">{{ stats.total_followers }}</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="fd-card p-4 text-center h-100 shadow-sm border-0" style="border-radius: 15px;">
+            <div class="fs-1 mb-2">📈</div>
+            <h5 class="text-muted small mb-1">الوصول الكلي</h5>
+            <h3 class="fw-bold mb-0">{{ stats.total_reach }}</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="fd-card p-4 text-center h-100 shadow-sm border-0" style="border-radius: 15px;">
+            <div class="fs-1 mb-2">❤️</div>
+            <h5 class="text-muted small mb-1">التفاعل</h5>
+            <h3 class="fw-bold mb-0">{{ stats.total_engagement }}</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="fd-card p-4 text-center h-100 shadow-sm border-0" style="border-radius: 15px;">
+            <div class="fs-1 mb-2">🔗</div>
+            <h5 class="text-muted small mb-1">المنصات المتصلة</h5>
+            <div class="mt-2">
+                {% for platform in stats.active_platforms %}
+                    <span class="badge bg-success" style="border-radius: 8px;">{{ platform }}</span>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- حالة المنصات -->
+    <div class="col-md-6">
+        <div class="fd-card p-4 shadow-sm border-0 h-100" style="border-radius: 15px;">
+            <h5 class="fw-bold mb-4">🌐 حالة الربط</h5>
+            <div class="list-group list-group-flush">
+                <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                    <div class="d-flex align-items-center">
+                        <div class="p-2 bg-light rounded-3 me-3">💬</div>
+                        <div>
+                            <h6 class="mb-0 fw-bold">WhatsApp Business</h6>
+                            <small class="text-muted">متصل عبر Meta Cloud API</small>
+                        </div>
+                    </div>
+                    <span class="badge bg-success rounded-pill">نشط</span>
+                </div>
+                <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                    <div class="d-flex align-items-center">
+                        <div class="p-2 bg-light rounded-3 me-3">📸</div>
+                        <div>
+                            <h6 class="mb-0 fw-bold">Instagram</h6>
+                            <small class="text-muted">يتطلب ربط الحساب</small>
+                        </div>
+                    </div>
+                    <a href="{{ url_for('integrations.integrations_dashboard') }}" class="btn btn-sm btn-outline-primary rounded-pill">ربط الآن</a>
+                </div>
+                <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                    <div class="d-flex align-items-center">
+                        <div class="p-2 bg-light rounded-3 me-3">📘</div>
+                        <div>
+                            <h6 class="mb-0 fw-bold">Facebook Page</h6>
+                            <small class="text-muted">يتطلب ربط الحساب</small>
+                        </div>
+                    </div>
+                    <a href="{{ url_for('integrations.integrations_dashboard') }}" class="btn btn-sm btn-outline-primary rounded-pill">ربط الآن</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- أحدث المنشورات -->
+    <div class="col-md-6">
+        <div class="fd-card p-4 shadow-sm border-0 h-100" style="border-radius: 15px;">
+            <h5 class="fw-bold mb-4">📝 أحدث المنشورات</h5>
+            <div class="text-center py-5">
+                <div class="text-muted mb-3">لا توجد منشورات مجدولة حالياً</div>
+                <a href="{{ url_for('social_dashboard.publisher') }}" class="btn btn-sm btn-primary rounded-pill">أنشئ أول منشور</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

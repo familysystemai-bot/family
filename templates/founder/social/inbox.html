@@ -1,0 +1,68 @@
+{% extends "founder/base.html" %}
+
+{% block title %}صندوق الرسائل الموحد | مجمع العائلة{% endblock %}
+
+{% block content %}
+<div class="fd-page-head mb-4">
+    <h3 class="fw-bold mb-1">📬 صندوق الرسائل الموحد</h3>
+    <p class="text-muted mb-0">رد على جميع عملائك في واتساب، إنستقرام، وفيسبوك من نافذة واحدة</p>
+</div>
+
+<div class="fd-card shadow-sm border-0 overflow-hidden" style="border-radius: 15px; height: 70vh;">
+    <div class="row g-0 h-100">
+        <!-- قائمة المحادثات -->
+        <div class="col-md-4 border-end h-100 bg-light">
+            <div class="p-3 border-bottom bg-white">
+                <input type="text" class="form-control form-control-sm" placeholder="بحث عن محادثة..." style="border-radius: 8px;">
+            </div>
+            <div class="overflow-auto" style="height: calc(100% - 60px);">
+                <div class="list-group list-group-flush">
+                    <div class="list-group-item list-group-item-action active p-3 border-0">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h6 class="mb-1 fw-bold">عميل تجريبي (واتساب)</h6>
+                            <small>10:30 ص</small>
+                        </div>
+                        <p class="mb-0 small text-truncate">أهلاً، متى تفتحون فرع الرياض؟</p>
+                    </div>
+                    <!-- المزيد من المحادثات تظهر هنا -->
+                    <div class="p-5 text-center text-muted">
+                        <small>لا توجد محادثات أخرى حالياً</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- منطقة الدردشة -->
+        <div class="col-md-8 h-100 d-flex flex-column bg-white">
+            <div class="p-3 border-bottom d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center">
+                    <div class="bg-success rounded-circle me-2" style="width: 10px; height: 10px;"></div>
+                    <h6 class="mb-0 fw-bold">عميل تجريبي</h6>
+                </div>
+                <div class="badge bg-light text-dark border">WhatsApp</div>
+            </div>
+            
+            <div class="flex-grow-1 p-4 overflow-auto bg-light" style="background-image: url('https://www.transparenttextures.com/patterns/cubes.png');">
+                <div class="d-flex flex-column gap-3">
+                    <div class="align-self-start bg-white p-3 rounded-3 shadow-sm" style="max-width: 70%; border-bottom-left-radius: 0 !important;">
+                        أهلاً، متى تفتحون فرع الرياض؟
+                        <div class="text-end mt-1"><small class="text-muted" style="font-size: 0.65rem;">10:30 ص</small></div>
+                    </div>
+                    <div class="align-self-end bg-primary text-white p-3 rounded-3 shadow-sm" style="max-width: 70%; border-bottom-right-radius: 0 !important;">
+                        أهلاً بك عميلنا العزيز، فرع الرياض يفتح من الساعة 9 صباحاً.
+                        <div class="text-end mt-1"><small class="text-white-50" style="font-size: 0.65rem;">10:32 ص</small></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-3 border-top bg-white">
+                <div class="input-group">
+                    <button class="btn btn-outline-light border text-muted" type="button">📎</button>
+                    <input type="text" class="form-control" placeholder="اكتب ردك هنا..." style="border-radius: 0;">
+                    <button class="btn btn-primary px-4" type="button">إرسال</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,84 @@
+{% extends "founder/base.html" %}
+
+{% block title %}الناشر الموحد | مجمع العائلة{% endblock %}
+
+{% block content %}
+<div class="fd-page-head mb-4">
+    <h3 class="fw-bold mb-1">📝 الناشر الموحد</h3>
+    <p class="text-muted mb-0">أنشئ وانشر محتواك على جميع المنصات بضغطة زر</p>
+</div>
+
+<div class="row g-4">
+    <div class="col-md-8">
+        <div class="fd-card p-4 shadow-sm border-0" style="border-radius: 15px;">
+            <form id="socialPublisherForm">
+                <div class="mb-4">
+                    <label class="form-label fw-bold">محتوى المنشور</label>
+                    <textarea class="form-control" rows="6" placeholder="ماذا تريد أن تنشر اليوم؟" style="border-radius: 12px;"></textarea>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="form-label fw-bold">إضافة وسائط</label>
+                    <div class="border-dashed p-5 text-center bg-light" style="border: 2px dashed #ccc; border-radius: 15px;">
+                        <div class="fs-1 mb-2">🖼️</div>
+                        <p class="text-muted mb-0">اسحب الصور هنا أو اضغط للرفع</p>
+                        <input type="file" class="d-none" id="mediaUpload">
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label fw-bold">اختر المنصات</label>
+                    <div class="d-flex gap-3">
+                        <div class="form-check border p-3 rounded-3 flex-fill text-center">
+                            <input class="form-check-input d-none" type="checkbox" id="p_wa" checked>
+                            <label class="form-check-label w-100 cursor-pointer" for="p_wa">
+                                <div class="fs-3">💬</div>
+                                <div>WhatsApp</div>
+                            </label>
+                        </div>
+                        <div class="form-check border p-3 rounded-3 flex-fill text-center opacity-50">
+                            <input class="form-check-input d-none" type="checkbox" id="p_ig" disabled>
+                            <label class="form-check-label w-100" for="p_ig">
+                                <div class="fs-3">📸</div>
+                                <div>Instagram</div>
+                            </label>
+                        </div>
+                        <div class="form-check border p-3 rounded-3 flex-fill text-center opacity-50">
+                            <input class="form-check-input d-none" type="checkbox" id="p_fb" disabled>
+                            <label class="form-check-label w-100" for="p_fb">
+                                <div class="fs-3">📘</div>
+                                <div>Facebook</div>
+                            </label>
+                        </div>
+                    </div>
+                    <small class="text-muted mt-2 d-block">ملاحظة: المنصات الباهتة تتطلب ربط الحساب من صفحة التكاملات.</small>
+                </div>
+
+                <div class="d-flex justify-content-between">
+                    <button type="button" class="btn btn-light px-4" style="border-radius: 10px;">جدولة لاحقاً</button>
+                    <button type="submit" class="btn btn-primary px-5 shadow-sm" style="border-radius: 10px;">نشر الآن 🚀</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="fd-card p-4 shadow-sm border-0 h-100" style="border-radius: 15px;">
+            <h5 class="fw-bold mb-4">👁️ معاينة حيّة</h5>
+            <div class="preview-container border rounded-3 p-3 bg-white shadow-sm">
+                <div class="d-flex align-items-center mb-2">
+                    <div class="bg-primary rounded-circle me-2" style="width: 32px; height: 32px;"></div>
+                    <div class="fw-bold small">مجمع العائلة</div>
+                </div>
+                <div class="preview-content text-muted small py-3 border-bottom mb-2">
+                    سيظهر نص المنشور هنا أثناء الكتابة...
+                </div>
+                <div class="d-flex justify-content-between text-muted small">
+                    <span>❤️ 0</span>
+                    <span>💬 0</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

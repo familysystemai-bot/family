@@ -44,8 +44,8 @@ bp = Blueprint("integrations", __name__, url_prefix="/founder/integrations")
 # ─── Helpers ────────────────────────────────────────────────────────
 
 def _is_founder() -> bool:
-    """تحقق من أن المستخدم مؤسس فقط."""
-    return session.get("role") == "founder"
+    """تحقق من أن المستخدم مؤسس أو مدير عام."""
+    return session.get("role") in ("founder", "admin")
 
 
 def _mask_secret(value: str) -> str:
@@ -187,6 +187,14 @@ def integrations_dashboard():
             "configured": bool(read_setting("META_APP_SECRET", "")),
             "url": url_for("integrations.whatsapp_settings"),
             "description": "WhatsApp Business API + HMAC verification",
+        },
+        "google": {
+            "title": "خدمات جوجل والتحقق",
+            "icon": "🌐",
+            "active": "مفعّل" if read_setting("GOOGLE_SITE_VERIFICATION", "") or read_setting("GOOGLE_ANALYTICS_ID", "") else "غير مفعّل",
+            "configured": bool(read_setting("GOOGLE_SITE_VERIFICATION", "") or read_setting("GOOGLE_ANALYTICS_ID", "") or read_setting("GOOGLE_MAPS_API_KEY", "")),
+            "url": url_for("integrations.google_settings"),
+            "description": "Google Analytics, Search Console, Maps API",
         },
     }
 
@@ -639,3 +647,76 @@ def whatsapp_settings():
         is_secure=is_secure,
         wa_status=wa_status,
     )
+
+
+# ─── خدمات جوجل (Analytics, Search Console, Maps API) ────────────────
+GOOGLE_FIELDS = [
+    {
+        "key": "GOOGLE_SITE_VERIFICATION",
+        "label": "كود التحقق من ملكية الموقع (Google Site Verification)",
+        "type": "text",
+        "help": "الرمز الموجود في وسم meta (مثال: google-site-verification=xxxxxx). يُستخدم لربط الموقع بـ Google Search Console وإثبات ملكيته.",
+    },
+    {
+        "key": "GOOGLE_ANALYTICS_ID",
+        "label": "معرّف إحصائيات جوجل (Google Analytics Measurement ID / GTAG)",
+        "type": "text",
+        "help": "مثال: G-XXXXXXXXXX. يُستخدم لتتبع حركة الزوار وإصدار تقارير الأداء التفصيلية.",
+    },
+    {
+        "key": "GOOGLE_MAPS_API_KEY",
+        "label": "مفتاح واجهة خرائط جوجل (Google Maps API Key)",
+        "type": "password",
+        "help": "مفتاح API لتشغيل الخرائط التفاعلية وتحديد المواقع الجغرافية بدقة.",
+    },
+]
+
+
+@bp.route("/google", methods=["GET", "POST"])
+def google_settings():
+    """إعدادات خدمات جوجل والتحقق."""
+    if not _is_founder():
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        action = request.form.get("action", "")
+
+        if action == "save":
+            saved = _save_settings(request.form, GOOGLE_FIELDS)
+            flash(f"تم حفظ {saved} حقل من إعدادات جوجل بنجاح", "success")
+
+        elif action == "test":
+            verification = read_setting("GOOGLE_SITE_VERIFICATION", "")
+            analytics = read_setting("GOOGLE_ANALYTICS_ID", "")
+            maps = read_setting("GOOGLE_MAPS_API_KEY", "")
+            
+            status_msgs = []
+            if verification:
+                status_msgs.append("كود التحقق من جوجل مضاف")
+            if analytics:
+                status_msgs.append("معرّف تحليلات جوجل مضاف")
+            if maps:
+                status_msgs.append("مفتاح خرائط جوجل مضاف")
+                
+            if not status_msgs:
+                flash("⚠️ لا توجد خدمات مضافة بعد.", "warning")
+            else:
+                flash(f"✅ حالة التكامل: {', '.join(status_msgs)}.", "success")
+
+        return redirect(url_for("integrations.google_settings"))
+
+    # GET
+    values = _get_settings_with_masked_secrets(GOOGLE_FIELDS)
+    google_status = {
+        "GOOGLE_SITE_VERIFICATION": bool((read_setting("GOOGLE_SITE_VERIFICATION", "") or "").strip()),
+        "GOOGLE_ANALYTICS_ID": bool((read_setting("GOOGLE_ANALYTICS_ID", "") or "").strip()),
+        "GOOGLE_MAPS_API_KEY": bool((read_setting("GOOGLE_MAPS_API_KEY", "") or "").strip()),
+    }
+    
+    return render_template(
+        "founder/integrations/google.html",
+        fields=GOOGLE_FIELDS,
+        values=values,
+        google_status=google_status,
+    )
+

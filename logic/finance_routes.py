@@ -280,12 +280,19 @@ def create_finance_blueprint(database):  # DatabaseManager
         if not _unlock_valid():
             return redirect(url_for("almanakh_finance.finance_gate"))
 
+        # جلب branch_id من معاملات الاستعلام (Query Params)
+        branch_id = request.args.get("branch_id", type=int)
+
         ac = fin_set.load_amazon_credentials(db, SECRET_KEY or "")
+        ai = fin_set.load_ai_credentials(db, SECRET_KEY or "")
+        
         dash = fetch_financial_dashboard(
             db=db,
             base_url=ac["base_url"],
             api_key=ac["api_key"],
             api_secret=ac["secret"],
+            branch_id=branch_id,
+            erp_kind=ai.get("provider") # نستخدم اسم المزود المختار
         )
 
         ai = fin_set.load_ai_credentials(db, SECRET_KEY or "")
@@ -310,6 +317,7 @@ def create_finance_blueprint(database):  # DatabaseManager
             placeholders=placeholders,
             founder_logo_url=founder_logo_url,
             branches_dd=branches_dd,
+            selected_branch_id=branch_id,
         )
 
     @bp.route("/hub", methods=["GET", "POST"])

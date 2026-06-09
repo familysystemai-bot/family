@@ -96,12 +96,17 @@ class _PostgresCursorWrapper:
         if adapted.lstrip().upper().startswith("INSERT"):
             try:
                 with self._raw.cursor() as lc:
-                    lc.execute("SELECT lastval() AS lastrowid")
-                    row = lc.fetchone()
-                    if row is not None:
-                        v = row.get("lastrowid") if isinstance(row, dict) else row[0]
-                        if v is not None:
-                            self.lastrowid = int(v)
+                    lc.execute("SAVEPOINT _lastval_sp")
+                    try:
+                        lc.execute("SELECT lastval() AS lastrowid")
+                        row = lc.fetchone()
+                        if row is not None:
+                            v = row.get("lastrowid") if isinstance(row, dict) else row[0]
+                            if v is not None:
+                                self.lastrowid = int(v)
+                        lc.execute("RELEASE SAVEPOINT _lastval_sp")
+                    except Exception:
+                        lc.execute("ROLLBACK TO SAVEPOINT _lastval_sp")
             except Exception:
                 # بعض الـ INSERTs لا تنشئ sequence جديدة (مثل INSERT ON CONFLICT
                 # حين لا يحدث إدراج فعلي). هذا متوقّع — نتجاهل بهدوء.
@@ -667,14 +672,56 @@ class DatabaseManager(
             ON wa_processed_wamids (processed_at)
         """)
         # ── تحكم جلسات واتساب: إيقاف AI أو حظر لكل رقم ──
-        # ملاحظة: updated_at بدون DEFAULT لأن datetime('now') SQLite فقط
+        # ملاحظة: updated_at بدون DEFAULT لأن datetime(\'now\') SQLite فقط
         # والقيمة تُمرَّر دائماً من كود Python في wa_contact_set_control
         self._exec_ddl(conn, """
             CREATE TABLE IF NOT EXISTS wa_contact_controls (
                 contact_number TEXT PRIMARY KEY,
                 ai_stopped INTEGER NOT NULL DEFAULT 0,
                 banned INTEGER NOT NULL DEFAULT 0,
-                updated_at TEXT DEFAULT ''
+                updated_at TEXT DEFAULT \'\'
+            )
+        """)
+
+        # ── جداول لوحة التحكم الموحدة لوسائل التواصل الاجتماعي ──
+        self._exec_ddl(conn, """
+            CREATE TABLE IF NOT EXISTS social_accounts (
+                id SERIAL PRIMARY KEY,
+                platform TEXT NOT NULL,
+                platform_id TEXT NOT NULL,
+                access_token TEXT NOT NULL,
+                expires_at TEXT,
+                owner_id INTEGER,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                UNIQUE (platform, platform_id)
+            )
+        """)
+        self._exec_ddl(conn, """
+            CREATE TABLE IF NOT EXISTS social_posts (
+                id SERIAL PRIMARY KEY,
+                content TEXT,
+                image_url TEXT,
+                platforms TEXT NOT NULL DEFAULT \'[]\',
+                scheduled_at TEXT,
+                published_at TEXT,
+                status TEXT NOT NULL DEFAULT \'draft\',
+                created_by TEXT,
+                branch_id INTEGER,
+                FOREIGN KEY (branch_id) REFERENCES branches (id)
+            )
+        """)
+        self._exec_ddl(conn, """
+            CREATE TABLE IF NOT EXISTS social_messages (
+                id SERIAL PRIMARY KEY,
+                platform TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                sender_id TEXT NOT NULL,
+                sender_name TEXT,
+                message_body TEXT,
+                direction TEXT NOT NULL,
+                timestamp TEXT,
+                branch_id INTEGER,
+                FOREIGN KEY (branch_id) REFERENCES branches (id)
             )
         """)
 

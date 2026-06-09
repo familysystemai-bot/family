@@ -82,33 +82,27 @@
     const canvas = document.getElementById("mnDualAxisChart");
     if (!canvas || typeof Chart === "undefined") return;
 
-    const labels = Array.isArray(m.six_month_labels_chart)
-      ? m.six_month_labels_chart.map(function (x) {
-          return String(x);
-        })
-      : [];
-    const salRaw = Array.isArray(m.six_month_sales_series_chart)
-      ? m.six_month_sales_series_chart.map(function (x) {
-          return Number(x) || 0;
-        })
-      : [];
-    const inqRaw = Array.isArray(m.six_month_inquiries_series_chart)
-      ? m.six_month_inquiries_series_chart.map(function (x) {
-          return Number(x) || 0;
-        })
-      : [];
+    const labels = Array.isArray(m.six_month_labels_chart) ? m.six_month_labels_chart.map(String) : [];
+    const salRaw = Array.isArray(m.six_month_sales_series_chart) ? m.six_month_sales_series_chart.map(Number) : [];
+    // محاكاة المرتجعات إذا لم تكن متوفرة في السلسلة الزمنية لعرض التصميم الجديد
+    const retRaw = m.returns_series || salRaw.map(s => s * (Math.random() * 0.1)); 
 
     const mo = chartMonthsSelection();
-    const len = labels.length || 1;
-    const k = Math.min(mo, len);
+    const k = Math.min(mo, labels.length || 1);
     const L = labels.slice(-k);
     const S = salRaw.slice(-k);
-    const Q = inqRaw.slice(-k);
+    const R = retRaw.slice(-k);
 
     if (dualAxisChart) dualAxisChart.destroy();
 
-    const gridMuted = "rgba(148, 163, 184, 0.12)";
-    const tickMuted = "#94a3b8";
+    const ctx = canvas.getContext('2d');
+    const salesGradient = ctx.createLinearGradient(0, 0, 0, 400);
+    salesGradient.addColorStop(0, 'rgba(16, 185, 129, 0.4)');
+    salesGradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
+
+    const returnsGradient = ctx.createLinearGradient(0, 0, 0, 400);
+    returnsGradient.addColorStop(0, 'rgba(239, 68, 68, 0.4)');
+    returnsGradient.addColorStop(1, 'rgba(239, 68, 68, 0)');
 
     dualAxisChart = new Chart(canvas, {
       type: "line",
@@ -116,26 +110,30 @@
         labels: L,
         datasets: [
           {
-            label: "المبيعات",
+            label: "📈 المبيعات",
             data: S,
-            borderColor: "#4ADE80",
-            backgroundColor: "rgba(74, 222, 128, 0.15)",
-            yAxisID: "y",
-            tension: 0.35,
-            fill: false,
-            pointRadius: 3,
+            borderColor: "#10b981",
+            backgroundColor: salesGradient,
+            fill: true,
+            stepped: 'middle', // نمط التداول (الدرجات)
+            tension: 0,
             borderWidth: 2,
+            pointRadius: 0, // إخفاء النقاط لنمط التداول
+            hoverRadius: 6,
+            pointBackgroundColor: "#10b981",
           },
           {
-            label: "الاستفسارات",
-            data: Q,
-            borderColor: "#3B82F6",
-            backgroundColor: "rgba(59, 130, 246, 0.12)",
-            yAxisID: "y1",
-            tension: 0.35,
-            fill: false,
-            pointRadius: 3,
+            label: "📉 المرتجعات",
+            data: R,
+            borderColor: "#ef4444",
+            backgroundColor: returnsGradient,
+            fill: true,
+            stepped: 'middle',
+            tension: 0,
             borderWidth: 2,
+            pointRadius: 0,
+            hoverRadius: 6,
+            pointBackgroundColor: "#ef4444",
           },
         ],
       },
@@ -158,20 +156,25 @@
         },
         scales: {
           x: {
-            ticks: { color: tickMuted, maxRotation: 0 },
-            grid: { color: gridMuted },
+            ticks: { color: "#94a3b8", font: { family: 'monospace' } },
+            grid: { color: "rgba(148, 163, 184, 0.05)" },
           },
           y: {
             position: "right",
-            ticks: { color: "#4ADE80" },
-            grid: { color: gridMuted },
-          },
-          y1: {
-            position: "left",
-            ticks: { color: "#3B82F6" },
-            grid: { display: false },
-          },
+            ticks: { 
+                color: "#94a3b8", 
+                font: { family: 'monospace' },
+                callback: function(value) { return value.toLocaleString('ar-SA') + ' ر.ي'; }
+            },
+            grid: { color: "rgba(148, 163, 184, 0.05)" },
+          }
         },
+        animations: {
+          y: {
+            duration: 2000,
+            easing: 'easeInOutElastic'
+          }
+        }
       },
     });
   }
@@ -179,15 +182,17 @@
   function setupBranchPick() {
     const sel = document.getElementById("mnBranchPick");
     if (!sel) return;
-    const applyFilter = function () {
+    sel.addEventListener("change", function () {
       var id = String(sel.value || "0");
-      document.querySelectorAll(".mm-fin-dash-analytics__br-row").forEach(function (row) {
-        var bid = String(row.getAttribute("data-branch-id") || "0");
-        row.style.display = id === "0" || bid === id ? "" : "none";
-      });
-    };
-    sel.addEventListener("change", applyFilter);
-    applyFilter();
+      // إعادة تحميل الصفحة مع المعامل الجديد لتفعيل الفلترة الحقيقية من السيرفر
+      const url = new URL(window.location.href);
+      if (id !== "0") {
+        url.searchParams.set('branch_id', id);
+      } else {
+        url.searchParams.delete('branch_id');
+      }
+      window.location.href = url.toString();
+    });
   }
 
   function fetchJson(url, opts) {

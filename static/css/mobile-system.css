@@ -614,9 +614,8 @@ input, select, textarea {
   .dash-main,
   .fd-main.dash-main {
     padding-top: 72px !important;
-    /* ضمان التمرير العمودي على الجوال */
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch;
+    /* السماح بالتمرير الطبيعي عبر body لمنع تداخل أشرطة التمرير والتعليق على الجوال */
+    overflow-y: visible !important;
   }
 }
 

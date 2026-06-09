@@ -660,6 +660,7 @@ def fetch_financial_dashboard(
     api_secret: str,
     timeout_seconds: float = 14.0,
     erp_kind: Optional[str] = None,
+    branch_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     bu = (base_url or "").strip().rstrip("/")
     ak = (api_key or "").strip()
@@ -668,6 +669,9 @@ def fetch_financial_dashboard(
     if not bu.startswith(("http://", "https://")) or not ak:
         logger.info("accounting fetch skipped — missing POS URL/API key → internal preview")
         out = _fallback_from_db(db)
+        # إذا كان هناك branch_id، نحتاج لفلترة الـ fallback أيضاً
+        if branch_id:
+            out["branches_breakdown"] = [b for b in out.get("branches_breakdown", []) if b.get("branch_id") == branch_id]
         out.setdefault("credentials_missing", True)
         return out
 
@@ -717,7 +721,17 @@ def fetch_financial_dashboard(
             payload = r.json()
             if not isinstance(payload, dict):
                 continue
-            return _normalize_remote_payload(payload, db, live_first)
+            # تطبيق الفلترة على مستوى البيانات القادمة من الـ API إذا كان النظام الخارجي يدعمها
+            # أو فلترتها هنا برمجياً
+            normalized = _normalize_remote_payload(payload, db, live_first)
+            if branch_id:
+                normalized["branches_breakdown"] = [b for b in normalized.get("branches_breakdown", []) if b.get("branch_id") == branch_id]
+                # إعادة حساب الإجماليات بناءً على الفرع المختار
+                if normalized["branches_breakdown"]:
+                    target_b = normalized["branches_breakdown"][0]
+                    normalized["today_sales"] = target_b.get("estimated_sales_month", 0) / 30 # تقديري لليوم
+                    normalized["kpis"] = _compute_kpis(normalized["today_sales"], target_b.get("inquiry_total", 1), normalized.get("profit_margin_estimate_pct", 0))
+            return normalized
         except Exception as ex:
             logger.debug("[POS] %s failed: %s", u, ex)
 
@@ -734,3 +748,27 @@ def fetch_financial_dashboard(
         "`today_sales` أو `months` ضمن الغلاف JSON."
     )
     return _remote_error_dashboard(db, msg)
+
+
+def _build_sales_returns_timeseries(
+    labels: List[str], 
+    sales_values: List[float], 
+    returns_values: List[float]
+) -> Dict[str, Any]:
+    """
+    بناء سلسلة زمنية احترافية للمبيعات والمرتجعات للرسم البياني الجديد.
+    يتم حساب صافي المبيعات (المبيعات - المرتجعات) لعرض الأداء الحقيقي.
+    """
+    sales_clean = [round(float(s or 0), 2) for s in sales_values]
+    returns_clean = [round(float(r or 0), 2) for r in returns_values]
+    net_clean = [round(s - r, 2) for s, r in zip(sales_clean, returns_clean)]
+    
+    return {
+        "labels": labels,
+        "sales_series": sales_clean,
+        "returns_series": returns_clean,
+        "net_series": net_clean,
+        "total_sales": round(sum(sales_clean), 2),
+        "total_returns": round(sum(returns_clean), 2),
+        "total_net": round(sum(net_clean), 2),
+    }

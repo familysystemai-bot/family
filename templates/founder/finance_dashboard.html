@@ -1,9 +1,44 @@
 {% extends "founder/finance_shell.html" %}
-{% block mm_title %}لوحة التحكم المالية — مجمع العائلة{% endblock %}
-{% block mm_body_class %}mm-fin-dash--analytics{% endblock %}
+{% block mm_title %}لوحة التحكم المالية — KognitixAI{% endblock %}
+{% block mm_body_class %}mm-fin-dash--analytics mm-fin-v2-theme{% endblock %}
 
 {% block mm_extra_head %}
 <meta name="mm-fin-ai-configured" content="{{ 1 if placeholders.has_ai else 0 }}">
+<style>
+    /* تحسينات التصميم الاحترافي V2 */
+    .mm-fin-v2-theme .mm-fin-dash-analytics {
+        background: #f8fafc;
+        padding: 1.5rem;
+        border-radius: 16px;
+    }
+    .mm-fin-v2-theme .mm-fin-dash-analytics__header {
+        background: white;
+        padding: 1.25rem;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        margin-bottom: 1.5rem;
+    }
+    .mm-fin-v2-theme .mm-fin-dash-analytics__kpi {
+        background: white;
+        border: none;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        border-radius: 12px;
+        transition: transform 0.2s;
+    }
+    .mm-fin-v2-theme .mm-fin-dash-analytics__kpi:hover {
+        transform: translateY(-2px);
+    }
+    .mm-fin-v2-theme .mm-fin-dash-analytics__card {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        border: none;
+        padding: 1.5rem;
+    }
+    .mm-fin-v2-theme .mm-fin-dash-analytics__kpi-val--gold { color: #10b981; } /* أخضر للمبيعات */
+    .mm-fin-v2-theme .mm-fin-dash-analytics__kpi-val--red { color: #ef4444; } /* أحمر للمرتجعات */
+    .mm-fin-v2-theme .mm-fin-dash-analytics__kpi-val--purple { color: #8b5cf6; } /* بنفسجي للصافي */
+</style>
 {% endblock %}
 
 {% block mm_main %}
@@ -19,80 +54,61 @@
 <div class="mm-fin-dash-analytics">
     <header class="mm-fin-dash-analytics__header">
         <div class="mm-fin-dash-analytics__header-row">
-            <span class="mm-fin-dash-analytics__title">📊 التحليلات المالية</span>
+            <span class="mm-fin-dash-analytics__title">📊 التحليلات المالية الاحترافية</span>
             <span class="mm-fin-dash-analytics__bell" aria-hidden="true">🔔</span>
         </div>
         <label class="visually-hidden" for="mnBranchPick">الفرع</label>
         <select id="mnBranchPick" class="mm-fin-dash-analytics__select form-select form-select-sm" aria-label="اختيار الفرع">
-            <option value="0" selected>جميع الفروع</option>
+            <option value="0" {% if not selected_branch_id %}selected{% endif %}>جميع الفروع</option>
             {% for rb in branches_dd %}
-            <option value="{{ rb.id }}">{{ rb.label }}</option>
+            <option value="{{ rb.id }}" {% if selected_branch_id == rb.id %}selected{% endif %}>{{ rb.label }}</option>
             {% endfor %}
         </select>
     </header>
 
     {% if metrics.get('credentials_missing') %}
     <div class="mm-fin-dash-analytics__banner mm-fin-dash-analytics__banner--muted" role="status">
-        <strong>⚠️ معاينة داخلية</strong> — أضِف رابط الـ POS ومفتاح الـ API من «مركز التكامل» لعرض أرقام المبيعات الحقيقية. مؤشرات واتساب والاستفسارات أدناه من قاعدة بياناتك.
+        <strong>⚠️ وضع المعاينة</strong> — أضِف إعدادات النظام المحاسبي لعرض البيانات الحقيقية.
     </div>
     {% elif metrics.mode == 'remote_error' %}
     <div class="mm-fin-dash-analytics__banner mm-fin-dash-analytics__banner--warn" role="alert">
-        <strong>❌ تعذّر الاتصال بـ POS</strong>
-        {% if metrics.pos_error %} — {{ metrics.pos_error }}{% endif %}
-        <span class="d-block small mt-1 opacity-75">تُعرض مؤشرات الشات والواتساب والاستفسارات من النظام فقط؛ أرقام المبيعات من الخادم البعيد غير متاحة الآن.</span>
-    </div>
-    {% elif metrics.pos_connected %}
-    <div class="mm-fin-dash-analytics__banner mm-fin-dash-analytics__banner--ok" role="status">
-        <strong>✅ متصل بالـ POS</strong> — بيانات اليوم والمخطط من الربط الحي (مع مكمّلات محلية للاستفسارات).
+        <strong>❌ خطأ في الاتصال</strong> — {{ metrics.pos_error or 'تحقق من إعدادات الربط' }}
     </div>
     {% endif %}
 
     <section class="mm-fin-dash-analytics__kpis" aria-label="مؤشرات سريعة">
         <article class="mm-fin-dash-analytics__kpi">
-            <span class="mm-fin-dash-analytics__kpi-lbl">💰 مبيعات اليوم</span>
+            <span class="mm-fin-dash-analytics__kpi-lbl">💰 إجمالي المبيعات</span>
             <span class="mm-fin-dash-analytics__kpi-val mm-fin-dash-analytics__kpi-val--gold" id="mnKpiSales">{{ '{:,.0f}'.format(metrics.today_sales|float) }}</span>
             {% if metrics.sales_vs_yesterday_pct is not none %}
             <span class="mm-fin-dash-analytics__kpi-hint {% if metrics.sales_vs_yesterday_pct >= 0 %}mm-fin-dash-analytics__trend-up{% else %}mm-fin-dash-analytics__trend-down{% endif %}" id="mnKpiSalesTrend">
                 {{ '{:+,.1f}'.format(metrics.sales_vs_yesterday_pct|float) }}% عن أمس
             </span>
-            {% else %}
-            <span class="mm-fin-dash-analytics__kpi-hint" id="mnKpiSalesTrend">المصدر: <span id="mnKpiSrc">{{ metrics.mode }}</span></span>
             {% endif %}
         </article>
         <article class="mm-fin-dash-analytics__kpi">
-            <span class="mm-fin-dash-analytics__kpi-lbl">💬 واتساب (٢٤ ساعة)</span>
-            <span class="mm-fin-dash-analytics__kpi-val mm-fin-dash-analytics__kpi-val--green" id="mnKpiWa">{{ liv.whatsapp_active_24h or 0 }}</span>
-            {% set wt = liv.get('whatsapp_trend_vs_prev_pct') if liv is mapping else none %}
-            {% if wt is not none %}
-            <span class="mm-fin-dash-analytics__kpi-hint {% if wt|float >= 0 %}mm-fin-dash-analytics__trend-up{% else %}mm-fin-dash-analytics__trend-down{% endif %}" id="mnKpiWaTrend">
-                {{ '{:+,.1f}'.format(wt|float) }}% عن اليوم السابق
-            </span>
-            {% else %}
-            <span class="mm-fin-dash-analytics__kpi-hint">رسائل واردة</span>
-            {% endif %}
+            <span class="mm-fin-dash-analytics__kpi-lbl">📦 المرتجعات</span>
+            <span class="mm-fin-dash-analytics__kpi-val mm-fin-dash-analytics__kpi-val--red" id="mnKpiReturns">{{ '{:,.0f}'.format(metrics.returns_signal.get('estimated_return_value', 0)|float) }}</span>
+            <span class="mm-fin-dash-analytics__kpi-hint">{{ metrics.returns_signal.get('return_ratio_pct', 0)|round(1) }}% من المبيعات</span>
         </article>
         <article class="mm-fin-dash-analytics__kpi">
-            <span class="mm-fin-dash-analytics__kpi-lbl">📈 معدل التحويل</span>
-            <span class="mm-fin-dash-analytics__kpi-val mm-fin-dash-analytics__kpi-val--blue" id="mnKpiConv">{{ liv.conversion_rate_pct or 0 }}%</span>
-            <span class="mm-fin-dash-analytics__kpi-hint">من الاستفسارات المسجلة</span>
+            <span class="mm-fin-dash-analytics__kpi-lbl">📈 صافي الدخل</span>
+            <span class="mm-fin-dash-analytics__kpi-val mm-fin-dash-analytics__kpi-val--purple" id="mnKpiNet">{{ '{:,.0f}'.format((metrics.today_sales|float) - (metrics.returns_signal.get('estimated_return_value', 0)|float)) }}</span>
+            <span class="mm-fin-dash-analytics__kpi-hint">بعد خصم المرتجعات</span>
         </article>
     </section>
 
     <section class="mm-fin-dash-analytics__card">
         <div class="mm-fin-dash-analytics__card-head">
-            <h2 class="mm-fin-dash-analytics__card-title">📊 المبيعات × الاستفسارات</h2>
-            <label class="visually-hidden" for="mnChartPeriod">المدة</label>
-            <select id="mnChartPeriod" class="mm-fin-dash-analytics__pill-select form-select form-select-sm" aria-label="مدة المخطط">
+            <h2 class="mm-fin-dash-analytics__card-title">📊 تحليل المبيعات والمرتجعات</h2>
+            <select id="mnChartPeriod" class="mm-fin-dash-analytics__pill-select form-select form-select-sm">
                 <option value="6" selected>٦ أشهر</option>
                 <option value="3">٣ أشهر</option>
             </select>
         </div>
         <div class="mm-fin-dash-analytics__chart-wrap">
-            <canvas id="mnDualAxisChart" aria-label="مخطط المبيعات والاستفسارات الشهرية"></canvas>
+            <canvas id="mnDualAxisChart" aria-label="مخطط المبيعات والمرتجعات"></canvas>
         </div>
-        {% if liv.analytics_period_note %}
-        <p class="mm-fin-dash-analytics__note">{{ liv.analytics_period_note }}</p>
-        {% endif %}
     </section>
 
     <section class="mm-fin-dash-analytics__card mm-fin-dash-analytics__manus">
@@ -100,7 +116,7 @@
             <span class="mm-fin-dash-analytics__manus-badge">🤖 مانوس</span>
             <span class="mm-fin-dash-analytics__manus-caption">رؤى ذكية بناءً على بيانات نشاطك</span>
         </div>
-        <div id="mnInsightsBody" class="mm-fin-dash-analytics__manus-body">جاري تحضير مانوس بحسب ضبط مفاتيح المحلل…</div>
+        <div id="mnInsightsBody" class="mm-fin-dash-analytics__manus-body">جاري تحضير التحليل الذكي...</div>
         <button type="button" class="btn btn-sm mm-fin-dash-analytics__btn-ghost" id="mnRefreshInsights">🔄 تحديث الرؤى</button>
     </section>
 
@@ -110,76 +126,37 @@
         <div id="mnBranchPerf" class="mm-fin-dash-analytics__br-list">
             {% for b in br_list %}
             {% set pct = (((b.estimated_sales_month or 0)|float / ns.mx) * 100)|round(1) %}
-            {% set ach = ([(b.achievement_pct or pct)|float, 100.0]|min) %}
-            <div class="mm-fin-dash-analytics__br-row" data-branch-id="{{ b.branch_id or 0 }}" data-branch-name="{{ (b.branch_name or '')|e }}">
+            <div class="mm-fin-dash-analytics__br-row" data-branch-id="{{ b.branch_id or 0 }}">
                 <div class="mm-fin-dash-analytics__br-top">
                     <span class="mm-fin-dash-analytics__br-name">{{ b.branch_name or 'فرع' }}</span>
                     <span class="mm-fin-dash-analytics__br-sales">{{ '{:,.0f}'.format((b.estimated_sales_month or 0)|float) }}</span>
                 </div>
-                <div class="mm-fin-dash-analytics__br-track" role="presentation">
+                <div class="mm-fin-dash-analytics__br-track">
                     <div class="mm-fin-dash-analytics__br-fill" style="width: {{ pct }}%;"></div>
-                </div>
-                <div class="mm-fin-dash-analytics__br-meta">
-                    <span>📩 {{ b.inquiry_total or 0 }} استفسار</span>
-                    <span class="mm-fin-dash-analytics__ring" style="--ach: {{ [ach, 100]|min }};">
-                        <span>{{ ach|round(0, 'floor') }}%</span>
-                    </span>
                 </div>
             </div>
             {% endfor %}
         </div>
-        {% else %}
-        <p class="mm-fin-dash-analytics__empty mb-0">لا يوجد تفصيل فروع من الـ POS حالياً. بعد نجاح الربط ستظهر الأعمدة هنا؛ يمكنك استخدام مانوس لفهم نشاط الشات حسب الفرع.</p>
         {% endif %}
     </section>
-
-    <details class="mm-fin-dash-analytics__details">
-        <summary>📋 تفاصيل إضافية — الذروة والمرتجعات</summary>
-        <div class="mm-fin-dash-analytics__details-inner">
-            {% set _ret = metrics.returns_signal or {} %}
-            {% if metrics.branch_peak_hours and metrics.branch_peak_hours|length > 0 %}
-            <div class="mb-3">
-                <h3 class="h6 mm-fin-dash-analytics__subhead">⏰ ساعات الذروة</h3>
-                {% for p in metrics.branch_peak_hours[:8] %}
-                <div class="mm-fin-dash-analytics__mini-row">
-                    <span><strong>{{ p.branch_name }}</strong> · {{ p.total_interactions }} تفاعل</span>
-                    <span class="mm-fin-dash-analytics__pill">{{ p.peak_hour_label }}</span>
-                </div>
-                {% endfor %}
-            </div>
-            {% endif %}
-            <div>
-                <h3 class="h6 mm-fin-dash-analytics__subhead">🔄 الاسترجاع والمرتجعات</h3>
-                <p class="small mb-0 opacity-85">
-                    الطلبات: {{ _ret.return_requests or 0 }} · القيمة المقدَّرة {{ '{:,.0f}'.format((_ret.estimated_return_value or 0)|float) }}
-                    · {{ _ret.return_ratio_pct or 0 }}% · {{ _ret.verdict or '' }}
-                </p>
-            </div>
-            {% if metrics.recommendations %}
-            <ul class="mm-fin-dash-analytics__rec">
-                {% for r in metrics.recommendations %}<li>{{ r }}</li>{% endfor %}
-            </ul>
-            {% endif %}
-        </div>
-    </details>
 </div>
 
-<nav class="mm-fin-dash-analytics__nav" aria-label="تنقل سريع">
-    <a class="active" href="{{ url_for('almanakh_finance.finance_dashboard') }}" aria-current="page">📊 لوحة</a>
+<nav class="mm-fin-dash-analytics__nav">
+    <a class="active" href="{{ url_for('almanakh_finance.finance_dashboard') }}">📊 لوحة</a>
     <a href="{{ url_for('almanakh_finance.finance_hub') }}">🔌 تكامل</a>
     <a href="{{ url_for('finance_reports_gate') }}">📈 تقارير</a>
     <a href="{{ url_for('founder_dashboard') }}">🏠 الرئيسية</a>
 </nav>
 
-<div id="mnChatLauncher" class="mm-fin-dash-analytics__fab" aria-label="فتح محادثة مانوس" role="button" tabindex="0">💬</div>
-<div id="mnChatPanel" class="mm-fin-chat-panel d-none mm-fin-dash-analytics__chat-panel" aria-label="مساعد مانوس المالي">
+<div id="mnChatLauncher" class="mm-fin-dash-analytics__fab">💬</div>
+<div id="mnChatPanel" class="mm-fin-chat-panel d-none mm-fin-dash-analytics__chat-panel">
     <div class="mm-fin-chat-panel__hdr d-flex justify-content-between align-items-center">
         <span class="fw-bold small">🤖 مانوس — محللك المالي</span>
         <button type="button" class="btn btn-sm btn-link text-secondary text-decoration-none p-0" id="mnChatClose">✕</button>
     </div>
-    <div id="mnChatMsgs" class="mm-fin-chat-panel__msgs small mm-fin-dash-analytics__chat-msg-area"></div>
+    <div id="mnChatMsgs" class="mm-fin-chat-panel__msgs small"></div>
     <div class="mm-fin-chat-panel__foot">
-        <textarea id="mnChatInput" rows="2" class="form-control form-control-sm mb-2 mm-fin-dash-analytics__chat-input" placeholder="اسأل عن أي رقم أو فرع في اللوحة…"></textarea>
+        <textarea id="mnChatInput" rows="2" class="form-control form-control-sm mb-2" placeholder="اسأل عن أي رقم..."></textarea>
         <button type="button" class="btn mm-fin-dash-analytics__btn-send w-100 btn-sm" id="mnChatSend">📤 إرسال</button>
     </div>
 </div>

@@ -8,6 +8,19 @@
     <title>{{ seo_title | default("مجمع العائلة | خدمة العملاء الذكية", true) }}</title>
     <meta name="description" content="{{ seo_description | default('', true) }}">
     <meta name="robots" content="index, follow">
+    {% if google_site_verification %}
+    <meta name="google-site-verification" content="{{ google_site_verification }}">
+    {% endif %}
+    {% if google_analytics_id %}
+    <!-- Global site tag (gtag.js) - Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id={{ google_analytics_id }}"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', '{{ google_analytics_id }}');
+    </script>
+    {% endif %}
     {% if seo_canonical_url %}
     <link rel="canonical" href="{{ seo_canonical_url }}">
     {% endif %}

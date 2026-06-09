@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KognitixAI - منصة إدارة العملاء الذكية | تحليلات مالية وتكاملات تواصل</title>
+    <meta name="description" content="منصة KognitixAI الذكية لإدارة خدمة العملاء مع تحليلات مالية متقدمة، وتكاملات تواصل اجتماعي كاملة، ووكيل ذكي قابل للتخصيص.">
+    <meta name="keywords" content="إدارة العملاء، تحليلات مالية، واتساب، ذكاء اصطناعي، تكامل وسائل التواصل">
+    <meta name="robots" content="index, follow">
+    {% if google_site_verification %}
+    <meta name="google-site-verification" content="{{ google_site_verification }}">
+    {% endif %}
+    {% if google_analytics_id %}
+    <!-- Global site tag (gtag.js) - Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id={{ google_analytics_id }}"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', '{{ google_analytics_id }}');
+    </script>
+    {% endif %}
+    <meta property="og:type" content="website">
+    <meta property="og:locale" content="ar_SA">
+    <meta property="og:title" content="KognitixAI - منصة إدارة العملاء الذكية">
+    <meta property="og:description" content="منصة متكاملة لإدارة خدمة العملاء مع تحليلات مالية وتكاملات تواصل اجتماعي كاملة.">
+    <meta name="twitter:card" content="summary_large_image">
+    
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-blue: #3B5BDB;
+            --primary-purple: #7C3AED;
+            --accent-orange: #F59E0B;
+            --light-bg: #F8FAFC;
+            --dark-text: #1E293B;
+            --gray-text: #64748B;
+            --border-light: #E2E8F0;
+        }
+
+        body {
+            font-family: 'Cairo', sans-serif;
+            background-color: #FFFFFF;
+            color: var(--dark-text);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* ==================== HEADER & NAVIGATION ==================== */
+        .navbar {
+            background: linear-gradient(135deg, rgba(59, 91, 219, 0.98) 0%, rgba(124, 58, 237, 0.98) 100%);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 2px 20px rgba(59, 91, 219, 0.15);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .navbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 700;
+            font-size: 1.5rem;
+            color: #FFFFFF !important;
+        }
+
+        .navbar-brand img {
+            height: 40px;
+            width: auto;
+            border-radius: 8px;
+        }
+
+        .nav-link {
+            color: rgba(255, 255, 255, 0.85) !important;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            margin: 0 8px;
+        }
+
+        .nav-link:hover {
+            color: #FFFFFF !important;
+            text-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
+        }
+
+        .btn-login {
+            background: linear-gradient(135deg, var(--accent-orange), #FF8C00);
+            color: white !important;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 20px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(245, 158, 11, 0.3);
+        }
+
+        /* ==================== HERO SECTION ==================== */
+        .hero {
+            background: linear-gradient(135deg, #F8FAFC 0%, #EEF2FF 100%);
+            padding: 100px 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -10%;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(124, 58, 237, 0.1) 0%, transparent 70%);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        .hero::after {
+            content: '';
+            position: absolute;
+            bottom: -20%;
+            left: -5%;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(59, 91, 219, 0.08) 0%, transparent 70%);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 2;
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 20px;
+            line-height: 1.2;
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            color: var(--gray-text);
+            margin-bottom: 30px;
+            max-width: 600px;
+        }
+
+        .btn-primary-gradient {
+            background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple));
+            color: white;
+            border: none;
+            padding: 14px 40px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            display: inline-block;
+            text-decoration: none;
+        }
+
+        .btn-primary-gradient:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(59, 91, 219, 0.3);
+            color: white;
+        }
+
+        .btn-secondary-outline {
+            background: transparent;
+            color: var(--primary-blue);
+            border: 2px solid var(--primary-blue);
+            padding: 12px 35px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            display: inline-block;
+            text-decoration: none;
+            margin-right: 15px;
+        }
+
+        .btn-secondary-outline:hover {
+            background: var(--primary-blue);
+            color: white;
+        }
+
+        .hero-image {
+            text-align: center;
+            margin-top: 50px;
+        }
+
+        .hero-image img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(59, 91, 219, 0.2);
+        }
+
+        /* ==================== FEATURES SECTION ==================== */
+        .features {
+            padding: 100px 0;
+            background: #FFFFFF;
+        }
+
+        .section-title {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .section-title h2 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: var(--dark-text);
+            margin-bottom: 15px;
+        }
+
+        .section-title p {
+            font-size: 1.1rem;
+            color: var(--gray-text);
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .feature-card {
+            background: linear-gradient(135deg, #F8FAFC 0%, #F1F5FF 100%);
+            border: 1px solid var(--border-light);
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            transition: all 0.3s ease;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 50px rgba(59, 91, 219, 0.15);
+            border-color: var(--primary-blue);
+        }
+
+        .feature-icon {
+            width: 70px;
+            height: 70px;
+            margin: 0 auto 25px;
+            background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple));
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            color: white;
+        }
+
+        .feature-card h3 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--dark-text);
+            margin-bottom: 15px;
+        }
+
+        .feature-card p {
+            color: var(--gray-text);
+            font-size: 0.95rem;
+            line-height: 1.7;
+        }
+
+        /* ==================== CAPABILITIES SECTION ==================== */
+        .capabilities {
+            padding: 100px 0;
+            background: linear-gradient(135deg, #EEF2FF 0%, #F8FAFC 100%);
+        }
+
+        .capability-item {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 40px;
+            align-items: flex-start;
+        }
+
+        .capability-icon {
+            width: 50px;
+            height: 50px;
+            min-width: 50px;
+            background: linear-gradient(135deg, var(--accent-orange), #FF8C00);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.5rem;
+        }
+
+        .capability-content h3 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--dark-text);
+            margin-bottom: 8px;
+        }
+
+        .capability-content p {
+            color: var(--gray-text);
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        /* ==================== AI CUSTOMIZATION SECTION ==================== */
+        .ai-customization {
+            padding: 100px 0;
+            background: #FFFFFF;
+        }
+
+        .ai-box {
+            background: linear-gradient(135deg, rgba(59, 91, 219, 0.05) 0%, rgba(124, 58, 237, 0.05) 100%);
+            border: 2px solid var(--border-light);
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .ai-box h3 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--dark-text);
+            margin-bottom: 15px;
+        }
+
+        .ai-box p {
+            color: var(--gray-text);
+            font-size: 0.95rem;
+            line-height: 1.7;
+            margin-bottom: 20px;
+        }
+
+        .ai-providers {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .provider-badge {
+            background: white;
+            border: 2px solid var(--primary-blue);
+            color: var(--primary-blue);
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .provider-badge:hover {
+            background: var(--primary-blue);
+            color: white;
+        }
+
+        /* ==================== CURRENT STATUS SECTION ==================== */
+        .status-section {
+            padding: 60px 0;
+            background: linear-gradient(135deg, #FEF3C7 0%, #FEE2E2 100%);
+            border-radius: 15px;
+            margin: 80px 0;
+        }
+
+        .status-box {
+            text-align: center;
+        }
+
+        .status-badge {
+            display: inline-block;
+            background: #F59E0B;
+            color: white;
+            padding: 8px 20px;
+            border-radius: 25px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            margin-bottom: 20px;
+        }
+
+        .status-box h2 {
+            font-size: 2rem;
+            font-weight: 800;
+            color: #92400E;
+            margin-bottom: 15px;
+        }
+
+        .status-box p {
+            font-size: 1.1rem;
+            color: #B45309;
+            margin-bottom: 20px;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* ==================== CTA SECTION ==================== */
+        .cta-section {
+            padding: 100px 0;
+            background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-purple) 100%);
+            text-align: center;
+            color: white;
+        }
+
+        .cta-section h2 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 20px;
+        }
+
+        .cta-section p {
+            font-size: 1.1rem;
+            margin-bottom: 40px;
+            opacity: 0.95;
+        }
+
+        .cta-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn-white {
+            background: white;
+            color: var(--primary-blue);
+            border: none;
+            padding: 14px 40px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-white:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+            color: var(--primary-purple);
+        }
+
+        /* ==================== FOOTER ==================== */
+        footer {
+            background: #1E293B;
+            color: #CBD5E1;
+            padding: 50px 0 20px;
+            text-align: center;
+        }
+
+        footer p {
+            margin-bottom: 10px;
+        }
+
+        footer a {
+            color: #93C5FD;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+
+        footer a:hover {
+            color: white;
+        }
+
+        /* ==================== RESPONSIVE ==================== */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2.2rem;
+            }
+
+            .hero p {
+                font-size: 1rem;
+            }
+
+            .section-title h2 {
+                font-size: 1.8rem;
+            }
+
+            .feature-card {
+                padding: 25px;
+            }
+
+            .cta-section h2 {
+                font-size: 1.8rem;
+            }
+
+            .cta-buttons {
+                flex-direction: column;
+            }
+
+            .btn-primary-gradient,
+            .btn-secondary-outline,
+            .btn-white {
+                width: 100%;
+            }
+        }
+
+        /* ==================== ANIMATIONS ==================== */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .fade-in-up {
+            animation: fadeInUp 0.6s ease-out;
+        }
+
+        .feature-card {
+            animation: fadeInUp 0.6s ease-out;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ==================== NAVBAR ==================== -->
+<nav class="navbar navbar-expand-lg">
+    <div class="container">
+        <a class="navbar-brand" href="/">
+            {% if logo_url %}
+            <img src="{{ logo_url }}" alt="KognitixAI Logo">
+            {% endif %}
+            <span>KognitixAI</span>
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item"><a class="nav-link" href="#features">المميزات</a></li>
+                <li class="nav-item"><a class="nav-link" href="#capabilities">الإمكانيات</a></li>
+                <li class="nav-item"><a class="nav-link" href="#ai">الذكاء الاصطناعي</a></li>
+                <li class="nav-item"><a class="btn btn-login" href="/login">دخول لوحة التحكم</a></li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<!-- ==================== HERO SECTION ==================== -->
+<section class="hero">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-6 hero-content">
+                <h1>إدارة عملائك بذكاء</h1>
+                <p>منصة KognitixAI المتكاملة توفر لك تحليلات مالية متقدمة، وتكاملات تواصل اجتماعي كاملة، ووكيل ذكي يعمل بالذكاء الاصطناعي الذي تختاره بنفسك.</p>
+                <div>
+                    <a href="/chat" class="btn-primary-gradient">ابدأ الآن</a>
+                    <a href="#features" class="btn-secondary-outline">اعرف المزيد</a>
+                </div>
+            </div>
+            <div class="col-lg-6 hero-image">
+                {% if logo_url %}
+                <img src="{{ logo_url }}" alt="KognitixAI Platform" style="max-width: 300px;">
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ==================== FEATURES SECTION ==================== -->
+<section class="features" id="features">
+    <div class="container">
+        <div class="section-title">
+            <h2>مميزات قوية لعملك</h2>
+            <p>كل ما تحتاجه لإدارة علاقاتك مع العملاء في منصة واحدة</p>
+        </div>
+        <div class="row g-4">
+            <div class="col-md-6 col-lg-4">
+                <div class="feature-card">
+                    <div class="feature-icon"><i class="fas fa-chart-line"></i></div>
+                    <h3>تحليلات مالية متقدمة</h3>
+                    <p>تتبع الإيرادات والمصروفات بدقة، واحصل على تقارير شاملة لأداء عملك المالي.</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <div class="feature-card">
+                    <div class="feature-icon"><i class="fas fa-link"></i></div>
+                    <h3>تكاملات تواصل كاملة</h3>
+                    <p>ربط واتساب وجميع وسائل التواصل الاجتماعي للرد على العملاء من مكان واحد.</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <div class="feature-card">
+                    <div class="feature-icon"><i class="fas fa-robot"></i></div>
+                    <h3>وكيل ذكي متقدم</h3>
+                    <p>وكيل ذكي يعمل 24/7 للرد على استفسارات العملاء بشكل فوري واحترافي.</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <div class="feature-card">
+                    <div class="feature-icon"><i class="fas fa-bullhorn"></i></div>
+                    <h3>حملات إعلانية مدمجة</h3>
+                    <p>أنشئ وأطلق حملات إعلانية موجهة مباشرة من المنصة بكل سهولة.</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <div class="feature-card">
+                    <div class="feature-icon"><i class="fas fa-share-alt"></i></div>
+                    <h3>نشر وإدارة المحتوى</h3>
+                    <p>أدر كل محتواك على وسائل التواصل من لوحة تحكم واحدة متكاملة.</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <div class="feature-card">
+                    <div class="feature-icon"><i class="fas fa-cogs"></i></div>
+                    <h3>تخصيص كامل</h3>
+                    <p>خصص كل شيء حسب احتياجات عملك، من الألوان إلى سلوك الوكيل الذكي.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ==================== CAPABILITIES SECTION ==================== -->
+<section class="capabilities" id="capabilities">
+    <div class="container">
+        <div class="section-title">
+            <h2>إمكانيات شاملة</h2>
+            <p>كل ما تحتاجه لنمو عملك</p>
+        </div>
+        <div class="row">
+            <div class="col-lg-6">
+                <div class="capability-item">
+                    <div class="capability-icon"><i class="fas fa-comments"></i></div>
+                    <div class="capability-content">
+                        <h3>إدارة المحادثات</h3>
+                        <p>تابع جميع محادثات العملاء عبر جميع القنوات في مكان واحد آمن ومنظم.</p>
+                    </div>
+                </div>
+                <div class="capability-item">
+                    <div class="capability-icon"><i class="fas fa-box"></i></div>
+                    <div class="capability-content">
+                        <h3>إدارة المنتجات</h3>
+                        <p>أضف ومدير منتجاتك بسهولة مع صور وتفاصيل شاملة ومتغيرات متعددة.</p>
+                    </div>
+                </div>
+                <div class="capability-item">
+                    <div class="capability-icon"><i class="fas fa-store"></i></div>
+                    <div class="capability-content">
+                        <h3>إدارة الفروع</h3>
+                        <p>أدر عدة فروع من لوحة تحكم واحدة مع صلاحيات مختلفة لكل فرع.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="capability-item">
+                    <div class="capability-icon"><i class="fas fa-exclamation-circle"></i></div>
+                    <div class="capability-content">
+                        <h3>نظام الشكاوى</h3>
+                        <p>تتبع وحل شكاوى العملاء بكفاءة مع إشعارات فورية وتقارير تفصيلية.</p>
+                    </div>
+                </div>
+                <div class="capability-item">
+                    <div class="capability-icon"><i class="fas fa-envelope"></i></div>
+                    <div class="capability-content">
+                        <h3>الحملات البريدية</h3>
+                        <p>أرسل حملات بريدية موجهة مع تتبع الأداء والإحصائيات المفصلة.</p>
+                    </div>
+                </div>
+                <div class="capability-item">
+                    <div class="capability-icon"><i class="fas fa-mobile-alt"></i></div>
+                    <div class="capability-content">
+                        <h3>تطبيق ويب متقدم</h3>
+                        <p>واجهة ويب حديثة وسهلة الاستخدام متوافقة مع جميع الأجهزة والشاشات.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ==================== AI CUSTOMIZATION SECTION ==================== -->
+<section class="ai-customization" id="ai">
+    <div class="container">
+        <div class="section-title">
+            <h2>الذكاء الاصطناعي حسب اختيارك</h2>
+            <p>اختر مزود الذكاء الاصطناعي الذي يناسب احتياجات عملك</p>
+        </div>
+        <div class="row">
+            <div class="col-lg-6">
+                <div class="ai-box">
+                    <h3><i class="fas fa-brain" style="color: var(--primary-blue); margin-left: 10px;"></i>وكيل ذكي مخصص</h3>
+                    <p>اختر من بين أفضل مزودي الذكاء الاصطناعي العالميين وخصص سلوك الوكيل حسب احتياجات عملك.</p>
+                    <div class="ai-providers">
+                        <span class="provider-badge">OpenAI GPT-4</span>
+                        <span class="provider-badge">Google Gemini</span>
+                        <span class="provider-badge">مزودون آخرون</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="ai-box">
+                    <h3><i class="fas fa-image" style="color: var(--accent-orange); margin-left: 10px;"></i>تحليل الصور والصوت</h3>
+                    <p>الوكيل الذكي يمكنه تحليل الصور والملفات الصوتية من العملاء بدقة عالية.</p>
+                    <div class="ai-providers">
+                        <span class="provider-badge">رؤية الصور</span>
+                        <span class="provider-badge">تحليل الصوت</span>
+                        <span class="provider-badge">معالجة النصوص</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ==================== CURRENT STATUS SECTION ==================== -->
+<section class="container">
+    <div class="status-section">
+        <div class="status-box">
+            <span class="status-badge">⚠️ الحالة الحالية</span>
+            <h2>المنصة مخصصة حالياً لنشاط واحد</h2>
+            <p>
+                نظام KognitixAI حالياً مخصص بشكل كامل لإدارة <strong>مجمع العائلة</strong> التجاري. 
+                النظام لم يتم تطويره بعد كمنتج SaaS متعدد المستأجرين (Multi-tenant)، 
+                لكننا نعمل على تطويره ليصبح منصة عامة متاحة للجميع قريباً.
+            </p>
+            <p style="font-size: 0.95rem; opacity: 0.8;">
+                إذا كنت مهتماً بالحصول على نسخة مخصصة من النظام، يرجى التواصل معنا.
+            </p>
+        </div>
+    </div>
+</section>
+
+<!-- ==================== CTA SECTION ==================== -->
+<section class="cta-section">
+    <div class="container">
+        <h2>جاهز لتحسين إدارة عملائك؟</h2>
+        <p>جرب النظام الآن واكتشف كيف يمكن لـ KognitixAI أن يحول طريقة عملك</p>
+        <div class="cta-buttons">
+            <a href="/chat" class="btn-primary-gradient" style="background: white; color: var(--primary-blue);">ابدأ المحادثة</a>
+            <a href="/login" class="btn-white">دخول لوحة التحكم</a>
+        </div>
+    </div>
+</section>
+
+<!-- ==================== FOOTER ==================== -->
+<footer>
+    <div class="container">
+        <p>&copy; 2024 KognitixAI. جميع الحقوق محفوظة.</p>
+        <p>
+            <a href="#">سياسة الخصوصية</a> | 
+            <a href="#">شروط الاستخدام</a> | 
+            <a href="#">تواصل معنا</a>
+        </p>
+    </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // تأثيرات التمرير السلس
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function (e) {
+            e.preventDefault();
+            const target = document.querySelector(this.getAttribute('href'));
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+    });
+</script>
+
+</body>
+</html>

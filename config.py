@@ -212,14 +212,23 @@ if os.getenv("RENDER") is not None:
 # ——— WhatsApp Webhook Security (Meta App Secret) ———
 # يُستخدم للتحقق من توقيع X-Hub-Signature-256 لطلبات webhook.
 META_APP_SECRET = (os.getenv("META_APP_SECRET") or "").strip()
-if os.getenv("RENDER") is not None and not META_APP_SECRET:
-    print(
-        "CRITICAL CONFIG WARNING: META_APP_SECRET is NOT set on Render. "
-        "WhatsApp webhook signature verification will be skipped, which is insecure. "
-        "Set META_APP_SECRET in Render Environment Variables from Facebook Developer Console → "
-        "App Settings → Basic → App Secret.",
-        file=sys.stderr,
-    )
+if not META_APP_SECRET:
+    _skip_sig = os.getenv("WA_WEBHOOK_SKIP_SIGNATURE", "").strip().lower() in ("1", "true", "yes")
+    if os.getenv("RENDER") is not None:
+        print(
+            "CRITICAL CONFIG WARNING: META_APP_SECRET is NOT set on Render. "
+            "WhatsApp webhook will REJECT all incoming messages. "
+            "Set META_APP_SECRET in Render Environment Variables from Facebook Developer Console → "
+            "App Settings → Basic → App Secret.",
+            file=sys.stderr,
+        )
+    elif not _skip_sig:
+        print(
+            "CONFIG WARNING: META_APP_SECRET is not set. "
+            "WhatsApp webhook will reject incoming messages. "
+            "Set META_APP_SECRET in .env, or set WA_WEBHOOK_SKIP_SIGNATURE=true for local development only.",
+            file=sys.stderr,
+        )
 
 # طبقة LLM كمحلل فقط (بدون ردود للمستخدم) داخل /chat_query
 # (سابقاً: دعم Ollama — أُزيل؛ الإبقاء على العلم للتوافق؛ لا يوجد استدعاء شبكة في المحلل حالياً)

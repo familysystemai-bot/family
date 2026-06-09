@@ -53,6 +53,7 @@ from logic.campaign_scheduler import (
     stop_campaign_scheduler_thread,
 )
 from logic.wa_inbox_routes import create_wa_inbox_blueprint
+from logic.social_dashboard_routes import create_social_dashboard_blueprint
 from logic.finance_routes import create_finance_blueprint
 from logic.company_info_repository import ALLOWED_COMPANY_INFO_KEYS, parse_delivery_image_urls
 from logic.ai_usage_tracker import get_founder_accounting
@@ -146,6 +147,7 @@ if migrated_branch_passwords:
 init_chat_service(db)
 app.register_blueprint(create_campaign_blueprint(db))
 app.register_blueprint(create_wa_inbox_blueprint(db))
+app.register_blueprint(create_social_dashboard_blueprint(db))
 app.register_blueprint(create_finance_blueprint(db))
 
 
@@ -280,13 +282,23 @@ def template_media_url(path):
 def inject_site_logo():
     stored_founder = db.get_system_setting(FOUNDER_LOGO_SETTING_KEY, "") or ""
     site_logo_resolved = get_public_logo_url(app, db)
+    
+    # جلب إعدادات خدمات جوجل
+    google_site_verification = db.get_system_setting("GOOGLE_SITE_VERIFICATION", "") or ""
+    google_analytics_id = db.get_system_setting("GOOGLE_ANALYTICS_ID", "") or ""
+    google_maps_api_key = db.get_system_setting("GOOGLE_MAPS_API_KEY", "") or ""
+    
     return {
         "logo_url": site_logo_resolved,
         "site_logo_url": site_logo_resolved,
         "site_logo_path": site_logo_resolved,
         "site_logo_cache_bust": int(time.time()),
         "founder_logo_url": resolve_site_logo_url(app, stored_founder),
+        "google_site_verification": google_site_verification,
+        "google_analytics_id": google_analytics_id,
+        "google_maps_api_key": google_maps_api_key,
     }
+
 
 
 def _session_admin_or_founder():
@@ -347,7 +359,13 @@ def login():
         username = request.form.get('username')
         password = request.form.get('password')
 
-        if username == FOUNDER_USERNAME and password_matches_stored(password, FOUNDER_PASSWORD):
+        # جلب البيانات الحالية من قاعدة البيانات أو استخدام قيم ملف الإعدادات كاحتياطي
+        active_founder_user = db.get_system_setting("FOUNDER_USERNAME", FOUNDER_USERNAME)
+        active_founder_pass = db.get_system_setting("FOUNDER_PASSWORD", FOUNDER_PASSWORD)
+        active_admin_user = db.get_system_setting("ADMIN_USERNAME", ADMIN_USERNAME)
+        active_admin_pass = db.get_system_setting("ADMIN_PASSWORD", ADMIN_PASSWORD)
+
+        if username == active_founder_user and password_matches_stored(password, active_founder_pass):
             session.clear()
             session.permanent = True
             session["logged_in"] = True
@@ -358,7 +376,7 @@ def login():
             flash("مرحباً بك — لوحة تحكم النظام", "success")
             return redirect(url_for("founder_dashboard"))
 
-        if username == ADMIN_USERNAME and password_matches_stored(password, ADMIN_PASSWORD):
+        if username == active_admin_user and password_matches_stored(password, active_admin_pass):
             session.clear()
             session.permanent = True
             session['logged_in'] = True
@@ -440,6 +458,30 @@ def admin_dashboard():
             ensure_ascii=False,
         ),
     )
+
+
+@app.route('/admin/system-guide')
+@staff_member_required
+def admin_system_guide():
+    """عرض دليل النظام (README.md) للمدير أو المؤسس."""
+    if session.get('role') not in ('admin', 'founder'):
+        return redirect(url_for('login'))
+    
+    readme_content = ""
+    try:
+        readme_path = os.path.join(os.path.dirname(__file__), 'README.md')
+        if os.path.exists(readme_path):
+            with open(readme_path, 'r', encoding='utf-8') as f:
+                readme_content = f.read()
+        else:
+            readme_content = "ملف دليل النظام README.md غير موجود في هذا المسار."
+    except Exception as e:
+        readme_content = f"حدث خطأ أثناء قراءة ملف الدليل: {str(e)}"
+        
+    return render_template('admin_system_guide.html', readme_content=readme_content)
+
+
+
 
 
 @app.route("/admin/company-info", methods=["GET", "POST"])
@@ -1462,9 +1504,19 @@ def founder_admin_password():
         return redirect(url_for("founder_accounts"))
     try:
         persist_admin_password_hashed(new_pw)
-        flash("تم تحديث كلمة مرور حساب الإدارة في ملف البيئة.", "success")
+        # حفظ كلمة المرور مشفرة في قاعدة البيانات أيضاً لضمان استقرارها على السيرفرات السحابية
+        from werkzeug.security import generate_password_hash
+        hashed_pw = generate_password_hash(new_pw)
+        db.set_system_setting("ADMIN_PASSWORD", hashed_pw)
+        flash("تم تحديث كلمة مرور حساب الإدارة بنجاح.", "success")
     except OSError:
-        flash("تعذر الكتابة على ملف .env.", "danger")
+        flash("تعذر الكتابة على ملف .env، ولكن تم الحفظ بنجاح في قاعدة البيانات.", "success")
+        try:
+            from werkzeug.security import generate_password_hash
+            hashed_pw = generate_password_hash(new_pw)
+            db.set_system_setting("ADMIN_PASSWORD", hashed_pw)
+        except Exception:
+            flash("تعذر الحفظ في قاعدة البيانات أيضاً.", "danger")
     except ValueError as e:
         flash(str(e) or "تعذر الحفظ.", "danger")
     return redirect(url_for("founder_accounts"))
@@ -1586,7 +1638,9 @@ def founder_change_password():
     new_pw = (request.form.get("new_password") or "").strip()
     confirm = (request.form.get("confirm_password") or "").strip()
 
-    if not password_matches_stored(current, FOUNDER_PASSWORD):
+    active_founder_pass = db.get_system_setting("FOUNDER_PASSWORD", FOUNDER_PASSWORD)
+
+    if not password_matches_stored(current, active_founder_pass):
         flash("كلمة المرور الحالية غير صحيحة.", "danger")
         return redirect(url_for("founder_accounts"))
     if len(new_pw) < 4:
@@ -1597,12 +1651,22 @@ def founder_change_password():
         return redirect(url_for("founder_accounts"))
     try:
         persist_founder_password_hashed(new_pw)
-        flash("تم تحديث كلمة مرور المؤسس وحفظها في ملف البيئة.", "success")
+        from werkzeug.security import generate_password_hash
+        hashed_pw = generate_password_hash(new_pw)
+        db.set_system_setting("FOUNDER_PASSWORD", hashed_pw)
+        flash("تم تحديث كلمة مرور المؤسس بنجاح.", "success")
     except OSError:
-        flash("تعذر الكتابة على ملف .env. تحقق من صلاحيات الملف.", "danger")
+        flash("تعذر الكتابة على ملف .env، ولكن تم الحفظ بنجاح في قاعدة البيانات.", "success")
+        try:
+            from werkzeug.security import generate_password_hash
+            hashed_pw = generate_password_hash(new_pw)
+            db.set_system_setting("FOUNDER_PASSWORD", hashed_pw)
+        except Exception:
+            flash("تعذر الحفظ في قاعدة البيانات أيضاً.", "danger")
     except ValueError as e:
         flash(str(e) or "تعذر حفظ كلمة المرور.", "danger")
     return redirect(url_for("founder_accounts"))
+
 
 
 # ==========================================
@@ -1618,13 +1682,18 @@ def admin_settings():
             new_user = (request.form.get("admin_username") or "").strip()
             new_pw = (request.form.get("admin_new_password") or "").strip()
             confirm = (request.form.get("admin_confirm_password") or "").strip()
-            if new_user and new_user != ADMIN_USERNAME:
+            
+            current_admin_user = db.get_system_setting("ADMIN_USERNAME", ADMIN_USERNAME)
+            
+            if new_user and new_user != current_admin_user:
                 try:
                     update_env_file("ADMIN_USERNAME", new_user)
                     set_admin_username_runtime(new_user)
+                    db.set_system_setting("ADMIN_USERNAME", new_user)
                     flash("تم تحديث اسم مستخدم الإدارة.", "success")
                 except OSError:
-                    flash("تعذر الكتابة على ملف .env.", "danger")
+                    db.set_system_setting("ADMIN_USERNAME", new_user)
+                    flash("تم التحديث في قاعدة البيانات (تعذر تحديث ملف البيئة).", "success")
                 except ValueError as e:
                     flash(str(e) or "تعذر حفظ اسم المستخدم.", "danger")
             if new_pw or confirm:
@@ -1635,23 +1704,36 @@ def admin_settings():
                 else:
                     try:
                         persist_admin_password_hashed(new_pw)
-                        flash("تم تحديث كلمة مرور الإدارة (مُشفّرة) في ملف البيئة.", "success")
+                        from werkzeug.security import generate_password_hash
+                        db.set_system_setting("ADMIN_PASSWORD", generate_password_hash(new_pw))
+                        flash("تم تحديث كلمة مرور الإدارة بنجاح.", "success")
                     except OSError:
-                        flash("تعذر الكتابة على ملف .env.", "danger")
+                        try:
+                            from werkzeug.security import generate_password_hash
+                            db.set_system_setting("ADMIN_PASSWORD", generate_password_hash(new_pw))
+                            flash("تم التحديث في قاعدة البيانات (تعذر تحديث ملف البيئة).", "success")
+                        except Exception:
+                            flash("تعذر حفظ كلمة المرور.", "danger")
                     except ValueError as e:
                         flash(str(e) or "تعذر حفظ كلمة المرور.", "danger")
         elif which == "founder":
             new_user = (request.form.get("founder_username") or "").strip()
             new_pw = (request.form.get("founder_new_password") or "").strip()
             confirm = (request.form.get("founder_confirm_password") or "").strip()
-            if new_user and new_user != FOUNDER_USERNAME:
+            
+            current_founder_user = db.get_system_setting("FOUNDER_USERNAME", FOUNDER_USERNAME)
+            
+            if new_user and new_user != current_founder_user:
                 try:
                     update_env_file("FOUNDER_USERNAME", new_user)
                     set_founder_username_runtime(new_user)
+                    db.set_system_setting("FOUNDER_USERNAME", new_user)
                     session["username"] = new_user
                     flash("تم تحديث اسم مستخدم المؤسس.", "success")
                 except OSError:
-                    flash("تعذر الكتابة على ملف .env.", "danger")
+                    db.set_system_setting("FOUNDER_USERNAME", new_user)
+                    session["username"] = new_user
+                    flash("تم التحديث في قاعدة البيانات (تعذر تحديث ملف البيئة).", "success")
                 except ValueError as e:
                     flash(str(e) or "تعذر حفظ اسم المستخدم.", "danger")
             if new_pw or confirm:
@@ -1662,9 +1744,16 @@ def admin_settings():
                 else:
                     try:
                         persist_founder_password_hashed(new_pw)
-                        flash("تم تحديث كلمة مرور المؤسس (مُشفّرة) في ملف البيئة.", "success")
+                        from werkzeug.security import generate_password_hash
+                        db.set_system_setting("FOUNDER_PASSWORD", generate_password_hash(new_pw))
+                        flash("تم تحديث كلمة مرور المؤسس بنجاح.", "success")
                     except OSError:
-                        flash("تعذر الكتابة على ملف .env.", "danger")
+                        try:
+                            from werkzeug.security import generate_password_hash
+                            db.set_system_setting("FOUNDER_PASSWORD", generate_password_hash(new_pw))
+                            flash("تم التحديث في قاعدة البيانات (تعذر تحديث ملف البيئة).", "success")
+                        except Exception:
+                            flash("تعذر حفظ كلمة المرور.", "danger")
                     except ValueError as e:
                         flash(str(e) or "تعذر حفظ كلمة المرور.", "danger")
         else:
@@ -1672,8 +1761,8 @@ def admin_settings():
         return redirect(url_for("admin_settings"))
     return render_template(
         "admin_settings.html",
-        admin_username=ADMIN_USERNAME,
-        founder_username=FOUNDER_USERNAME,
+        admin_username=db.get_system_setting("ADMIN_USERNAME", ADMIN_USERNAME),
+        founder_username=db.get_system_setting("FOUNDER_USERNAME", FOUNDER_USERNAME),
     )
 
 
@@ -2068,6 +2157,7 @@ def robots_txt():
     body_lines = [
         "User-agent: *",
         "Allow: /",
+        "Allow: /chat",
         "Disallow: /login",
         "Disallow: /admin/",
         "Disallow: /dashboard",
@@ -2099,13 +2189,13 @@ def sitemap_xml():
     if not base:
         return Response("", status=503, mimetype="application/xml")
     today = date.today().isoformat()
-    loc = f"{base}/"
+    loc_main = f"{base}/"
+    loc_chat = f"{base}/chat"
     xml = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-        f"  <url><loc>{loc}</loc>"
-        f"<lastmod>{today}</lastmod>"
-        "<changefreq>daily</changefreq><priority>1.0</priority></url>\n"
+        f"  <url><loc>{loc_main}</loc><lastmod>{today}</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>\n"
+        f"  <url><loc>{loc_chat}</loc><lastmod>{today}</lastmod><changefreq>daily</changefreq><priority>0.8</priority></url>\n"
         "</urlset>\n"
     )
     return Response(xml, mimetype="application/xml; charset=utf-8")
@@ -2113,10 +2203,35 @@ def sitemap_xml():
 
 @app.route('/')
 def index():
+    """صفحة الهبوط الرئيسية لمنصة KognitixAI."""
+    base = _absolute_public_base()
+    canon = f"{base}/" if base else ""
+    seo_title = "KognitixAI - منصة إدارة العملاء الذكية | تحليلات مالية وتكاملات تواصل"
+    lu = get_logo_url()
+    og_image = ""
+    if lu:
+        u = str(lu).strip()
+        if u.startswith(("http://", "https://")):
+            og_image = u.split("?")[0]
+        elif base and u.startswith("/"):
+            og_image = urljoin(base + "/", u.lstrip("/")).split("?")[0]
+    return render_template(
+        'landing_page.html',
+        seo_title=seo_title,
+        seo_description="منصة KognitixAI الذكية لإدارة خدمة العملاء مع تحليلات مالية متقدمة، وتكاملات تواصل اجتماعي كاملة، ووكيل ذكي قابل للتخصيص.",
+        seo_canonical_url=canon,
+        seo_og_image=og_image or None,
+        logo_url=lu,
+    )
+
+
+@app.route('/chat')
+def chat():
+    """واجهة الشات الرئيسية."""
     uid = (session.get("user") or "").strip()
     chat_ok = session.get("login_scope") == "chat_customer" and bool(uid)
     base = _absolute_public_base()
-    canon = f"{base}/" if base else ""
+    canon = f"{base}/chat" if base else ""
     seo_title = f"{SEO_SITE_NAME} | خدمة العملاء الذكية"
     lu = get_logo_url()
     og_image = ""
@@ -2922,14 +3037,25 @@ def process_message(data) -> None:
                 )
                 return
         else:
-            logger.warning(
-                "[WA-Webhook][bg] ⚠️ META_APP_SECRET غير مهيّأ — "
-                "الـ webhook مفتوح لأي طلب POST! "
-                "أضف المفتاح من: لوحة المؤسس → التكاملات → الواتساب"
-            )
-            if os.environ.get("RENDER") is not None:
+            # ── حماية جميع البيئات: رفض الطلبات بدون META_APP_SECRET ──
+            # للتطوير المحلي فقط: عيّن WA_WEBHOOK_SKIP_SIGNATURE=true في .env
+            _skip_sig = os.environ.get(
+                "WA_WEBHOOK_SKIP_SIGNATURE", ""
+            ).strip().lower() in ("1", "true", "yes")
+
+            if _skip_sig:
                 logger.warning(
-                    "[WA-Webhook][bg] رفض معالجة الرسالة على Render بدون META_APP_SECRET (أمان)."
+                    "[WA-Webhook][bg] ⚠️ META_APP_SECRET غير مهيّأ — "
+                    "تم تجاوز التحقق بسبب WA_WEBHOOK_SKIP_SIGNATURE=true. "
+                    "لا تستخدم هذا الإعداد في الإنتاج!"
+                )
+            else:
+                logger.warning(
+                    "[WA-Webhook][bg] ❌ META_APP_SECRET غير مهيّأ — "
+                    "رفض معالجة الرسالة (أمان). "
+                    "أضف المفتاح من: لوحة المؤسس → التكاملات → الواتساب، "
+                    "أو من Facebook Developer Console → App Settings → Basic → App Secret. "
+                    "للتطوير المحلي فقط: عيّن WA_WEBHOOK_SKIP_SIGNATURE=true في .env"
                 )
                 return
     except ImportError:

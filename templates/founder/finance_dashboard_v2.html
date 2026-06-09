@@ -1,0 +1,402 @@
+{% extends "founder/base.html" %}
+{% block mm_title %}التحليلات المالية الاحترافية — KognitixAI{% endblock %}
+{% block mm_body_class %}mm-fin-dash-v2{% endblock %}
+
+{% block mm_extra_head %}
+<meta name="mm-fin-ai-configured" content="{{ 1 if placeholders.has_ai else 0 }}">
+<style>
+    .mm-fin-dash-v2 {
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        min-height: 100vh;
+        padding: 2rem;
+    }
+    
+    .fin-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    
+    .fin-title {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: #0f172a;
+    }
+    
+    .fin-branch-selector {
+        min-width: 200px;
+    }
+    
+    .fin-branch-selector select {
+        width: 100%;
+        padding: 0.75rem;
+        border: 2px solid #e2e8f0;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        background: white;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .fin-branch-selector select:hover {
+        border-color: #cbd5e1;
+    }
+    
+    .fin-branch-selector select:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    
+    .fin-kpis {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    .fin-kpi-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        border-left: 4px solid #3b82f6;
+    }
+    
+    .fin-kpi-card.sales {
+        border-left-color: #10b981;
+    }
+    
+    .fin-kpi-card.returns {
+        border-left-color: #ef4444;
+    }
+    
+    .fin-kpi-card.net {
+        border-left-color: #8b5cf6;
+    }
+    
+    .fin-kpi-label {
+        font-size: 0.85rem;
+        color: #64748b;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .fin-kpi-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: 0.5rem;
+    }
+    
+    .fin-kpi-change {
+        font-size: 0.85rem;
+        color: #64748b;
+    }
+    
+    .fin-kpi-change.positive {
+        color: #10b981;
+    }
+    
+    .fin-kpi-change.negative {
+        color: #ef4444;
+    }
+    
+    .fin-chart-container {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        margin-bottom: 2rem;
+    }
+    
+    .fin-chart-title {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: 1.5rem;
+    }
+    
+    .fin-chart-wrapper {
+        position: relative;
+        height: 400px;
+        margin-bottom: 1rem;
+    }
+    
+    .fin-chart-legend {
+        display: flex;
+        justify-content: center;
+        gap: 2rem;
+        margin-top: 1.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid #e2e8f0;
+    }
+    
+    .fin-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+        color: #475569;
+    }
+    
+    .fin-legend-color {
+        width: 12px;
+        height: 12px;
+        border-radius: 2px;
+    }
+    
+    .fin-insights {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        margin-bottom: 2rem;
+    }
+    
+    .fin-insights-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: 1rem;
+    }
+    
+    .fin-insights-content {
+        color: #475569;
+        line-height: 1.6;
+        font-size: 0.95rem;
+    }
+    
+    .fin-status-banner {
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+        font-size: 0.9rem;
+    }
+    
+    .fin-status-banner.success {
+        background: #dcfce7;
+        border-left: 4px solid #10b981;
+        color: #166534;
+    }
+    
+    .fin-status-banner.warning {
+        background: #fef3c7;
+        border-left: 4px solid #f59e0b;
+        color: #92400e;
+    }
+    
+    .fin-status-banner.error {
+        background: #fee2e2;
+        border-left: 4px solid #ef4444;
+        color: #991b1b;
+    }
+</style>
+{% endblock %}
+
+{% block mm_main %}
+{% set liv = metrics.live or {} %}
+{% set br_list = metrics.branches_breakdown or [] %}
+
+<div class="mm-fin-dash-v2">
+    <!-- رأس الصفحة -->
+    <div class="fin-header">
+        <div>
+            <h1 class="fin-title">📊 التحليلات المالية</h1>
+            <p style="color: #64748b; margin-top: 0.25rem;">مخصصة للمبيعات والمرتجعات</p>
+        </div>
+        <div class="fin-branch-selector">
+            <label for="mnBranchPickV2" style="display: block; margin-bottom: 0.5rem; font-size: 0.85rem; color: #64748b; font-weight: 600;">اختر الفرع</label>
+            <select id="mnBranchPickV2" aria-label="اختيار الفرع">
+                <option value="0" {% if not selected_branch_id %}selected{% endif %}>جميع الفروع</option>
+                {% for rb in branches_dd %}
+                <option value="{{ rb.id }}" {% if selected_branch_id == rb.id %}selected{% endif %}>{{ rb.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    
+    <!-- رسالة الحالة -->
+    {% if metrics.get('credentials_missing') %}
+    <div class="fin-status-banner warning">
+        <strong>⚠️ معاينة داخلية</strong> — أضِف رابط النظام المحاسبي من «مركز التكامل» لعرض البيانات الحقيقية.
+    </div>
+    {% elif metrics.mode == 'remote_error' %}
+    <div class="fin-status-banner error">
+        <strong>❌ تعذّر الاتصال</strong> — {{ metrics.pos_error or 'تحقق من إعدادات الربط' }}
+    </div>
+    {% elif metrics.pos_connected %}
+    <div class="fin-status-banner success">
+        <strong>✅ متصل</strong> — البيانات الحية من النظام المحاسبي
+    </div>
+    {% endif %}
+    
+    <!-- بطاقات المؤشرات الرئيسية -->
+    <div class="fin-kpis">
+        <div class="fin-kpi-card sales">
+            <div class="fin-kpi-label">💰 إجمالي المبيعات</div>
+            <div class="fin-kpi-value" id="mnKpiSalesV2">{{ '{:,.0f}'.format(metrics.today_sales|float) }}</div>
+            {% if metrics.sales_vs_yesterday_pct is not none %}
+            <div class="fin-kpi-change {% if metrics.sales_vs_yesterday_pct >= 0 %}positive{% else %}negative{% endif %}">
+                {{ '{:+,.1f}'.format(metrics.sales_vs_yesterday_pct|float) }}% عن أمس
+            </div>
+            {% endif %}
+        </div>
+        
+        <div class="fin-kpi-card returns">
+            <div class="fin-kpi-label">📦 المرتجعات</div>
+            <div class="fin-kpi-value" id="mnKpiReturnsV2">{{ '{:,.0f}'.format(metrics.returns_signal.get('estimated_return_value', 0)|float) }}</div>
+            <div class="fin-kpi-change">
+                {{ metrics.returns_signal.get('return_ratio_pct', 0)|round(1) }}% من المبيعات
+            </div>
+        </div>
+        
+        <div class="fin-kpi-card net">
+            <div class="fin-kpi-label">📈 صافي الدخل</div>
+            <div class="fin-kpi-value" id="mnKpiNetV2">{{ '{:,.0f}'.format((metrics.today_sales|float) - (metrics.returns_signal.get('estimated_return_value', 0)|float)) }}</div>
+            <div class="fin-kpi-change">
+                الدخل الفعلي بعد المرتجعات
+            </div>
+        </div>
+    </div>
+    
+    <!-- الرسم البياني -->
+    <div class="fin-chart-container">
+        <h2 class="fin-chart-title">📊 تطور المبيعات والمرتجعات</h2>
+        <div class="fin-chart-wrapper">
+            <canvas id="mnSalesReturnsChart" aria-label="مخطط المبيعات والمرتجعات"></canvas>
+        </div>
+        <div class="fin-chart-legend">
+            <div class="fin-legend-item">
+                <div class="fin-legend-color" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);"></div>
+                <span>المبيعات</span>
+            </div>
+            <div class="fin-legend-item">
+                <div class="fin-legend-color" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);"></div>
+                <span>المرتجعات</span>
+            </div>
+            <div class="fin-legend-item">
+                <div class="fin-legend-color" style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);"></div>
+                <span>صافي الدخل</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- الرؤى الذكية -->
+    <div class="fin-insights">
+        <h2 class="fin-insights-title">🤖 الرؤى الذكية</h2>
+        <div id="mnInsightsBodyV2" class="fin-insights-content">
+            جاري تحضير التحليل الذكي...
+        </div>
+    </div>
+</div>
+
+<script>
+    const MM_FIN_ENDPOINTS = typeof window.MM_FIN_ENDPOINTS !== "undefined" ? window.MM_FIN_ENDPOINTS : {};
+    const MM_FIN_SSR_METRICS = typeof window.MM_FIN_SSR_METRICS !== "undefined" ? window.MM_FIN_SSR_METRICS : {};
+    
+    function renderSalesReturnsChart(metrics) {
+        const canvas = document.getElementById('mnSalesReturnsChart');
+        if (!canvas || typeof Chart === 'undefined') return;
+        
+        const labels = metrics.six_month_labels_chart || [];
+        const sales = metrics.six_month_sales_series_chart || [];
+        const returns = metrics.returns_series || [0].repeat(labels.length);
+        
+        if (window.salesReturnsChart) {
+            window.salesReturnsChart.destroy();
+        }
+        
+        window.salesReturnsChart = new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'المبيعات',
+                        data: sales,
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointBackgroundColor: '#10b981',
+                        pointBorderColor: 'white',
+                        pointBorderWidth: 2,
+                    },
+                    {
+                        label: 'المرتجعات',
+                        data: returns,
+                        borderColor: '#ef4444',
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointBackgroundColor: '#ef4444',
+                        pointBorderColor: 'white',
+                        pointBorderWidth: 2,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                        titleColor: '#e2e8f0',
+                        bodyColor: '#cbd5e1',
+                        borderColor: 'rgba(59, 130, 246, 0.3)',
+                        borderWidth: 1,
+                        padding: 12,
+                        cornerRadius: 8,
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(226, 232, 240, 0.5)' },
+                        ticks: { color: '#64748b' }
+                    },
+                    y: {
+                        grid: { color: 'rgba(226, 232, 240, 0.5)' },
+                        ticks: { color: '#64748b' }
+                    }
+                }
+            }
+        });
+    }
+    
+    function setupBranchPickerV2() {
+        const sel = document.getElementById('mnBranchPickV2');
+        if (!sel) return;
+        sel.addEventListener('change', function() {
+            const id = String(sel.value || '0');
+            const url = new URL(window.location.href);
+            if (id !== '0') {
+                url.searchParams.set('branch_id', id);
+            } else {
+                url.searchParams.delete('branch_id');
+            }
+            window.location.href = url.toString();
+        });
+    }
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        renderSalesReturnsChart(MM_FIN_SSR_METRICS);
+        setupBranchPickerV2();
+    });
+</script>
+{% endblock %}
