@@ -86,7 +86,7 @@
 /* منع أي تمرير أفقي على مستوى الصفحة */
 body.dash-body,
 html.dash-html {
-  overflow-x: clip;
+  overflow-x: hidden;
   overflow-y: visible !important;
   height: auto !important;
   min-height: 100%;
